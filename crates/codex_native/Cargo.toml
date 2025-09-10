@@ -1,0 +1,25 @@
+[package]
+name = "codex_native"
+version = "0.2.0"
+edition = "2021"
+
+[lib]
+name = "codex_native"
+crate-type = ["cdylib"]
+
+[dependencies]
+pyo3 = { version = "0.26", features = ["extension-module"] }
+anyhow = "1"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "signal", "process", "time"] }
+tracing = "0.1"
+
+# Upstream Codex crates from the monorepo (use git deps; pin to main for now)
+codex-core = { git = "https://github.com/openai/codex", package = "codex-core", branch = "main" }
+codex-protocol = { git = "https://github.com/openai/codex", package = "codex-protocol", branch = "main" }
+
+# Tell maturin to include the Python sources from the repo root (mixed project)
+[package.metadata.maturin]
+python-source = "../../"
+name = "codex-python"
