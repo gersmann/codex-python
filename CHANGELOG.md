@@ -41,3 +41,9 @@ The format is based on Keep a Changelog and this project adheres to Semantic Ver
 [0.1.0]: https://github.com/gersmann/codex-python/releases/tag/v0.1.0
 [0.1.1]: https://github.com/gersmann/codex-python/releases/tag/v0.1.1
 [0.2.0]: https://github.com/gersmann/codex-python/releases/tag/v0.2.0
+## [0.2.1] - 2025-09-10
+### Changed
+- Consolidate PyPI Trusted Publishing into a single publish.yml workflow: builds native wheels (Linux/macOS/Windows) and sdist, then publishes via OIDC.
+- Remove separate native-wheels.yml to avoid split workflows.
+
+[0.2.1]: https://github.com/gersmann/codex-python/releases/tag/v0.2.1
