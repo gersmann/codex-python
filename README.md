@@ -85,6 +85,19 @@ uv publish --token "$PYPI_API_TOKEN"
 - Format: `make fmt` (ruff formatter)
  - Pre-commit: `uvx pre-commit install && uvx pre-commit run --all-files`
 
+### Protocol bindings (from codex-rs)
+
+- Prereq: Rust toolchain (`cargo`) installed.
+- Generate Python types from the upstream protocol with:
+
+```
+make gen-protocol
+```
+
+This will:
+- run `codex-proj/codex-rs/protocol-ts` to emit TypeScript types under `.generated/ts/`
+- convert them to Python `TypedDict`/`Literal` aliases at `codex/protocol/types.py`
+
 ## Project Layout
 
 ```

@@ -7,6 +7,7 @@ help:
 	@echo "  make build    - Build sdist and wheel with uv"
 	@echo "  make publish  - Publish to PyPI via uv (uses PYPI_API_TOKEN)"
 	@echo "  make clean    - Remove build artifacts"
+	@echo "  make gen-protocol - Generate Python protocol bindings from codex-rs"
 
 venv:
 	uv venv --python 3.13
@@ -49,3 +50,11 @@ publish: build
 
 clean:
 	rm -rf build dist *.egg-info .pytest_cache .mypy_cache .ruff_cache
+
+gen-protocol:
+	@echo "Generating TypeScript protocol types via codex-proj/codex-rs ..."
+	@mkdir -p .generated/ts
+	@cd codex-proj/codex-rs && cargo run -p codex-protocol-ts -- --out ../../.generated/ts
+	@echo "Generating Python bindings ..."
+	@python3 scripts/generate_protocol_py.py .generated/ts
+	@$(MAKE) fmt
