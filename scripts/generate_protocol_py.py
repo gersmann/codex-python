@@ -51,7 +51,9 @@ class TypedDictDef:
 PY_HEADER = """# GENERATED CODE! DO NOT MODIFY BY HAND!
 from __future__ import annotations
 
-from typing import Any, Literal, NotRequired, TypedDict
+from typing import Any, Literal
+from pydantic import BaseModel, Field
+from pydantic.config import ConfigDict
 
 
 """
@@ -177,10 +179,6 @@ def parse_object_fields(block: str) -> list[Field]:
             ts_t = " | ".join(union_parts) if union_parts else "null"
 
         py_t = ts_type_to_py(ts_t)
-        if optional and py_t != "None":
-            py_t = f"NotRequired[{py_t} | None]"
-        elif optional and py_t == "None":
-            py_t = "NotRequired[None]"
         fields.append(Field(key, py_t, optional=optional))
     return fields
 
@@ -270,14 +268,18 @@ def generate_from_ts(ts_dir: Path) -> str:
 
     # Emit Python code
     out = [PY_HEADER]
-    # Emit data structures first (TypedDicts)
+    # Emit data structures first (Pydantic models)
     for td in tdicts:
-        out.append(f"class {td.name}(TypedDict):\n")
+        out.append(f"class {td.name}(BaseModel):\n")
+        out.append("    model_config = ConfigDict(extra='forbid')\n")
         if not td.fields:
             out.append("    pass\n\n")
             continue
         for f in td.fields:
-            out.append(f"    {f.name}: {f.type_expr}\n")
+            if f.optional:
+                out.append(f"    {f.name}: {f.type_expr} | None = None\n")
+            else:
+                out.append(f"    {f.name}: {f.type_expr}\n")
         out.append("\n")
     out.append("\n")
     # Then aliases: unions first (composed of previously defined TypedDicts), then simple aliases

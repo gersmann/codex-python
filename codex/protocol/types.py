@@ -1,411 +1,500 @@
 # GENERATED CODE! DO NOT MODIFY BY HAND!
 from __future__ import annotations
 
-from typing import Any, Literal, NotRequired, TypedDict
+from typing import Any, Literal
+
+from pydantic import BaseModel
+from pydantic.config import ConfigDict
 
 
-class AddConversationListenerParams_Variant1(TypedDict):
+class AddConversationListenerParams_Variant1(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     conversationId: ConversationId
 
 
-class AddConversationSubscriptionResponse_Variant1(TypedDict):
+class AddConversationSubscriptionResponse_Variant1(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     subscriptionId: str
 
 
-class AgentMessageDeltaEvent_Variant1(TypedDict):
+class AgentMessageDeltaEvent_Variant1(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     delta: str
 
 
-class AgentMessageEvent_Variant1(TypedDict):
+class AgentMessageEvent_Variant1(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     message: str
 
 
-class AgentReasoningDeltaEvent_Variant1(TypedDict):
+class AgentReasoningDeltaEvent_Variant1(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     delta: str
 
 
-class AgentReasoningEvent_Variant1(TypedDict):
+class AgentReasoningEvent_Variant1(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     text: str
 
 
-class AgentReasoningRawContentDeltaEvent_Variant1(TypedDict):
+class AgentReasoningRawContentDeltaEvent_Variant1(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     delta: str
 
 
-class AgentReasoningRawContentEvent_Variant1(TypedDict):
+class AgentReasoningRawContentEvent_Variant1(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     text: str
 
 
-class AgentReasoningSectionBreakEvent(TypedDict):
+class AgentReasoningSectionBreakEvent(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     pass
 
 
-class Annotations_Variant1(TypedDict):
+class Annotations_Variant1(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     pass
 
 
-class ApplyPatchApprovalParams_Variant1(TypedDict):
+class ApplyPatchApprovalParams_Variant1(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     conversation_id: ConversationId
     call_id: str
     file_changes: dict[str, FileChange]
-    reason: NotRequired[str | None]
-    grant_root: NotRequired[str | None]
+    reason: str | None = None
+    grant_root: str | None = None
 
 
-class ApplyPatchApprovalRequestEvent_Variant1(TypedDict):
+class ApplyPatchApprovalRequestEvent_Variant1(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     call_id: str
     changes: dict[str, FileChange]
-    reason: NotRequired[str | None]
-    grant_root: NotRequired[str | None]
+    reason: str | None = None
+    grant_root: str | None = None
 
 
-class ApplyPatchApprovalResponse_Variant1(TypedDict):
+class ApplyPatchApprovalResponse_Variant1(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     decision: ReviewDecision
 
 
-class ArchiveConversationParams_Variant1(TypedDict):
+class ArchiveConversationParams_Variant1(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     conversationId: ConversationId
     rolloutPath: str
 
 
-class ArchiveConversationResponse(TypedDict):
+class ArchiveConversationResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     pass
 
 
-class AudioContent_Variant1(TypedDict):
+class AudioContent_Variant1(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     data: str
     mimeType: str
     type: str
 
 
-class AuthStatusChangeNotification_Variant1(TypedDict):
-    authMethod: NotRequired[AuthMode | None]
+class AuthStatusChangeNotification_Variant1(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    authMethod: AuthMode | None = None
 
 
-class BackgroundEventEvent_Variant1(TypedDict):
+class BackgroundEventEvent_Variant1(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     message: str
 
 
-class BlobResourceContents_Variant1(TypedDict):
+class BlobResourceContents_Variant1(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     blob: str
     uri: str
 
 
-class CallToolResult_Variant1(TypedDict):
+class CallToolResult_Variant1(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     content: list[ContentBlock]
 
 
-class CancelLoginChatGptParams_Variant1(TypedDict):
+class CancelLoginChatGptParams_Variant1(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     loginId: str
 
 
-class CancelLoginChatGptResponse(TypedDict):
+class CancelLoginChatGptResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     pass
 
 
-class ClientRequest_NewConversation(TypedDict):
+class ClientRequest_NewConversation(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     method: Literal["newConversation"]
     id: RequestId
     params: NewConversationParams
 
 
-class ClientRequest_ListConversations(TypedDict):
+class ClientRequest_ListConversations(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     method: Literal["listConversations"]
     id: RequestId
     params: ListConversationsParams
 
 
-class ClientRequest_ResumeConversation(TypedDict):
+class ClientRequest_ResumeConversation(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     method: Literal["resumeConversation"]
     id: RequestId
     params: ResumeConversationParams
 
 
-class ClientRequest_ArchiveConversation(TypedDict):
+class ClientRequest_ArchiveConversation(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     method: Literal["archiveConversation"]
     id: RequestId
     params: ArchiveConversationParams
 
 
-class ClientRequest_SendUserMessage(TypedDict):
+class ClientRequest_SendUserMessage(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     method: Literal["sendUserMessage"]
     id: RequestId
     params: SendUserMessageParams
 
 
-class ClientRequest_SendUserTurn(TypedDict):
+class ClientRequest_SendUserTurn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     method: Literal["sendUserTurn"]
     id: RequestId
     params: SendUserTurnParams
 
 
-class ClientRequest_InterruptConversation(TypedDict):
+class ClientRequest_InterruptConversation(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     method: Literal["interruptConversation"]
     id: RequestId
     params: InterruptConversationParams
 
 
-class ClientRequest_AddConversationListener(TypedDict):
+class ClientRequest_AddConversationListener(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     method: Literal["addConversationListener"]
     id: RequestId
     params: AddConversationListenerParams
 
 
-class ClientRequest_RemoveConversationListener(TypedDict):
+class ClientRequest_RemoveConversationListener(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     method: Literal["removeConversationListener"]
     id: RequestId
     params: RemoveConversationListenerParams
 
 
-class ClientRequest_GitDiffToRemote(TypedDict):
+class ClientRequest_GitDiffToRemote(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     method: Literal["gitDiffToRemote"]
     id: RequestId
     params: GitDiffToRemoteParams
 
 
-class ClientRequest_LoginChatGpt(TypedDict):
+class ClientRequest_LoginChatGpt(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     method: Literal["loginChatGpt"]
     id: RequestId
 
 
-class ClientRequest_CancelLoginChatGpt(TypedDict):
+class ClientRequest_CancelLoginChatGpt(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     method: Literal["cancelLoginChatGpt"]
     id: RequestId
     params: CancelLoginChatGptParams
 
 
-class ClientRequest_LogoutChatGpt(TypedDict):
+class ClientRequest_LogoutChatGpt(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     method: Literal["logoutChatGpt"]
     id: RequestId
 
 
-class ClientRequest_GetAuthStatus(TypedDict):
+class ClientRequest_GetAuthStatus(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     method: Literal["getAuthStatus"]
     id: RequestId
     params: GetAuthStatusParams
 
 
-class ClientRequest_GetUserSavedConfig(TypedDict):
+class ClientRequest_GetUserSavedConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     method: Literal["getUserSavedConfig"]
     id: RequestId
 
 
-class ClientRequest_GetUserAgent(TypedDict):
+class ClientRequest_GetUserAgent(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     method: Literal["getUserAgent"]
     id: RequestId
 
 
-class ClientRequest_ExecOneOffCommand(TypedDict):
+class ClientRequest_ExecOneOffCommand(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     method: Literal["execOneOffCommand"]
     id: RequestId
     params: ExecOneOffCommandParams
 
 
-class ContentItem_Variant1(TypedDict):
+class ContentItem_Variant1(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     type: Literal["input_text"]
     text: str
 
 
-class ContentItem_Variant2(TypedDict):
+class ContentItem_Variant2(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     type: Literal["input_image"]
     image_url: str
 
 
-class ContentItem_Variant3(TypedDict):
+class ContentItem_Variant3(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     type: Literal["output_text"]
     text: str
 
 
-class ConversationHistoryResponseEvent_Variant1(TypedDict):
+class ConversationHistoryResponseEvent_Variant1(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     conversation_id: ConversationId
     entries: list[ResponseItem]
 
 
-class ConversationSummary_Variant1(TypedDict):
+class ConversationSummary_Variant1(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     conversationId: ConversationId
     path: str
     preview: str
-    timestamp: NotRequired[str | None]
+    timestamp: str | None = None
 
 
-class CustomPrompt_Variant1(TypedDict):
+class CustomPrompt_Variant1(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     name: str
     path: str
     content: str
 
 
-class EmbeddedResource_Variant1(TypedDict):
+class EmbeddedResource_Variant1(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     resource: EmbeddedResourceResource
     type: str
 
 
-class ErrorEvent_Variant1(TypedDict):
+class ErrorEvent_Variant1(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     message: str
 
 
-class EventMsg_Variant1(TypedDict):
+class EventMsg_Variant1(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     pass
 
 
-class EventMsg_Variant2(TypedDict):
+class EventMsg_Variant2(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     pass
 
 
-class EventMsg_Variant3(TypedDict):
+class EventMsg_Variant3(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     pass
 
 
-class EventMsg_Variant4(TypedDict):
+class EventMsg_Variant4(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     pass
 
 
-class EventMsg_Variant5(TypedDict):
+class EventMsg_Variant5(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     pass
 
 
-class EventMsg_Variant6(TypedDict):
+class EventMsg_Variant6(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     pass
 
 
-class EventMsg_Variant7(TypedDict):
+class EventMsg_Variant7(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     pass
 
 
-class EventMsg_Variant8(TypedDict):
+class EventMsg_Variant8(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     pass
 
 
-class EventMsg_Variant9(TypedDict):
+class EventMsg_Variant9(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     pass
 
 
-class EventMsg_Variant10(TypedDict):
+class EventMsg_Variant10(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     pass
 
 
-class EventMsg_Variant11(TypedDict):
+class EventMsg_Variant11(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     pass
 
 
-class EventMsg_Variant12(TypedDict):
+class EventMsg_Variant12(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     pass
 
 
-class EventMsg_Variant13(TypedDict):
+class EventMsg_Variant13(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     pass
 
 
-class EventMsg_Variant14(TypedDict):
+class EventMsg_Variant14(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     pass
 
 
-class EventMsg_Variant15(TypedDict):
+class EventMsg_Variant15(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     pass
 
 
-class EventMsg_Variant16(TypedDict):
+class EventMsg_Variant16(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     pass
 
 
-class EventMsg_Variant17(TypedDict):
+class EventMsg_Variant17(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     pass
 
 
-class EventMsg_Variant18(TypedDict):
+class EventMsg_Variant18(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     pass
 
 
-class EventMsg_Variant19(TypedDict):
+class EventMsg_Variant19(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     pass
 
 
-class EventMsg_Variant20(TypedDict):
+class EventMsg_Variant20(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     pass
 
 
-class EventMsg_Variant21(TypedDict):
+class EventMsg_Variant21(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     pass
 
 
-class EventMsg_Variant22(TypedDict):
+class EventMsg_Variant22(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     pass
 
 
-class EventMsg_Variant23(TypedDict):
+class EventMsg_Variant23(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     pass
 
 
-class EventMsg_Variant24(TypedDict):
+class EventMsg_Variant24(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     pass
 
 
-class EventMsg_Variant25(TypedDict):
+class EventMsg_Variant25(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     pass
 
 
-class EventMsg_Variant26(TypedDict):
+class EventMsg_Variant26(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     pass
 
 
-class EventMsg_Variant27(TypedDict):
+class EventMsg_Variant27(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     pass
 
 
-class EventMsg_Variant28(TypedDict):
+class EventMsg_Variant28(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     pass
 
 
-class EventMsg_Variant29(TypedDict):
+class EventMsg_Variant29(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     pass
 
 
-class EventMsg_Variant30(TypedDict):
+class EventMsg_Variant30(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     pass
 
 
-class EventMsg_Variant31(TypedDict):
+class EventMsg_Variant31(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     pass
 
 
-class EventMsg_Variant32(TypedDict):
+class EventMsg_Variant32(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     pass
 
 
-class EventMsg_Variant33(TypedDict):
+class EventMsg_Variant33(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     type: Literal["shutdown_complete"]
 
 
-class EventMsg_Variant34(TypedDict):
+class EventMsg_Variant34(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     pass
 
 
-class ExecApprovalRequestEvent_Variant1(TypedDict):
+class ExecApprovalRequestEvent_Variant1(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     call_id: str
     command: list[str]
     cwd: str
-    reason: NotRequired[str | None]
+    reason: str | None = None
 
 
-class ExecCommandApprovalParams_Variant1(TypedDict):
+class ExecCommandApprovalParams_Variant1(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     conversation_id: ConversationId
     call_id: str
     command: list[str]
     cwd: str
-    reason: NotRequired[str | None]
+    reason: str | None = None
 
 
-class ExecCommandApprovalResponse_Variant1(TypedDict):
+class ExecCommandApprovalResponse_Variant1(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     decision: ReviewDecision
 
 
-class ExecCommandBeginEvent_Variant1(TypedDict):
+class ExecCommandBeginEvent_Variant1(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     call_id: str
     command: list[str]
     cwd: str
     parsed_cmd: list[ParsedCommand]
 
 
-class ExecCommandEndEvent_Variant1(TypedDict):
+class ExecCommandEndEvent_Variant1(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     call_id: str
     stdout: str
     stderr: str
@@ -415,381 +504,449 @@ class ExecCommandEndEvent_Variant1(TypedDict):
     formatted_output: str
 
 
-class ExecCommandOutputDeltaEvent_Variant1(TypedDict):
+class ExecCommandOutputDeltaEvent_Variant1(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     call_id: str
     stream: ExecOutputStream
     chunk: str
 
 
-class ExecOneOffCommandParams_Variant1(TypedDict):
+class ExecOneOffCommandParams_Variant1(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     command: list[str]
-    timeoutMs: NotRequired[int | None]
-    cwd: NotRequired[str | None]
-    sandboxPolicy: NotRequired[SandboxPolicy | None]
+    timeoutMs: int | None = None
+    cwd: str | None = None
+    sandboxPolicy: SandboxPolicy | None = None
 
 
-class FileChange_Variant1(TypedDict):
+class FileChange_Variant1(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     add: dict[str, Any]
 
 
-class FileChange_Variant2(TypedDict):
+class FileChange_Variant2(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     delete: dict[str, Any]
 
 
-class FileChange_Variant3(TypedDict):
+class FileChange_Variant3(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     update: dict[str, Any]
 
 
-class FunctionCallOutputPayload_Variant1(TypedDict):
+class FunctionCallOutputPayload_Variant1(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     content: str
-    success: NotRequired[bool | None]
+    success: bool | None = None
 
 
-class GetAuthStatusParams_Variant1(TypedDict):
-    includeToken: NotRequired[bool | None]
-    refreshToken: NotRequired[bool | None]
+class GetAuthStatusParams_Variant1(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    includeToken: bool | None = None
+    refreshToken: bool | None = None
 
 
-class GetAuthStatusResponse_Variant1(TypedDict):
-    authMethod: NotRequired[AuthMode | None]
+class GetAuthStatusResponse_Variant1(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    authMethod: AuthMode | None = None
     preferredAuthMethod: AuthMode
-    authToken: NotRequired[str | None]
+    authToken: str | None = None
 
 
-class GetHistoryEntryResponseEvent_Variant1(TypedDict):
+class GetHistoryEntryResponseEvent_Variant1(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     offset: float
     log_id: int
-    entry: NotRequired[HistoryEntry | None]
+    entry: HistoryEntry | None = None
 
 
-class GetUserAgentResponse_Variant1(TypedDict):
+class GetUserAgentResponse_Variant1(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     userAgent: str
 
 
-class GetUserSavedConfigResponse_Variant1(TypedDict):
+class GetUserSavedConfigResponse_Variant1(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     config: UserSavedConfig
 
 
-class GitDiffToRemoteParams_Variant1(TypedDict):
+class GitDiffToRemoteParams_Variant1(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     cwd: str
 
 
-class GitDiffToRemoteResponse_Variant1(TypedDict):
+class GitDiffToRemoteResponse_Variant1(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     sha: GitSha
     diff: str
 
 
-class HistoryEntry_Variant1(TypedDict):
+class HistoryEntry_Variant1(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     conversation_id: str
     ts: int
     text: str
 
 
-class ImageContent_Variant1(TypedDict):
+class ImageContent_Variant1(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     data: str
     mimeType: str
     type: str
 
 
-class InitializeResult_Variant1(TypedDict):
+class InitializeResult_Variant1(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     capabilities: ServerCapabilities
     protocolVersion: str
     serverInfo: McpServerInfo
 
 
-class InputItem_Variant1(TypedDict):
+class InputItem_Variant1(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     type: Literal["text"]
     data: dict[str, Any]
 
 
-class InputItem_Variant2(TypedDict):
+class InputItem_Variant2(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     type: Literal["image"]
     data: dict[str, Any]
 
 
-class InputItem_Variant3(TypedDict):
+class InputItem_Variant3(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     type: Literal["localImage"]
     data: dict[str, Any]
 
 
-class InterruptConversationParams_Variant1(TypedDict):
+class InterruptConversationParams_Variant1(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     conversationId: ConversationId
 
 
-class InterruptConversationResponse_Variant1(TypedDict):
+class InterruptConversationResponse_Variant1(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     abortReason: TurnAbortReason
 
 
-class ListConversationsParams_Variant1(TypedDict):
-    pageSize: NotRequired[float | None]
-    cursor: NotRequired[str | None]
+class ListConversationsParams_Variant1(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    pageSize: float | None = None
+    cursor: str | None = None
 
 
-class ListConversationsResponse_Variant1(TypedDict):
+class ListConversationsResponse_Variant1(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     items: list[ConversationSummary]
-    nextCursor: NotRequired[str | None]
+    nextCursor: str | None = None
 
 
-class ListCustomPromptsResponseEvent_Variant1(TypedDict):
+class ListCustomPromptsResponseEvent_Variant1(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     custom_prompts: list[CustomPrompt]
 
 
-class LocalShellAction_Variant1(TypedDict):
+class LocalShellAction_Variant1(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     pass
 
 
-class LocalShellExecAction_Variant1(TypedDict):
+class LocalShellExecAction_Variant1(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     command: list[str]
-    timeout_ms: NotRequired[int | None]
-    working_directory: NotRequired[str | None]
-    env: NotRequired[dict[str, str] | None]
-    user: NotRequired[str | None]
+    timeout_ms: int | None = None
+    working_directory: str | None = None
+    env: dict[str, str] | None = None
+    user: str | None = None
 
 
-class LoginChatGptCompleteNotification_Variant1(TypedDict):
+class LoginChatGptCompleteNotification_Variant1(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     loginId: str
     success: bool
-    error: NotRequired[str | None]
+    error: str | None = None
 
 
-class LoginChatGptResponse_Variant1(TypedDict):
+class LoginChatGptResponse_Variant1(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     loginId: str
     authUrl: str
 
 
-class LogoutChatGptResponse(TypedDict):
+class LogoutChatGptResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     pass
 
 
-class McpInvocation_Variant1(TypedDict):
+class McpInvocation_Variant1(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     server: str
     tool: str
-    arguments: NotRequired[JsonValue | None]
+    arguments: JsonValue | None = None
 
 
-class McpListToolsResponseEvent_Variant1(TypedDict):
+class McpListToolsResponseEvent_Variant1(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     tools: dict[str, Tool]
 
 
-class McpServerInfo_Variant1(TypedDict):
+class McpServerInfo_Variant1(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     name: str
     version: str
     user_agent: str
 
 
-class McpToolCallBeginEvent_Variant1(TypedDict):
+class McpToolCallBeginEvent_Variant1(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     call_id: str
     invocation: McpInvocation
 
 
-class McpToolCallEndEvent_Variant1(TypedDict):
+class McpToolCallEndEvent_Variant1(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     call_id: str
     invocation: McpInvocation
     duration: str
     result: dict[str, Any]
 
 
-class NewConversationParams_Variant1(TypedDict):
-    model: NotRequired[str | None]
-    profile: NotRequired[str | None]
-    cwd: NotRequired[str | None]
-    approvalPolicy: NotRequired[AskForApproval | None]
-    sandbox: NotRequired[SandboxMode | None]
-    config: NotRequired[dict[str, JsonValue] | None]
-    baseInstructions: NotRequired[str | None]
-    includePlanTool: NotRequired[bool | None]
-    includeApplyPatchTool: NotRequired[bool | None]
+class NewConversationParams_Variant1(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    model: str | None = None
+    profile: str | None = None
+    cwd: str | None = None
+    approvalPolicy: AskForApproval | None = None
+    sandbox: SandboxMode | None = None
+    config: dict[str, JsonValue] | None = None
+    baseInstructions: str | None = None
+    includePlanTool: bool | None = None
+    includeApplyPatchTool: bool | None = None
 
 
-class NewConversationResponse_Variant1(TypedDict):
+class NewConversationResponse_Variant1(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     conversationId: ConversationId
     model: str
     rolloutPath: str
 
 
-class ParsedCommand_Variant1(TypedDict):
+class ParsedCommand_Variant1(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     type: Literal["read"]
     cmd: str
     name: str
 
 
-class ParsedCommand_Variant2(TypedDict):
+class ParsedCommand_Variant2(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     type: Literal["list_files"]
     cmd: str
-    path: NotRequired[str | None]
+    path: str | None = None
 
 
-class ParsedCommand_Variant3(TypedDict):
+class ParsedCommand_Variant3(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     type: Literal["search"]
     cmd: str
-    query: NotRequired[str | None]
-    path: NotRequired[str | None]
+    query: str | None = None
+    path: str | None = None
 
 
-class ParsedCommand_Variant4(TypedDict):
+class ParsedCommand_Variant4(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     type: Literal["unknown"]
     cmd: str
 
 
-class PatchApplyBeginEvent_Variant1(TypedDict):
+class PatchApplyBeginEvent_Variant1(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     call_id: str
     auto_approved: bool
     changes: dict[str, FileChange]
 
 
-class PatchApplyEndEvent_Variant1(TypedDict):
+class PatchApplyEndEvent_Variant1(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     call_id: str
     stdout: str
     stderr: str
     success: bool
 
 
-class PlanItemArg_Variant1(TypedDict):
+class PlanItemArg_Variant1(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     step: str
     status: StepStatus
 
 
-class Profile_Variant1(TypedDict):
-    model: NotRequired[str | None]
-    modelProvider: NotRequired[str | None]
-    approvalPolicy: NotRequired[AskForApproval | None]
-    modelReasoningEffort: NotRequired[ReasoningEffort | None]
-    modelReasoningSummary: NotRequired[ReasoningSummary | None]
-    modelVerbosity: NotRequired[Verbosity | None]
-    chatgptBaseUrl: NotRequired[str | None]
+class Profile_Variant1(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    model: str | None = None
+    modelProvider: str | None = None
+    approvalPolicy: AskForApproval | None = None
+    modelReasoningEffort: ReasoningEffort | None = None
+    modelReasoningSummary: ReasoningSummary | None = None
+    modelVerbosity: Verbosity | None = None
+    chatgptBaseUrl: str | None = None
 
 
-class ReasoningItemContent_Variant1(TypedDict):
+class ReasoningItemContent_Variant1(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     type: Literal["reasoning_text"]
     text: str
 
 
-class ReasoningItemContent_Variant2(TypedDict):
+class ReasoningItemContent_Variant2(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     type: Literal["text"]
     text: str
 
 
-class ReasoningItemReasoningSummary_Variant1(TypedDict):
+class ReasoningItemReasoningSummary_Variant1(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     type: Literal["summary_text"]
     text: str
 
 
-class RemoveConversationListenerParams_Variant1(TypedDict):
+class RemoveConversationListenerParams_Variant1(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     subscriptionId: str
 
 
-class RemoveConversationSubscriptionResponse(TypedDict):
+class RemoveConversationSubscriptionResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     pass
 
 
-class ResourceLink_Variant1(TypedDict):
+class ResourceLink_Variant1(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     name: str
     type: str
     uri: str
 
 
-class ResponseItem_Variant1(TypedDict):
+class ResponseItem_Variant1(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     type: Literal["message"]
-    id: NotRequired[str | None]
+    id: str | None = None
     role: str
     content: list[ContentItem]
 
 
-class ResponseItem_Variant2(TypedDict):
+class ResponseItem_Variant2(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     type: Literal["reasoning"]
     summary: list[ReasoningItemReasoningSummary]
-    encrypted_content: NotRequired[str | None]
+    encrypted_content: str | None = None
 
 
-class ResponseItem_Variant3(TypedDict):
+class ResponseItem_Variant3(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     type: Literal["local_shell_call"]
-    id: NotRequired[str | None]
-    call_id: NotRequired[str | None]
+    id: str | None = None
+    call_id: str | None = None
     status: LocalShellStatus
     action: LocalShellAction
 
 
-class ResponseItem_Variant4(TypedDict):
+class ResponseItem_Variant4(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     type: Literal["function_call"]
-    id: NotRequired[str | None]
+    id: str | None = None
     name: str
     arguments: str
     call_id: str
 
 
-class ResponseItem_Variant5(TypedDict):
+class ResponseItem_Variant5(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     type: Literal["function_call_output"]
     call_id: str
     output: FunctionCallOutputPayload
 
 
-class ResponseItem_Variant6(TypedDict):
+class ResponseItem_Variant6(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     type: Literal["custom_tool_call"]
-    id: NotRequired[str | None]
+    id: str | None = None
     call_id: str
     name: str
     input: str
 
 
-class ResponseItem_Variant7(TypedDict):
+class ResponseItem_Variant7(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     type: Literal["custom_tool_call_output"]
     call_id: str
     output: str
 
 
-class ResponseItem_Variant8(TypedDict):
+class ResponseItem_Variant8(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     type: Literal["web_search_call"]
-    id: NotRequired[str | None]
+    id: str | None = None
     action: WebSearchAction
 
 
-class ResponseItem_Variant9(TypedDict):
+class ResponseItem_Variant9(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     type: Literal["other"]
 
 
-class ResumeConversationParams_Variant1(TypedDict):
+class ResumeConversationParams_Variant1(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     path: str
-    overrides: NotRequired[NewConversationParams | None]
+    overrides: NewConversationParams | None = None
 
 
-class ResumeConversationResponse_Variant1(TypedDict):
+class ResumeConversationResponse_Variant1(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     conversationId: ConversationId
     model: str
-    initialMessages: NotRequired[list[EventMsg] | None]
+    initialMessages: list[EventMsg] | None = None
 
 
-class SandboxPolicy_Variant1(TypedDict):
+class SandboxPolicy_Variant1(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     mode: Literal["danger-full-access"]
 
 
-class SandboxPolicy_Variant2(TypedDict):
+class SandboxPolicy_Variant2(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     mode: Literal["read-only"]
 
 
-class SandboxPolicy_Variant3(TypedDict):
+class SandboxPolicy_Variant3(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     mode: Literal["workspace-write"]
     network_access: bool
     exclude_tmpdir_env_var: bool
     exclude_slash_tmp: bool
 
 
-class SandboxSettings_Variant1(TypedDict):
+class SandboxSettings_Variant1(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     writableRoots: list[str]
-    networkAccess: NotRequired[bool | None]
-    excludeTmpdirEnvVar: NotRequired[bool | None]
-    excludeSlashTmp: NotRequired[bool | None]
+    networkAccess: bool | None = None
+    excludeTmpdirEnvVar: bool | None = None
+    excludeSlashTmp: bool | None = None
 
 
-class SendUserMessageParams_Variant1(TypedDict):
+class SendUserMessageParams_Variant1(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     conversationId: ConversationId
     items: list[InputItem]
 
 
-class SendUserMessageResponse(TypedDict):
+class SendUserMessageResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     pass
 
 
-class SendUserTurnParams_Variant1(TypedDict):
+class SendUserTurnParams_Variant1(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     conversationId: ConversationId
     items: list[InputItem]
     cwd: str
@@ -800,84 +957,101 @@ class SendUserTurnParams_Variant1(TypedDict):
     summary: ReasoningSummary
 
 
-class SendUserTurnResponse(TypedDict):
+class SendUserTurnResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     pass
 
 
-class ServerCapabilities_Variant1(TypedDict):
+class ServerCapabilities_Variant1(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     pass
 
 
-class ServerCapabilitiesPrompts_Variant1(TypedDict):
+class ServerCapabilitiesPrompts_Variant1(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     pass
 
 
-class ServerCapabilitiesResources_Variant1(TypedDict):
+class ServerCapabilitiesResources_Variant1(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     pass
 
 
-class ServerCapabilitiesTools_Variant1(TypedDict):
+class ServerCapabilitiesTools_Variant1(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     pass
 
 
-class ServerNotification_AuthStatusChange(TypedDict):
+class ServerNotification_AuthStatusChange(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     method: Literal["authStatusChange"]
     params: AuthStatusChangeNotification
 
 
-class ServerNotification_LoginChatGptComplete(TypedDict):
+class ServerNotification_LoginChatGptComplete(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     method: Literal["loginChatGptComplete"]
     params: LoginChatGptCompleteNotification
 
 
-class ServerRequest_ApplyPatchApproval(TypedDict):
+class ServerRequest_ApplyPatchApproval(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     method: Literal["applyPatchApproval"]
     id: RequestId
     params: ApplyPatchApprovalParams
 
 
-class ServerRequest_ExecCommandApproval(TypedDict):
+class ServerRequest_ExecCommandApproval(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     method: Literal["execCommandApproval"]
     id: RequestId
     params: ExecCommandApprovalParams
 
 
-class SessionConfiguredEvent_Variant1(TypedDict):
+class SessionConfiguredEvent_Variant1(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     session_id: ConversationId
     model: str
     history_log_id: int
     history_entry_count: float
-    initial_messages: NotRequired[list[EventMsg] | None]
+    initial_messages: list[EventMsg] | None = None
     rollout_path: str
 
 
-class StreamErrorEvent_Variant1(TypedDict):
+class StreamErrorEvent_Variant1(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     message: str
 
 
-class TaskCompleteEvent_Variant1(TypedDict):
-    last_agent_message: NotRequired[str | None]
+class TaskCompleteEvent_Variant1(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    last_agent_message: str | None = None
 
 
-class TaskStartedEvent_Variant1(TypedDict):
-    model_context_window: NotRequired[int | None]
+class TaskStartedEvent_Variant1(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    model_context_window: int | None = None
 
 
-class TextContent_Variant1(TypedDict):
+class TextContent_Variant1(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     text: str
     type: str
 
 
-class TextResourceContents_Variant1(TypedDict):
+class TextResourceContents_Variant1(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     text: str
     uri: str
 
 
-class TokenCountEvent_Variant1(TypedDict):
-    info: NotRequired[TokenUsageInfo | None]
+class TokenCountEvent_Variant1(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    info: TokenUsageInfo | None = None
 
 
-class TokenUsage_Variant1(TypedDict):
+class TokenUsage_Variant1(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     input_tokens: int
     cached_input_tokens: int
     output_tokens: int
@@ -885,79 +1059,94 @@ class TokenUsage_Variant1(TypedDict):
     total_tokens: int
 
 
-class TokenUsageInfo_Variant1(TypedDict):
+class TokenUsageInfo_Variant1(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     total_token_usage: TokenUsage
     last_token_usage: TokenUsage
-    model_context_window: NotRequired[int | None]
+    model_context_window: int | None = None
 
 
-class Tool_Variant1(TypedDict):
+class Tool_Variant1(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     inputSchema: ToolInputSchema
     name: str
 
 
-class ToolAnnotations_Variant1(TypedDict):
+class ToolAnnotations_Variant1(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     pass
 
 
-class ToolInputSchema_Variant1(TypedDict):
+class ToolInputSchema_Variant1(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     type: str
 
 
-class ToolOutputSchema_Variant1(TypedDict):
+class ToolOutputSchema_Variant1(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     type: str
 
 
-class Tools_Variant1(TypedDict):
-    webSearch: NotRequired[bool | None]
-    viewImage: NotRequired[bool | None]
+class Tools_Variant1(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    webSearch: bool | None = None
+    viewImage: bool | None = None
 
 
-class TurnAbortedEvent_Variant1(TypedDict):
+class TurnAbortedEvent_Variant1(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     reason: TurnAbortReason
 
 
-class TurnDiffEvent_Variant1(TypedDict):
+class TurnDiffEvent_Variant1(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     unified_diff: str
 
 
-class UpdatePlanArgs_Variant1(TypedDict):
-    explanation: NotRequired[str | None]
+class UpdatePlanArgs_Variant1(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    explanation: str | None = None
     plan: list[PlanItemArg]
 
 
-class UserMessageEvent_Variant1(TypedDict):
+class UserMessageEvent_Variant1(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     message: str
-    kind: NotRequired[InputMessageKind | None]
+    kind: InputMessageKind | None = None
 
 
-class UserSavedConfig_Variant1(TypedDict):
-    approvalPolicy: NotRequired[AskForApproval | None]
-    sandboxMode: NotRequired[SandboxMode | None]
-    sandboxSettings: NotRequired[SandboxSettings | None]
-    model: NotRequired[str | None]
-    modelReasoningEffort: NotRequired[ReasoningEffort | None]
-    modelReasoningSummary: NotRequired[ReasoningSummary | None]
-    modelVerbosity: NotRequired[Verbosity | None]
-    tools: NotRequired[Tools | None]
-    profile: NotRequired[str | None]
+class UserSavedConfig_Variant1(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    approvalPolicy: AskForApproval | None = None
+    sandboxMode: SandboxMode | None = None
+    sandboxSettings: SandboxSettings | None = None
+    model: str | None = None
+    modelReasoningEffort: ReasoningEffort | None = None
+    modelReasoningSummary: ReasoningSummary | None = None
+    modelVerbosity: Verbosity | None = None
+    tools: Tools | None = None
+    profile: str | None = None
     profiles: dict[str, Profile]
 
 
-class WebSearchAction_Variant1(TypedDict):
+class WebSearchAction_Variant1(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     type: Literal["search"]
     query: str
 
 
-class WebSearchAction_Variant2(TypedDict):
+class WebSearchAction_Variant2(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     type: Literal["other"]
 
 
-class WebSearchBeginEvent_Variant1(TypedDict):
+class WebSearchBeginEvent_Variant1(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     call_id: str
 
 
-class WebSearchEndEvent_Variant1(TypedDict):
+class WebSearchEndEvent_Variant1(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     call_id: str
     query: str
 
