@@ -92,7 +92,7 @@ Releasing
 - Bump `codex/__init__.py` and `crates/codex_native/Cargo.toml` versions.
 - Update `CHANGELOG.md`.
 - Tag and push: `git tag -a vX.Y.Z -m "codex-python X.Y.Z" && git push origin vX.Y.Z`.
-- GitHub Actions publishes both sdist/pure wheel and platform wheels via Trusted Publishing.
+- GitHub Actions (publish.yml) builds native wheels across platforms and an sdist, then publishes them via Trusted Publishing (OIDC).
 
 Project layout
 ```

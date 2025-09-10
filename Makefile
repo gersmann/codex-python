@@ -8,6 +8,8 @@ help:
 	@echo "  make publish  - Publish to PyPI via uv (uses PYPI_API_TOKEN)"
 	@echo "  make clean    - Remove build artifacts"
 	@echo "  make gen-protocol - Generate Python protocol bindings from codex-rs"
+	@echo "  make wheelhouse-linux    - Prebuild manylinux & musllinux wheels (x86_64, aarch64)"
+	@echo "  make wheelhouse-clean    - Remove wheelhouse/"
 
 venv:
 	uv venv --python 3.13
@@ -87,3 +89,61 @@ dev-native:
 		maturin build -m crates/codex_native/Cargo.toml --release; \
 		python -m pip install --force-reinstall --no-deps crates/codex_native/target/wheels/*.whl; \
 	fi
+
+# -----------------------------------------------------------------------------
+# Prebuild portable Linux wheels (manylinux and musllinux) via Docker maturin
+# Produces wheels in ./wheelhouse suitable for offline installs:
+#   pip install --only-binary=:all: --no-index --find-links wheelhouse codex-python
+# Requires Docker; for cross-arch builds ensure binfmt/qemu is enabled.
+# -----------------------------------------------------------------------------
+.PHONY: wheelhouse-linux wheelhouse-clean
+
+WHEELHOUSE ?= wheelhouse
+MANYLINUX_X86 ?= quay.io/pypa/manylinux2014_x86_64
+MANYLINUX_ARM ?= quay.io/pypa/manylinux2014_aarch64
+MUSLLINUX_X86 ?= quay.io/pypa/musllinux_1_2_x86_64
+MUSLLINUX_ARM ?= quay.io/pypa/musllinux_1_2_aarch64
+
+wheelhouse-clean:
+	rm -rf $(WHEELHOUSE)
+
+wheelhouse-linux: wheelhouse-clean
+	@echo "Building manylinux2014 and musllinux_1_2 wheels for x86_64 and aarch64..."
+	@mkdir -p $(WHEELHOUSE)
+	# manylinux x86_64 (quay.io/pypa) — ABI3: build once with Python 3.12
+	docker run --rm --platform linux/amd64 -v "$(PWD)":/io $(MANYLINUX_X86) \
+		bash -lc 'set -e; \
+		  (command -v curl >/dev/null 2>&1 || yum -y install curl) && \
+		  curl -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal && \
+		  . $$HOME/.cargo/env && \
+		  P=$$(ls -1 /opt/python/cp312*/bin/python | head -n1); \
+		  $$P -m pip install -U pip maturin && \
+		  PATH=$$HOME/.cargo/bin:$$PATH $$P -m maturin build --release -m /io/crates/codex_native/Cargo.toml -i $$P -o /io/$(WHEELHOUSE)'
+	# manylinux aarch64 (quay.io/pypa) — ABI3: build once with Python 3.12
+	docker run --rm --platform linux/arm64 -v "$(PWD)":/io $(MANYLINUX_ARM) \
+		bash -lc 'set -e; \
+		  (command -v curl >/dev/null 2>&1 || yum -y install curl) && \
+		  curl -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal && \
+		  . $$HOME/.cargo/env && \
+		  P=$$(ls -1 /opt/python/cp312*/bin/python | head -n1); \
+		  $$P -m pip install -U pip maturin && \
+		  PATH=$$HOME/.cargo/bin:$$PATH $$P -m maturin build --release -m /io/crates/codex_native/Cargo.toml -i $$P -o /io/$(WHEELHOUSE)'
+	# musllinux (Alpine) x86_64 (quay.io/pypa) — ABI3
+	docker run --rm --platform linux/amd64 -v "$(PWD)":/io $(MUSLLINUX_X86) \
+		bash -lc 'set -e; \
+		  (command -v curl >/dev/null 2>&1 || apk add --no-cache curl) && \
+		  curl -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal && \
+		  . $$HOME/.cargo/env && \
+		  P=$$(ls -1 /opt/python/cp312*/bin/python | head -n1); \
+		  $$P -m pip install -U pip maturin && \
+		  PATH=$$HOME/.cargo/bin:$$PATH $$P -m maturin build --release -m /io/crates/codex_native/Cargo.toml -i $$P --compatibility musllinux_1_2 -o /io/$(WHEELHOUSE)'
+	# musllinux (Alpine) aarch64 (quay.io/pypa) — ABI3
+	docker run --rm --platform linux/arm64 -v "$(PWD)":/io $(MUSLLINUX_ARM) \
+		bash -lc 'set -e; \
+		  (command -v curl >/dev/null 2>&1 || apk add --no-cache curl) && \
+		  curl -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal && \
+		  . $$HOME/.cargo/env && \
+		  P=$$(ls -1 /opt/python/cp312*/bin/python | head -n1); \
+		  $$P -m pip install -U pip maturin && \
+		  PATH=$$HOME/.cargo/bin:$$PATH $$P -m maturin build --release -m /io/crates/codex_native/Cargo.toml -i $$P --compatibility musllinux_1_2 -o /io/$(WHEELHOUSE)'
+	@echo "Wheelhouse contents:" && ls -al $(WHEELHOUSE)

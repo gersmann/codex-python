@@ -52,7 +52,7 @@ PY_HEADER = """# GENERATED CODE! DO NOT MODIFY BY HAND!
 from __future__ import annotations
 
 from typing import Any, Literal
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 from pydantic.config import ConfigDict
 
 
@@ -241,11 +241,33 @@ def generate_from_ts(ts_dir: Path) -> str:
         if uname == "JsonValue":
             # We'll map this to Any later
             continue
-        parts = split_top_level_union(rhs)
-        variant_names: list[str] = []
+        parts = [p.strip() for p in split_top_level_union(rhs)]
+
+        # Classify union parts
+        object_like_parts: list[str] = []  # object literals or refs to object aliases/interfaces
+        non_object_parts: list[str] = []  # primitives, literals, and other aliases
         for p in parts:
-            p = p.strip()
-            # Split intersections at top level
+            if p.startswith("{"):
+                object_like_parts.append(p)
+                continue
+            # Referenced type name
+            ref = re.match(r"^[A-Za-z_][A-Za-z0-9_]*$", p)
+            if ref and p in objects:
+                object_like_parts.append(p)
+            else:
+                non_object_parts.append(p)
+
+        # If the union is purely primitives/literals -> generate a simple alias
+        if not object_like_parts:
+            py_parts = [ts_type_to_py(p) for p in parts]
+            # Deduplicate while preserving deterministic order
+            alias_rhs = " | ".join(sorted(set(py_parts)))
+            aliases.append(TypeAlias(uname, alias_rhs))
+            continue
+
+        # Otherwise, generate classes for object-like variants
+        variant_names: list[str] = []
+        for p in object_like_parts:
             inters = split_top_level_intersection(p)
             merged_fields: list[Field] = []
             for comp in inters:
@@ -253,7 +275,6 @@ def generate_from_ts(ts_dir: Path) -> str:
                 if comp.startswith("{"):
                     merged_fields.extend(parse_object_fields(comp))
                 else:
-                    # Referenced type name
                     ref = re.match(r"^[A-Za-z_][A-Za-z0-9_]*$", comp)
                     if ref and comp in objects:
                         merged_fields.extend(objects[comp])
@@ -274,7 +295,12 @@ def generate_from_ts(ts_dir: Path) -> str:
                 cls_name = f"{uname}_Variant{len(variant_names) + 1}"
             tdicts.append(TypedDictDef(cls_name, merged_fields))
             variant_names.append(cls_name)
-        union_aliases.append(TypeAlias(uname, " | ".join(variant_names)))
+
+        # Build the union alias combining class variants with any non-object primitives/literals
+        rhs_parts: list[str] = variant_names[:]
+        if non_object_parts:
+            rhs_parts.extend(sorted(set(ts_type_to_py(p) for p in non_object_parts)))
+        union_aliases.append(TypeAlias(uname, " | ".join(rhs_parts)))
 
     # Emit simple aliases
     for aname, rhs in sorted(simple_aliases_source.items()):
