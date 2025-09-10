@@ -30,6 +30,15 @@ Options:
 - Full auto: `run_exec("scaffold a cli", full_auto=True)`
 - Run in another dir: `run_exec("...", cd="/path/to/project")`
 
+Using a client with defaults:
+
+```
+from codex import CodexClient
+
+client = CodexClient(model="gpt-4.1", full_auto=True)
+print(client.run("explain this repo"))
+```
+
 ### Install uv
 
 - macOS (Homebrew): `brew install uv`

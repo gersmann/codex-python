@@ -99,3 +99,67 @@ def run_exec(
         )
     return stdout
 
+
+@dataclass(slots=True)
+class CodexClient:
+    """Lightweight, synchronous client for the Codex CLI.
+
+    Provides defaults for repeated invocations and convenience helpers.
+    """
+
+    executable: str = "codex"
+    model: Optional[str] = None
+    full_auto: bool = False
+    cd: Optional[str] = None
+    env: Optional[Mapping[str, str]] = None
+    extra_args: Optional[Sequence[str]] = None
+
+    def ensure_available(self) -> str:
+        """Return the resolved binary path or raise CodexNotFoundError."""
+        return find_binary(self.executable)
+
+    def run(
+        self,
+        prompt: str,
+        *,
+        model: Optional[str] = None,
+        full_auto: Optional[bool] = None,
+        cd: Optional[str] = None,
+        timeout: Optional[float] = None,
+        env: Optional[Mapping[str, str]] = None,
+        extra_args: Optional[Iterable[str]] = None,
+    ) -> str:
+        """Execute `codex exec` and return stdout.
+
+        Explicit arguments override the client's defaults.
+        """
+        eff_model = model if model is not None else self.model
+        eff_full_auto = full_auto if full_auto is not None else self.full_auto
+        eff_cd = cd if cd is not None else self.cd
+
+        # Merge environment overlays; run_exec will merge with os.environ
+        merged_env: Optional[Mapping[str, str]]
+        if self.env and env:
+            tmp = dict(self.env)
+            tmp.update(env)
+            merged_env = tmp
+        else:
+            merged_env = env or self.env
+
+        # Compose extra args
+        eff_extra: list[str] = []
+        if self.extra_args:
+            eff_extra.extend(self.extra_args)
+        if extra_args:
+            eff_extra.extend(list(extra_args))
+
+        return run_exec(
+            prompt,
+            model=eff_model,
+            full_auto=eff_full_auto,
+            cd=eff_cd,
+            timeout=timeout,
+            env=merged_env,
+            executable=self.executable,
+            extra_args=eff_extra,
+        )
