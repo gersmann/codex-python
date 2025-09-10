@@ -73,8 +73,10 @@ export PYPI_API_TOKEN="pypi-XXXX"  # create at https://pypi.org/manage/account/t
 uv publish --token "$PYPI_API_TOKEN"
 ```
 
-- GitHub Actions: add a repository secret `PYPI_API_TOKEN` and push a tag like `v0.1.0`.
-  The workflow at `.github/workflows/publish.yml` builds and publishes with `uv` on `v*` tags.
+- GitHub Actions (Trusted Publishing): enable PyPI Trusted Publishing for
+  `gersmann/codex-python` and push a tag like `v0.1.0`. No token is needed.
+  The workflow at `.github/workflows/publish.yml` requests an OIDC token and
+  runs `uv publish --trusted-publishing=always` on `v*` tags.
 
 ### Dev tooling
 

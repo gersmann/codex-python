@@ -36,7 +36,7 @@ This project is typed and ships a `py.typed` marker. Please keep public APIs typ
 2. Update `CHANGELOG.md`.
 3. Merge to `main`.
 4. Tag the release: `git tag -a vX.Y.Z -m "vX.Y.Z" && git push --tags`.
-5. GitHub Actions (publish workflow) will build and publish to PyPI on `v*` tags.
+5. GitHub Actions (publish workflow) will build and publish to PyPI on `v*` tags using Trusted Publishing (OIDC). No token is required.
 
 ## Pre-commit (optional but recommended)
 ```
@@ -51,4 +51,3 @@ Please open an issue with reproduction steps, expected vs actual behavior, and e
 
 ## Code of Conduct
 By participating, you agree to abide by our [Code of Conduct](CODE_OF_CONDUCT.md).
-

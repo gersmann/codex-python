@@ -43,3 +43,7 @@ coverage.xml
 # uv
 .uv/
 uv.lock
+
+# Local environment files
+.env
+.env.*
