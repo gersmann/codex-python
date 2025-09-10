@@ -26,9 +26,19 @@ jobs:
         with:
           version: latest
 
+      - name: Set up Rust (for native extension)
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install maturin
+        run: |
+          python -m pip install --upgrade pip
+          pip install maturin
+
+      - name: Build native extension (editable)
+        run: make dev-native
+
       - name: Lint
         run: make lint
 
       - name: Test
         run: make test
-

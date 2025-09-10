@@ -1,94 +1,110 @@
 # codex-python
 
-A minimal Python library scaffold using `uv` with Python 3.13+.
+Native Python bindings for Codex (in‑process execution). Ships as a single package (`codex-python`) with platform wheels that include the native extension.
+
+- Python: 3.12–3.13 (CI also attempts 3.14)
+- Import name: `codex`
+- PyPI: https://pypi.org/project/codex-python/
+
+## Install
+
+```
+pip install codex-python
+```
+
+If there’s no prebuilt wheel for your platform/Python, pip will build from source. You’ll need a Rust toolchain and maturin; see “Developing” below.
 
 ## Quickstart
 
-- Requires Python 3.13+.
-- Package import name: `codex`.
-- Distribution name (PyPI): `codex-python`.
-
-### Repo
-
-- Git: `git@github.com:gersmann/codex-python.git`
-- URL: https://github.com/gersmann/codex-python
-
-## Usage
-
-Basic non-interactive execution via Codex CLI:
+Run a prompt and collect structured events (typed):
 
 ```
-from codex import run_exec
+from codex.api import run_exec, CodexClient
+from codex.config import CodexConfig, ApprovalPolicy, SandboxMode
 
-out = run_exec("explain this repo")
-print(out)
+cfg = CodexConfig(
+    model="gpt-5",
+    model_provider="openai",
+    approval_policy=ApprovalPolicy.ON_REQUEST,
+    sandbox_mode=SandboxMode.WORKSPACE_WRITE,
+)
+
+# One-shot
+events = run_exec("Explain this repo", config=cfg)
+
+# Conversation (streaming)
+client = CodexClient(config=cfg)
+for ev in client.start_conversation("Add a smoke test"):
+    print(ev.id, ev.msg)
 ```
 
-Options:
+Notes
+- `Event.msg` is typed as a union `EventMsg` (also available at `codex.EventMsg`).
+- For raw dict streaming from the native layer, use `codex.native.start_exec_stream`.
 
-- Choose model: `run_exec("...", model="gpt-4.1")`
-- Full auto: `run_exec("scaffold a cli", full_auto=True)`
-- Run in another dir: `run_exec("...", cd="/path/to/project")`
+## Configuration (Pydantic)
 
-### Install uv
-
-- macOS (Homebrew): `brew install uv`
-- Or via install script:
-  - Unix/macOS: `curl -LsSf https://astral.sh/uv/install.sh | sh`
-  - Windows (PowerShell): `iwr https://astral.sh/uv/install.ps1 -UseBasicParsing | iex`
-
-See: https://docs.astral.sh/uv/
-
-### Create a virtual env (optional)
+Use `CodexConfig` to pass overrides mirrored from Rust `ConfigOverrides`.
 
 ```
-uv python install 3.13
-uv venv --python 3.13
-. .venv/bin/activate  # or .venv\Scripts\activate on Windows
+from codex.config import CodexConfig, ApprovalPolicy, SandboxMode
+
+cfg = CodexConfig(
+    model="gpt-5",
+    model_provider="openai",
+    approval_policy=ApprovalPolicy.ON_REQUEST,
+    sandbox_mode=SandboxMode.WORKSPACE_WRITE,
+    cwd="/path/to/project",
+    include_apply_patch_tool=True,
+)
 ```
 
-### Build
+- `CodexConfig.to_dict()` emits only fields you set, with enums serialized to kebab‑case strings expected by the core.
+- For tests and introspection, `codex.native.preview_config(config_overrides=..., load_default_config=...)` returns a compact snapshot of the effective configuration.
 
-```
-uv build
-```
+## Troubleshooting
 
-Artifacts appear in `dist/` (`.whl` and `.tar.gz`).
+- “codex_native extension not installed”
+  - Install with `pip install codex-python` (wheel) or build locally (see below).
+- maturin develop fails without a virtualenv
+  - Use `python -m venv .venv && source .venv/bin/activate` (or conda), or run `make dev-native` which falls back to build+pip install when no venv is present.
 
-### Publish to PyPI
+## Developing
 
-- Manual:
+Prerequisites
+- Python 3.12/3.13
+- Rust toolchain (cargo)
+- maturin (for native builds)
+- uv (optional, for fast Python builds and dev tooling)
 
-```
-export PYPI_API_TOKEN="pypi-XXXX"  # create at https://pypi.org/manage/account/token/
-uv publish --token "$PYPI_API_TOKEN"
-```
-
-- GitHub Actions: add a repository secret `PYPI_API_TOKEN` and push a tag like `v0.1.0`.
-  The workflow at `.github/workflows/publish.yml` builds and publishes with `uv` on `v*` tags.
-
-### Dev tooling
-
+Common tasks
 - Lint: `make lint` (ruff + mypy)
-- Tests: `make test` (pytest)
-- Format: `make fmt` (ruff formatter)
- - Pre-commit: `uvx pre-commit install && uvx pre-commit run --all-files`
+- Test: `make test` (pytest)
+- Format: `make fmt`
+- Build native locally: `make dev-native`
+- Generate protocol types from upstream: `make gen-protocol`
 
-## Project Layout
+Protocol types
+- `make gen-protocol` generates TS types (via Codex or cargo) into `.generated/ts` and then writes Pydantic models to `codex/protocol/types.py`.
+- Generated models use `model_config = ConfigDict(extra='allow')` and place it at the end of each class.
 
+Releasing
+- Bump `codex/__init__.py` and `crates/codex_native/Cargo.toml` versions.
+- Update `CHANGELOG.md`.
+- Tag and push: `git tag -a vX.Y.Z -m "codex-python X.Y.Z" && git push origin vX.Y.Z`.
+- GitHub Actions publishes both sdist/pure wheel and platform wheels via Trusted Publishing.
+
+Project layout
 ```
 .
-├── codex/              # package root (import name: codex)
-│   └── __init__.py     # version lives here
-├── pyproject.toml      # PEP 621 metadata, hatchling build backend
-├── README.md
-└── .gitignore
+├── codex/                 # Python package
+├── crates/codex_native/   # PyO3 native extension
+├── scripts/               # generators and helpers
+├── .github/workflows/     # CI, publish, native wheels
+└── Makefile               # common tasks
 ```
 
-## Versioning
-
-Version is managed via `codex/__init__.py` and exposed as `__version__`. The build uses Hatch’s version source.
-
-## Python Compatibility
-
-- Requires Python `>=3.13`.
+Links
+- Codex repo: https://github.com/openai/codex
+- uv: https://docs.astral.sh/uv/
+- maturin: https://www.maturin.rs/

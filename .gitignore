@@ -42,4 +42,32 @@ coverage.xml
 
 # uv
 .uv/
+uv.lock
 
+# Generated artifacts
+# Generated artifacts
+.generated/
+codex-proj/
+.githooks/
+test/
+tests/
+
+# Ignore new markdown files by default
+*.md
+
+# Rust build outputs
+target/
+crates/**/target/
+crates/**/Cargo.lock
+
+# Local environment files
+.env
+.env.*
+/.idea/inspectionProfiles/profiles_settings.xml
+/.idea/inspectionProfiles/Project_Default.xml
+/.idea/.gitignore
+/.idea/codex-python.iml
+/.idea/misc.xml
+/.idea/modules.xml
+/.idea/ruff.xml
+/.idea/vcs.xml
