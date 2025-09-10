@@ -57,6 +57,7 @@ def run_exec(
     env: Mapping[str, str] | None = None,
     executable: str = "codex",
     extra_args: Iterable[str] | None = None,
+    json: bool = False,
 ) -> str:
     """
     Run `codex exec` with the given prompt and return stdout as text.
@@ -77,7 +78,10 @@ def run_exec(
     if extra_args:
         cmd.extend(list(extra_args))
 
-    cmd.extend(["exec", prompt])
+    cmd.append("exec")
+    if json:
+        cmd.append("--json")
+    cmd.append(prompt)
 
     completed = subprocess.run(
         cmd,

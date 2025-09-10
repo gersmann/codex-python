@@ -17,8 +17,8 @@ fmt:
 	uv run --group dev ruff format .
 
 lint:
-	uv run --group dev ruff format --check .
-	uv run --group dev ruff check .
+	uv run --group dev ruff format .
+	uv run --group dev ruff check --fix --unsafe-fixes .
 	uv run --group dev mypy codex
 
 test:

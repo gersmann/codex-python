@@ -30,6 +30,18 @@ Options:
 - Full auto: `run_exec("scaffold a cli", full_auto=True)`
 - Run in another dir: `run_exec("...", cd="/path/to/project")`
 
+Streaming JSON events (no PyO3 required):
+
+```
+from codex.protocol.runtime import stream_exec_events
+
+for event in stream_exec_events("explain this repo", full_auto=True):
+    # event is a dict with shape {"id": str, "msg": {...}}
+    print(event)
+```
+
+The event payload matches the Pydantic models in `codex.protocol.types` (e.g., `EventMsg`).
+
 Using a client with defaults:
 
 ```
