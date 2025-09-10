@@ -47,3 +47,10 @@ The format is based on Keep a Changelog and this project adheres to Semantic Ver
 - Remove separate native-wheels.yml to avoid split workflows.
 
 [0.2.1]: https://github.com/gersmann/codex-python/releases/tag/v0.2.1
+
+## [0.2.2] - 2025-09-10
+### Fixed
+- sdist build: add `crates/codex_native/pyproject.toml` (maturin PEP 517) so `maturin sdist -m crates/codex_native/Cargo.toml` succeeds under publish.yml.
+- Ensure distribution naming is consistent for sdist and wheels (`codex-python`).
+
+[0.2.2]: https://github.com/gersmann/codex-python/releases/tag/v0.2.2
