@@ -1,0 +1,61 @@
+[build-system]
+requires = ["hatchling>=1.25"]
+build-backend = "hatchling.build"
+
+[project]
+name = "codex-python"
+description = "A minimal Python library scaffold for codex-python"
+readme = "README.md"
+requires-python = ">=3.13"
+keywords = ["codex", "library", "scaffold"]
+classifiers = [
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3 :: Only",
+  "Programming Language :: Python :: 3.13",
+  "License :: OSI Approved :: MIT License",
+  "Typing :: Typed",
+  "Operating System :: OS Independent",
+]
+dynamic = ["version"]
+license = { file = "LICENSE" }
+
+[project.urls]
+Homepage = "https://github.com/gersmann/codex-python"
+Repository = "https://github.com/gersmann/codex-python"
+Issues = "https://github.com/gersmann/codex-python/issues"
+
+[tool.hatch.version]
+path = "codex/__init__.py"
+
+[tool.hatch.build.targets.wheel]
+packages = ["codex"]
+force-include = { "codex/py.typed" = "codex/py.typed" }
+
+# Development dependency groups (used by uv)
+[dependency-groups]
+dev = [
+  "ruff>=0.5",
+  "pytest>=8",
+  "mypy>=1.10",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py313"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP"]
+ignore = []
+
+[tool.pytest.ini_options]
+addopts = "-q"
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+
+[tool.mypy]
+python_version = "3.13"
+warn_return_any = true
+warn_unused_ignores = true
+disallow_untyped_defs = true
+no_implicit_optional = true
+check_untyped_defs = true
