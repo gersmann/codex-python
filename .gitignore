@@ -44,6 +44,9 @@ coverage.xml
 .uv/
 uv.lock
 
+# Generated artifacts
+.generated/
+
 # Local environment files
 .env
 .env.*
