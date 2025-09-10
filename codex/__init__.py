@@ -1,12 +1,22 @@
 """codex
 
-Minimal Python library package.
+Python interface for the Codex CLI.
 
-This package is intentionally lightweight; extend as needed.
+Usage:
+    from codex import run_exec
+    output = run_exec("explain this codebase to me")
 """
 
-__all__ = ["__version__"]
+from .api import CodexError, CodexNotFoundError, CodexProcessError, find_binary, run_exec
+
+__all__ = [
+    "__version__",
+    "CodexError",
+    "CodexNotFoundError",
+    "CodexProcessError",
+    "find_binary",
+    "run_exec",
+]
 
 # Managed by Hatch via pyproject.toml [tool.hatch.version]
 __version__ = "0.1.0"
-

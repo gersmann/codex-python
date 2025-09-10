@@ -13,6 +13,23 @@ A minimal Python library scaffold using `uv` with Python 3.13+.
 - Git: `git@github.com:gersmann/codex-python.git`
 - URL: https://github.com/gersmann/codex-python
 
+## Usage
+
+Basic non-interactive execution via Codex CLI:
+
+```
+from codex import run_exec
+
+out = run_exec("explain this repo")
+print(out)
+```
+
+Options:
+
+- Choose model: `run_exec("...", model="gpt-4.1")`
+- Full auto: `run_exec("scaffold a cli", full_auto=True)`
+- Run in another dir: `run_exec("...", cd="/path/to/project")`
+
 ### Install uv
 
 - macOS (Homebrew): `brew install uv`
