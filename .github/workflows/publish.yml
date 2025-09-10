@@ -10,24 +10,188 @@ permissions:
   id-token: write
 
 jobs:
-  build-and-publish:
+  guard:
+    name: Guard (tag points to main?)
+    runs-on: ubuntu-latest
+    outputs:
+      publish: ${{ steps.check.outputs.publish }}
+    steps:
+      - name: Checkout (shallow)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Check if tag commit is on main
+        id: check
+        env:
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: |
+          git fetch origin $DEFAULT_BRANCH --depth=1
+          if git merge-base --is-ancestor "$GITHUB_SHA" "origin/$DEFAULT_BRANCH"; then
+            echo "publish=true" >> "$GITHUB_OUTPUT"
+            echo "Tag commit is on $DEFAULT_BRANCH; will publish."
+          else
+            echo "publish=false" >> "$GITHUB_OUTPUT"
+            echo "Tag commit is NOT on $DEFAULT_BRANCH; skipping publish."
+          fi
+
+  build-wheels:
+    name: Build native wheels
+    needs: guard
+    if: needs.guard.outputs.publish == 'true'
+    strategy:
+      fail-fast: false
+      matrix:
+        platform: [linux-x86_64, linux-aarch64, macos-universal2, windows-amd64]
+        include:
+          - platform: linux-x86_64
+            os: ubuntu-latest
+            python-interpreter: python3.12
+          - platform: linux-aarch64
+            os: ubuntu-latest
+            python-interpreter: python3.12
+          - platform: macos-universal2
+            os: macos-14
+            python-interpreter: 3.12
+          - platform: windows-amd64
+            os: windows-latest
+            python-interpreter: 3.12
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Set up Python (host)
+        if: ${{ matrix.platform != 'linux-x86_64' && matrix.platform != 'linux-aarch64' }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-interpreter }}
+
+      - name: Install build backend (host)
+        if: ${{ matrix.platform != 'linux-x86_64' && matrix.platform != 'linux-aarch64' }}
+        run: |
+          python -m pip install --upgrade pip
+          pip install build maturin
+
+      - name: Setup QEMU (for cross aarch64)
+        if: ${{ matrix.platform == 'linux-aarch64' }}
+        uses: docker/setup-qemu-action@v3
+
+      - name: Build Linux x86_64 wheel (manylinux2014)
+        if: ${{ matrix.platform == 'linux-x86_64' }}
+        uses: PyO3/maturin-action@v1
+        with:
+          manylinux: '2014'
+          command: build
+          before-script-linux: |
+            yum -y install curl perl-core >/dev/null 2>&1 || true
+            (perl -MText::Template -e1 >/dev/null 2>&1 || (curl -sL https://cpanmin.us | perl - App::cpanminus Text::Template >/dev/null))
+          args: --release -m crates/codex_native/Cargo.toml -i ${{ matrix.python-interpreter }} -o dist
+
+      - name: Build Linux aarch64 wheel (manylinux2014)
+        if: ${{ matrix.platform == 'linux-aarch64' }}
+        uses: PyO3/maturin-action@v1
+        with:
+          manylinux: '2014'
+          target: aarch64-unknown-linux-gnu
+          command: build
+          before-script-linux: |
+            yum -y install curl perl-core >/dev/null 2>&1 || true
+            (perl -MText::Template -e1 >/dev/null 2>&1 || (curl -sL https://cpanmin.us | perl - App::cpanminus Text::Template >/dev/null))
+          args: --release -m crates/codex_native/Cargo.toml -i ${{ matrix.python-interpreter }} -o dist
+
+      - name: Build macOS universal2 wheel
+        if: ${{ matrix.platform == 'macos-universal2' }}
+        run: |
+          python -m pip install --upgrade pip
+          pip install maturin
+          # maturin >=1.0 removed --universal2; use --target universal2-apple-darwin
+          maturin build --release -m crates/codex_native/Cargo.toml -i python -o dist --target universal2-apple-darwin
+
+      - name: Build Windows wheel
+        if: ${{ matrix.platform == 'windows-amd64' }}
+        run: |
+          python -m pip install --upgrade pip
+          pip install maturin
+          maturin build --release -m crates/codex_native/Cargo.toml -i python -o dist
+
+      - name: Upload wheels
+        uses: actions/upload-artifact@v4
+        with:
+          name: wheels-${{ matrix.platform }}
+          path: dist/*.whl
+
+  build-sdist:
+    name: Build sdist
+    needs: guard
+    if: needs.guard.outputs.publish == 'true'
     runs-on: ubuntu-latest
     steps:
-      - name: Check out repository
+      - name: Checkout repository
         uses: actions/checkout@v4
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
 
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.13'
 
-      - name: Install uv
-        uses: astral-sh/setup-uv@v4
+      - name: Install build tool
+        run: |
+          python -m pip install --upgrade pip
+          pip install build maturin
+
+      - name: Build sdist (PEP 517)
+        run: |
+          python -m build --sdist
+
+      - name: Upload sdist
+        uses: actions/upload-artifact@v4
         with:
-          version: latest
+          name: sdist
+          path: dist/*.tar.gz
 
-      - name: Build distribution
-        run: uv build
+  publish:
+    name: Publish to PyPI (Trusted Publishing)
+    needs: [guard, build-wheels, build-sdist]
+    if: needs.guard.outputs.publish == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+          # Merge all artifacts directly into dist/ so Twine finds files
+          merge-multiple: true
 
-      - name: Publish to PyPI (Trusted Publishing)
-        run: uv publish --trusted-publishing=always
+      - name: Flatten artifacts into dist/
+        shell: bash
+        run: |
+          shopt -s globstar nullglob
+          mkdir -p dist_flat
+          for f in dist/**/*.whl dist/**/*.tar.gz; do
+            mv "$f" dist_flat/
+          done
+          rm -rf dist
+          mv dist_flat dist
+
+      - name: Verify artifacts present
+        shell: bash
+        run: |
+          shopt -s nullglob
+          files=(dist/*.whl dist/*.tar.gz)
+          if [ ${#files[@]} -eq 0 ]; then
+            echo "No distribution files found in dist/" >&2
+            exit 1
+          fi
+          echo "Found ${#files[@]} files:" && ls -al dist
+
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: dist
+          skip-existing: true

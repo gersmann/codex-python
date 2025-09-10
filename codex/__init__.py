@@ -30,5 +30,5 @@ __all__ = [
     "CodexConfig",
 ]
 
-# Managed by Hatch via pyproject.toml [tool.hatch.version]
-__version__ = "0.2.0"
+# Package version. Kept in sync with Cargo.toml via CI before builds.
+__version__ = "0.2.7"
