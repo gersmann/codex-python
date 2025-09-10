@@ -35,4 +35,3 @@ def test_client_runs_with_defaults(tmp_path: Path, monkeypatch: pytest.MonkeyPat
     assert "--full-auto" in out
     assert "-m test-model" in out
     assert "--ask-for-approval" in out
-

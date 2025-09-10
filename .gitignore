@@ -42,4 +42,4 @@ coverage.xml
 
 # uv
 .uv/
-
+uv.lock

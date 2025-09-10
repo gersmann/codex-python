@@ -1,6 +1,5 @@
 import os
 import stat
-import tempfile
 from pathlib import Path
 
 import pytest
@@ -26,4 +25,3 @@ def test_runs_with_dummy_binary(tmp_path: Path, monkeypatch: pytest.MonkeyPatch)
 
     out = run_exec("hello world", executable="codex")
     assert "[dummy] exec hello world" in out
-

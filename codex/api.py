@@ -3,8 +3,8 @@ from __future__ import annotations
 import os
 import shutil
 import subprocess
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
-from typing import Iterable, Mapping, Optional, Sequence
 
 
 class CodexError(Exception):
@@ -50,13 +50,13 @@ def find_binary(executable: str = "codex") -> str:
 def run_exec(
     prompt: str,
     *,
-    model: Optional[str] = None,
+    model: str | None = None,
     full_auto: bool = False,
-    cd: Optional[str] = None,
-    timeout: Optional[float] = None,
-    env: Optional[Mapping[str, str]] = None,
+    cd: str | None = None,
+    timeout: float | None = None,
+    env: Mapping[str, str] | None = None,
     executable: str = "codex",
-    extra_args: Optional[Iterable[str]] = None,
+    extra_args: Iterable[str] | None = None,
 ) -> str:
     """
     Run `codex exec` with the given prompt and return stdout as text.
@@ -108,11 +108,11 @@ class CodexClient:
     """
 
     executable: str = "codex"
-    model: Optional[str] = None
+    model: str | None = None
     full_auto: bool = False
-    cd: Optional[str] = None
-    env: Optional[Mapping[str, str]] = None
-    extra_args: Optional[Sequence[str]] = None
+    cd: str | None = None
+    env: Mapping[str, str] | None = None
+    extra_args: Sequence[str] | None = None
 
     def ensure_available(self) -> str:
         """Return the resolved binary path or raise CodexNotFoundError."""
@@ -122,12 +122,12 @@ class CodexClient:
         self,
         prompt: str,
         *,
-        model: Optional[str] = None,
-        full_auto: Optional[bool] = None,
-        cd: Optional[str] = None,
-        timeout: Optional[float] = None,
-        env: Optional[Mapping[str, str]] = None,
-        extra_args: Optional[Iterable[str]] = None,
+        model: str | None = None,
+        full_auto: bool | None = None,
+        cd: str | None = None,
+        timeout: float | None = None,
+        env: Mapping[str, str] | None = None,
+        extra_args: Iterable[str] | None = None,
     ) -> str:
         """Execute `codex exec` and return stdout.
 
@@ -138,7 +138,7 @@ class CodexClient:
         eff_cd = cd if cd is not None else self.cd
 
         # Merge environment overlays; run_exec will merge with os.environ
-        merged_env: Optional[Mapping[str, str]]
+        merged_env: Mapping[str, str] | None
         if self.env and env:
             tmp = dict(self.env)
             tmp.update(env)
