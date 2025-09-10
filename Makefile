@@ -27,11 +27,25 @@ build:
 	uv build
 
 publish: build
-	@if [ -z "$${PYPI_API_TOKEN}" ]; then \
-		echo "PYPI_API_TOKEN is not set"; \
+	@# Load local environment if present
+	@set -e; \
+	if [ -f .env ]; then set -a; . ./.env; set +a; fi; \
+	if [ -n "$${UV_PUBLISH_TOKEN:-}" ]; then \
+		echo "Publishing with token (UV_PUBLISH_TOKEN)"; \
+		uv publish --token "$${UV_PUBLISH_TOKEN}"; \
+	elif [ -n "$${PYPI_API_TOKEN:-}" ]; then \
+		echo "Publishing with token (PYPI_API_TOKEN)"; \
+		uv publish --token "$${PYPI_API_TOKEN}"; \
+	elif [ -n "$${UV_PUBLISH_USERNAME:-}" ] && [ -n "$${UV_PUBLISH_PASSWORD:-}" ]; then \
+		echo "Publishing with username/password (UV_PUBLISH_USERNAME)"; \
+		uv publish --username "$${UV_PUBLISH_USERNAME}" --password "$${UV_PUBLISH_PASSWORD}"; \
+	elif [ -n "$${PYPI_USERNAME:-}" ] && [ -n "$${PYPI_PASSWORD:-}" ]; then \
+		echo "Publishing with username/password (PYPI_USERNAME)"; \
+		uv publish --username "$${PYPI_USERNAME}" --password "$${PYPI_PASSWORD}"; \
+	else \
+		echo "No credentials found. Set UV_PUBLISH_TOKEN or PYPI_API_TOKEN, or UV_PUBLISH_USERNAME/UV_PUBLISH_PASSWORD (or PYPI_USERNAME/PYPI_PASSWORD)."; \
 		exit 1; \
 	fi
-	uv publish --token "$$PYPI_API_TOKEN"
 
 clean:
 	rm -rf build dist *.egg-info .pytest_cache .mypy_cache .ruff_cache
