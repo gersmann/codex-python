@@ -698,30 +698,6 @@ class WebSearchEndEvent(BaseModel):
     model_config = ConfigDict(extra="allow")
 
 
-class AskForApproval_Variant1(BaseModel):
-    model_config = ConfigDict(extra="allow")
-
-
-class AskForApproval_Variant2(BaseModel):
-    model_config = ConfigDict(extra="allow")
-
-
-class AskForApproval_Variant3(BaseModel):
-    model_config = ConfigDict(extra="allow")
-
-
-class AskForApproval_Variant4(BaseModel):
-    model_config = ConfigDict(extra="allow")
-
-
-class AuthMode_Variant1(BaseModel):
-    model_config = ConfigDict(extra="allow")
-
-
-class AuthMode_Variant2(BaseModel):
-    model_config = ConfigDict(extra="allow")
-
-
 class ClientRequest_NewConversation(BaseModel):
     method: Literal["newConversation"]
     id: RequestId
@@ -1200,14 +1176,6 @@ class EventMsg_ConversationHistory(BaseModel):
     model_config = ConfigDict(extra="allow")
 
 
-class ExecOutputStream_Variant1(BaseModel):
-    model_config = ConfigDict(extra="allow")
-
-
-class ExecOutputStream_Variant2(BaseModel):
-    model_config = ConfigDict(extra="allow")
-
-
 class FileChange_Variant1(BaseModel):
     add: dict[str, Any]
 
@@ -1247,30 +1215,6 @@ class InputItem_LocalImage(BaseModel):
     model_config = ConfigDict(extra="allow")
 
 
-class InputMessageKind_Variant1(BaseModel):
-    model_config = ConfigDict(extra="allow")
-
-
-class InputMessageKind_Variant2(BaseModel):
-    model_config = ConfigDict(extra="allow")
-
-
-class InputMessageKind_Variant3(BaseModel):
-    model_config = ConfigDict(extra="allow")
-
-
-class LocalShellStatus_Variant1(BaseModel):
-    model_config = ConfigDict(extra="allow")
-
-
-class LocalShellStatus_Variant2(BaseModel):
-    model_config = ConfigDict(extra="allow")
-
-
-class LocalShellStatus_Variant3(BaseModel):
-    model_config = ConfigDict(extra="allow")
-
-
 class ParsedCommand_Read(BaseModel):
     type: Literal["read"]
     cmd: str
@@ -1303,22 +1247,6 @@ class ParsedCommand_Unknown(BaseModel):
     model_config = ConfigDict(extra="allow")
 
 
-class ReasoningEffort_Variant1(BaseModel):
-    model_config = ConfigDict(extra="allow")
-
-
-class ReasoningEffort_Variant2(BaseModel):
-    model_config = ConfigDict(extra="allow")
-
-
-class ReasoningEffort_Variant3(BaseModel):
-    model_config = ConfigDict(extra="allow")
-
-
-class ReasoningEffort_Variant4(BaseModel):
-    model_config = ConfigDict(extra="allow")
-
-
 class ReasoningItemContent_ReasoningText(BaseModel):
     type: Literal["reasoning_text"]
     text: str
@@ -1330,30 +1258,6 @@ class ReasoningItemContent_Text(BaseModel):
     type: Literal["text"]
     text: str
 
-    model_config = ConfigDict(extra="allow")
-
-
-class ReasoningSummary_Variant1(BaseModel):
-    model_config = ConfigDict(extra="allow")
-
-
-class ReasoningSummary_Variant2(BaseModel):
-    model_config = ConfigDict(extra="allow")
-
-
-class ReasoningSummary_Variant3(BaseModel):
-    model_config = ConfigDict(extra="allow")
-
-
-class ReasoningSummary_Variant4(BaseModel):
-    model_config = ConfigDict(extra="allow")
-
-
-class RequestId_Variant1(BaseModel):
-    model_config = ConfigDict(extra="allow")
-
-
-class RequestId_Variant2(BaseModel):
     model_config = ConfigDict(extra="allow")
 
 
@@ -1434,42 +1338,6 @@ class ResponseItem_Other(BaseModel):
     model_config = ConfigDict(extra="allow")
 
 
-class ReviewDecision_Variant1(BaseModel):
-    model_config = ConfigDict(extra="allow")
-
-
-class ReviewDecision_Variant2(BaseModel):
-    model_config = ConfigDict(extra="allow")
-
-
-class ReviewDecision_Variant3(BaseModel):
-    model_config = ConfigDict(extra="allow")
-
-
-class ReviewDecision_Variant4(BaseModel):
-    model_config = ConfigDict(extra="allow")
-
-
-class Role_Variant1(BaseModel):
-    model_config = ConfigDict(extra="allow")
-
-
-class Role_Variant2(BaseModel):
-    model_config = ConfigDict(extra="allow")
-
-
-class SandboxMode_Variant1(BaseModel):
-    model_config = ConfigDict(extra="allow")
-
-
-class SandboxMode_Variant2(BaseModel):
-    model_config = ConfigDict(extra="allow")
-
-
-class SandboxMode_Variant3(BaseModel):
-    model_config = ConfigDict(extra="allow")
-
-
 class SandboxPolicy_Variant1(BaseModel):
     mode: Literal["danger-full-access"]
 
@@ -1521,38 +1389,6 @@ class ServerRequest_ExecCommandApproval(BaseModel):
     model_config = ConfigDict(extra="allow")
 
 
-class StepStatus_Variant1(BaseModel):
-    model_config = ConfigDict(extra="allow")
-
-
-class StepStatus_Variant2(BaseModel):
-    model_config = ConfigDict(extra="allow")
-
-
-class StepStatus_Variant3(BaseModel):
-    model_config = ConfigDict(extra="allow")
-
-
-class TurnAbortReason_Variant1(BaseModel):
-    model_config = ConfigDict(extra="allow")
-
-
-class TurnAbortReason_Variant2(BaseModel):
-    model_config = ConfigDict(extra="allow")
-
-
-class Verbosity_Variant1(BaseModel):
-    model_config = ConfigDict(extra="allow")
-
-
-class Verbosity_Variant2(BaseModel):
-    model_config = ConfigDict(extra="allow")
-
-
-class Verbosity_Variant3(BaseModel):
-    model_config = ConfigDict(extra="allow")
-
-
 class WebSearchAction_Search(BaseModel):
     type: Literal["search"]
     query: str
@@ -1594,13 +1430,6 @@ class SendUserTurnResponse(BaseModel):
     model_config = ConfigDict(extra="allow")
 
 
-AskForApproval = (
-    AskForApproval_Variant1
-    | AskForApproval_Variant2
-    | AskForApproval_Variant3
-    | AskForApproval_Variant4
-)
-AuthMode = AuthMode_Variant1 | AuthMode_Variant2
 ClientRequest = (
     ClientRequest_NewConversation
     | ClientRequest_ListConversations
@@ -1665,28 +1494,12 @@ EventMsg = (
     | EventMsg_ShutdownComplete
     | EventMsg_ConversationHistory
 )
-ExecOutputStream = ExecOutputStream_Variant1 | ExecOutputStream_Variant2
 FileChange = FileChange_Variant1 | FileChange_Variant2 | FileChange_Variant3
 InputItem = InputItem_Text | InputItem_Image | InputItem_LocalImage
-InputMessageKind = InputMessageKind_Variant1 | InputMessageKind_Variant2 | InputMessageKind_Variant3
-LocalShellStatus = LocalShellStatus_Variant1 | LocalShellStatus_Variant2 | LocalShellStatus_Variant3
 ParsedCommand = (
     ParsedCommand_Read | ParsedCommand_ListFiles | ParsedCommand_Search | ParsedCommand_Unknown
 )
-ReasoningEffort = (
-    ReasoningEffort_Variant1
-    | ReasoningEffort_Variant2
-    | ReasoningEffort_Variant3
-    | ReasoningEffort_Variant4
-)
 ReasoningItemContent = ReasoningItemContent_ReasoningText | ReasoningItemContent_Text
-ReasoningSummary = (
-    ReasoningSummary_Variant1
-    | ReasoningSummary_Variant2
-    | ReasoningSummary_Variant3
-    | ReasoningSummary_Variant4
-)
-RequestId = RequestId_Variant1 | RequestId_Variant2
 ResponseItem = (
     ResponseItem_Message
     | ResponseItem_Reasoning
@@ -1698,22 +1511,29 @@ ResponseItem = (
     | ResponseItem_WebSearchCall
     | ResponseItem_Other
 )
-ReviewDecision = (
-    ReviewDecision_Variant1
-    | ReviewDecision_Variant2
-    | ReviewDecision_Variant3
-    | ReviewDecision_Variant4
-)
-Role = Role_Variant1 | Role_Variant2
-SandboxMode = SandboxMode_Variant1 | SandboxMode_Variant2 | SandboxMode_Variant3
 SandboxPolicy = SandboxPolicy_Variant1 | SandboxPolicy_Variant2 | SandboxPolicy_Variant3
 ServerNotification = ServerNotification_AuthStatusChange | ServerNotification_LoginChatGptComplete
 ServerRequest = ServerRequest_ApplyPatchApproval | ServerRequest_ExecCommandApproval
-StepStatus = StepStatus_Variant1 | StepStatus_Variant2 | StepStatus_Variant3
-TurnAbortReason = TurnAbortReason_Variant1 | TurnAbortReason_Variant2
-Verbosity = Verbosity_Variant1 | Verbosity_Variant2 | Verbosity_Variant3
 WebSearchAction = WebSearchAction_Search | WebSearchAction_Other
 
+AskForApproval = (
+    Literal["never"] | Literal["on-failure"] | Literal["on-request"] | Literal["untrusted"]
+)
+AuthMode = Literal["apikey"] | Literal["chatgpt"]
+ExecOutputStream = Literal["stderr"] | Literal["stdout"]
+InputMessageKind = Literal["environment_context"] | Literal["plain"] | Literal["user_instructions"]
+LocalShellStatus = Literal["completed"] | Literal["in_progress"] | Literal["incomplete"]
+ReasoningEffort = Literal["high"] | Literal["low"] | Literal["medium"] | Literal["minimal"]
+ReasoningSummary = Literal["auto"] | Literal["concise"] | Literal["detailed"] | Literal["none"]
+RequestId = int | str
+ReviewDecision = (
+    Literal["abort"] | Literal["approved"] | Literal["approved_for_session"] | Literal["denied"]
+)
+Role = Literal["assistant"] | Literal["user"]
+SandboxMode = Literal["danger-full-access"] | Literal["read-only"] | Literal["workspace-write"]
+StepStatus = Literal["completed"] | Literal["in_progress"] | Literal["pending"]
+TurnAbortReason = Literal["interrupted"] | Literal["replaced"]
+Verbosity = Literal["high"] | Literal["low"] | Literal["medium"]
 ConversationId = str
 GitSha = str
 JsonValue = Any
