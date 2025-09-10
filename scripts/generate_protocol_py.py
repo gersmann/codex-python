@@ -184,23 +184,24 @@ def parse_object_fields(block: str) -> list[Field]:
 
 
 def generate_from_ts(ts_dir: Path) -> str:
-    aliases: list[TypeAlias] = []
-    tdicts: list[TypedDictDef] = []
-    union_aliases: list[TypeAlias] = []
-
-    for ts_file in sorted(ts_dir.rglob("*.ts")):
-        # Skip index.ts
-        if ts_file.name == "index.ts":
+    # First, load and pre-process all files
+    files = [p for p in sorted(ts_dir.rglob("*.ts")) if p.name != "index.ts"]
+    contents: dict[str, str] = {}
+    for ts_file in files:
+        raw = ts_file.read_text()
+        c = re.sub(r"//.*", "", raw)
+        c = re.sub(r"import[^;]+;", "", c, flags=re.S)
+        c = c.strip()
+        if not c:
             continue
-        content = ts_file.read_text()
-        # Remove header comments and imports
-        content_ = re.sub(r"//.*", "", content)
-        content_ = re.sub(r"import[^;]+;", "", content_, flags=re.S)
-        content_ = content_.strip()
-        if not content_:
-            continue
+        contents[ts_file.stem] = c
 
-        # Match export type NAME = ...;
+    # Pass 1: collect object-like aliases and interfaces into a registry
+    objects: dict[str, list[Field]] = {}
+    simple_aliases_source: dict[str, str] = {}
+    unions_source: dict[str, str] = {}
+
+    for _name, content_ in contents.items():
         m_type = re.search(
             r"export\s+type\s+(?P<name>[A-Za-z0-9_]+)\s*=\s*(?P<rhs>.+);\s*\Z", content_, flags=re.S
         )
@@ -209,58 +210,81 @@ def generate_from_ts(ts_dir: Path) -> str:
             content_,
             flags=re.S,
         )
-
         if m_type:
-            name = m_type.group("name")
+            tname = m_type.group("name")
             rhs = m_type.group("rhs").strip()
-            # Detect union of object literals
             parts = split_top_level_union(rhs)
-            if parts and all(p.strip().startswith("{") for p in parts):
-                # Define variant TypedDicts and alias union
-                variant_names: list[str] = []
-                for p in parts:
-                    fields = parse_object_fields(p)
-                    # Derive a stable variant name: if a method Literal is present, use it
-                    meth = next(
-                        (
-                            f
-                            for f in fields
-                            if f.name == "method" and f.type_expr.startswith("Literal[")
-                        ),
-                        None,
-                    )
-                    if meth:
-                        lit = meth.type_expr[len("Literal[") : -1]
-                        meth_name = re.sub(r"[^A-Za-z0-9]+", "_", lit.strip('"'))
-                        cls_name = f"{name}_{camelize(meth_name)}"
-                    else:
-                        cls_name = f"{name}_Variant{len(variant_names) + 1}"
-                    tdicts.append(TypedDictDef(cls_name, fields))
-                    variant_names.append(cls_name)
-                union_aliases.append(TypeAlias(name, " | ".join(variant_names)))
+            if len(parts) > 1:
+                unions_source[tname] = rhs
+                continue
+            if rhs.startswith("{"):
+                objects[tname] = parse_object_fields(rhs)
             else:
-                # object type alias or simple alias
-                if rhs.strip().startswith("{"):
-                    fields = parse_object_fields(rhs)
-                    tdicts.append(TypedDictDef(name, fields))
-                else:
-                    # Special-case empty object alias: Record<string, never>
-                    if re.fullmatch(r"Record\s*<\s*string\s*,\s*never\s*>", rhs):
-                        tdicts.append(TypedDictDef(name, []))
-                    else:
-                        # Simple alias
-                        py_rhs = ts_type_to_py(rhs)
-                        aliases.append(TypeAlias(name, py_rhs))
+                simple_aliases_source[tname] = rhs
             continue
-
         if m_iface:
-            name = m_iface.group("name")
+            iname = m_iface.group("name")
             body = m_iface.group("body")
-            fields = parse_object_fields(body)
-            tdicts.append(TypedDictDef(name, fields))
-            continue
+            objects[iname] = parse_object_fields(body)
 
-        # Unrecognized content; ignore.
+    # Pass 2: emit structures and unions using the registry
+    aliases: list[TypeAlias] = []
+    tdicts: list[TypedDictDef] = []
+    union_aliases: list[TypeAlias] = []
+
+    # Emit object aliases/interfaces as models
+    for obj_name, fields in sorted(objects.items()):
+        tdicts.append(TypedDictDef(obj_name, fields))
+
+    # Emit unions (including intersection merges)
+    for uname, rhs in sorted(unions_source.items()):
+        if uname == "JsonValue":
+            # We'll map this to Any later
+            continue
+        parts = split_top_level_union(rhs)
+        variant_names: list[str] = []
+        for p in parts:
+            p = p.strip()
+            # Split intersections at top level
+            inters = split_top_level_intersection(p)
+            merged_fields: list[Field] = []
+            for comp in inters:
+                comp = comp.strip()
+                if comp.startswith("{"):
+                    merged_fields.extend(parse_object_fields(comp))
+                else:
+                    # Referenced type name
+                    ref = re.match(r"^[A-Za-z_][A-Za-z0-9_]*$", comp)
+                    if ref and comp in objects:
+                        merged_fields.extend(objects[comp])
+            # Derive variant class name from 'type' or 'method' literal
+            tag = next(
+                (
+                    f
+                    for f in merged_fields
+                    if f.name in {"type", "method"} and f.type_expr.startswith("Literal[")
+                ),
+                None,
+            )
+            if tag:
+                lit = tag.type_expr[len("Literal[") : -1]
+                tag_name = re.sub(r"[^A-Za-z0-9]+", "_", lit.strip('"'))
+                cls_name = f"{uname}_{camelize(tag_name)}"
+            else:
+                cls_name = f"{uname}_Variant{len(variant_names) + 1}"
+            tdicts.append(TypedDictDef(cls_name, merged_fields))
+            variant_names.append(cls_name)
+        union_aliases.append(TypeAlias(uname, " | ".join(variant_names)))
+
+    # Emit simple aliases
+    for aname, rhs in sorted(simple_aliases_source.items()):
+        if re.fullmatch(r"Record\s*<\s*string\s*,\s*never\s*>", rhs):
+            tdicts.append(TypedDictDef(aname, []))
+        elif rhs.startswith("{"):
+            # Should have been captured in objects, but keep safe
+            tdicts.append(TypedDictDef(aname, parse_object_fields(rhs)))
+        else:
+            aliases.append(TypeAlias(aname, ts_type_to_py(rhs)))
 
     # Ensure JsonValue alias exists
     aliases = [a for a in aliases if a.name != "JsonValue"]
@@ -268,7 +292,6 @@ def generate_from_ts(ts_dir: Path) -> str:
 
     # Emit Python code
     out = [PY_HEADER]
-    # Emit data structures first (Pydantic models)
     for td in tdicts:
         out.append(f"class {td.name}(BaseModel):\n")
         out.append("    model_config = ConfigDict(extra='ignore')\n")
@@ -282,13 +305,33 @@ def generate_from_ts(ts_dir: Path) -> str:
                 out.append(f"    {f.name}: {f.type_expr}\n")
         out.append("\n")
     out.append("\n")
-    # Then aliases: unions first (composed of previously defined TypedDicts), then simple aliases
     for ua in union_aliases:
         out.append(f"{ua.name} = {ua.rhs}\n")
     out.append("\n")
     for a in aliases:
         out.append(f"{a.name} = {a.rhs}\n")
     return "".join(out)
+
+
+def split_top_level_intersection(s: str) -> list[str]:
+    parts: list[str] = []
+    depth = 0
+    cur: list[str] = []
+    for ch in s:
+        if ch in "{(<":
+            depth += 1
+            cur.append(ch)
+        elif ch in ")}>":
+            depth -= 1
+            cur.append(ch)
+        elif ch == "&" and depth == 0:
+            parts.append("".join(cur).strip())
+            cur = []
+        else:
+            cur.append(ch)
+    if cur:
+        parts.append("".join(cur).strip())
+    return parts
 
 
 def camelize(s: str) -> str:

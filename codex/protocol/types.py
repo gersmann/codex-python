@@ -7,57 +7,52 @@ from pydantic import BaseModel
 from pydantic.config import ConfigDict
 
 
-class AddConversationListenerParams_Variant1(BaseModel):
+class AddConversationListenerParams(BaseModel):
     model_config = ConfigDict(extra="ignore")
     conversationId: ConversationId
 
 
-class AddConversationSubscriptionResponse_Variant1(BaseModel):
+class AddConversationSubscriptionResponse(BaseModel):
     model_config = ConfigDict(extra="ignore")
     subscriptionId: str
 
 
-class AgentMessageDeltaEvent_Variant1(BaseModel):
+class AgentMessageDeltaEvent(BaseModel):
     model_config = ConfigDict(extra="ignore")
     delta: str
 
 
-class AgentMessageEvent_Variant1(BaseModel):
+class AgentMessageEvent(BaseModel):
     model_config = ConfigDict(extra="ignore")
     message: str
 
 
-class AgentReasoningDeltaEvent_Variant1(BaseModel):
+class AgentReasoningDeltaEvent(BaseModel):
     model_config = ConfigDict(extra="ignore")
     delta: str
 
 
-class AgentReasoningEvent_Variant1(BaseModel):
+class AgentReasoningEvent(BaseModel):
     model_config = ConfigDict(extra="ignore")
     text: str
 
 
-class AgentReasoningRawContentDeltaEvent_Variant1(BaseModel):
+class AgentReasoningRawContentDeltaEvent(BaseModel):
     model_config = ConfigDict(extra="ignore")
     delta: str
 
 
-class AgentReasoningRawContentEvent_Variant1(BaseModel):
+class AgentReasoningRawContentEvent(BaseModel):
     model_config = ConfigDict(extra="ignore")
     text: str
 
 
-class AgentReasoningSectionBreakEvent(BaseModel):
+class Annotations(BaseModel):
     model_config = ConfigDict(extra="ignore")
     pass
 
 
-class Annotations_Variant1(BaseModel):
-    model_config = ConfigDict(extra="ignore")
-    pass
-
-
-class ApplyPatchApprovalParams_Variant1(BaseModel):
+class ApplyPatchApprovalParams(BaseModel):
     model_config = ConfigDict(extra="ignore")
     conversation_id: ConversationId
     call_id: str
@@ -66,7 +61,7 @@ class ApplyPatchApprovalParams_Variant1(BaseModel):
     grant_root: str | None = None
 
 
-class ApplyPatchApprovalRequestEvent_Variant1(BaseModel):
+class ApplyPatchApprovalRequestEvent(BaseModel):
     model_config = ConfigDict(extra="ignore")
     call_id: str
     changes: dict[str, FileChange]
@@ -74,56 +69,580 @@ class ApplyPatchApprovalRequestEvent_Variant1(BaseModel):
     grant_root: str | None = None
 
 
-class ApplyPatchApprovalResponse_Variant1(BaseModel):
+class ApplyPatchApprovalResponse(BaseModel):
     model_config = ConfigDict(extra="ignore")
     decision: ReviewDecision
 
 
-class ArchiveConversationParams_Variant1(BaseModel):
+class ArchiveConversationParams(BaseModel):
     model_config = ConfigDict(extra="ignore")
     conversationId: ConversationId
     rolloutPath: str
 
 
-class ArchiveConversationResponse(BaseModel):
-    model_config = ConfigDict(extra="ignore")
-    pass
-
-
-class AudioContent_Variant1(BaseModel):
+class AudioContent(BaseModel):
     model_config = ConfigDict(extra="ignore")
     data: str
     mimeType: str
     type: str
 
 
-class AuthStatusChangeNotification_Variant1(BaseModel):
+class AuthStatusChangeNotification(BaseModel):
     model_config = ConfigDict(extra="ignore")
     authMethod: AuthMode | None = None
 
 
-class BackgroundEventEvent_Variant1(BaseModel):
+class BackgroundEventEvent(BaseModel):
     model_config = ConfigDict(extra="ignore")
     message: str
 
 
-class BlobResourceContents_Variant1(BaseModel):
+class BlobResourceContents(BaseModel):
     model_config = ConfigDict(extra="ignore")
     blob: str
     uri: str
 
 
-class CallToolResult_Variant1(BaseModel):
+class CallToolResult(BaseModel):
     model_config = ConfigDict(extra="ignore")
     content: list[ContentBlock]
 
 
-class CancelLoginChatGptParams_Variant1(BaseModel):
+class CancelLoginChatGptParams(BaseModel):
     model_config = ConfigDict(extra="ignore")
     loginId: str
 
 
-class CancelLoginChatGptResponse(BaseModel):
+class ConversationHistoryResponseEvent(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    conversation_id: ConversationId
+    entries: list[ResponseItem]
+
+
+class ConversationSummary(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    conversationId: ConversationId
+    path: str
+    preview: str
+    timestamp: str | None = None
+
+
+class CustomPrompt(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    name: str
+    path: str
+    content: str
+
+
+class EmbeddedResource(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    resource: EmbeddedResourceResource
+    type: str
+
+
+class ErrorEvent(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    message: str
+
+
+class ExecApprovalRequestEvent(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    call_id: str
+    command: list[str]
+    cwd: str
+    reason: str | None = None
+
+
+class ExecCommandApprovalParams(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    conversation_id: ConversationId
+    call_id: str
+    command: list[str]
+    cwd: str
+    reason: str | None = None
+
+
+class ExecCommandApprovalResponse(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    decision: ReviewDecision
+
+
+class ExecCommandBeginEvent(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    call_id: str
+    command: list[str]
+    cwd: str
+    parsed_cmd: list[ParsedCommand]
+
+
+class ExecCommandEndEvent(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    call_id: str
+    stdout: str
+    stderr: str
+    aggregated_output: str
+    exit_code: float
+    duration: str
+    formatted_output: str
+
+
+class ExecCommandOutputDeltaEvent(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    call_id: str
+    stream: ExecOutputStream
+    chunk: str
+
+
+class ExecOneOffCommandParams(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    command: list[str]
+    timeoutMs: int | None = None
+    cwd: str | None = None
+    sandboxPolicy: SandboxPolicy | None = None
+
+
+class FunctionCallOutputPayload(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    content: str
+    success: bool | None = None
+
+
+class GetAuthStatusParams(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    includeToken: bool | None = None
+    refreshToken: bool | None = None
+
+
+class GetAuthStatusResponse(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    authMethod: AuthMode | None = None
+    preferredAuthMethod: AuthMode
+    authToken: str | None = None
+
+
+class GetHistoryEntryResponseEvent(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    offset: float
+    log_id: int
+    entry: HistoryEntry | None = None
+
+
+class GetUserAgentResponse(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    userAgent: str
+
+
+class GetUserSavedConfigResponse(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    config: UserSavedConfig
+
+
+class GitDiffToRemoteParams(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    cwd: str
+
+
+class GitDiffToRemoteResponse(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    sha: GitSha
+    diff: str
+
+
+class HistoryEntry(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    conversation_id: str
+    ts: int
+    text: str
+
+
+class ImageContent(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    data: str
+    mimeType: str
+    type: str
+
+
+class InitializeResult(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    capabilities: ServerCapabilities
+    protocolVersion: str
+    serverInfo: McpServerInfo
+
+
+class InterruptConversationParams(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    conversationId: ConversationId
+
+
+class InterruptConversationResponse(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    abortReason: TurnAbortReason
+
+
+class ListConversationsParams(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    pageSize: float | None = None
+    cursor: str | None = None
+
+
+class ListConversationsResponse(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    items: list[ConversationSummary]
+    nextCursor: str | None = None
+
+
+class ListCustomPromptsResponseEvent(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    custom_prompts: list[CustomPrompt]
+
+
+class LocalShellAction(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    pass
+
+
+class LocalShellExecAction(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    command: list[str]
+    timeout_ms: int | None = None
+    working_directory: str | None = None
+    env: dict[str, str] | None = None
+    user: str | None = None
+
+
+class LoginChatGptCompleteNotification(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    loginId: str
+    success: bool
+    error: str | None = None
+
+
+class LoginChatGptResponse(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    loginId: str
+    authUrl: str
+
+
+class McpInvocation(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    server: str
+    tool: str
+    arguments: JsonValue | None = None
+
+
+class McpListToolsResponseEvent(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    tools: dict[str, Tool]
+
+
+class McpServerInfo(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    name: str
+    version: str
+    user_agent: str
+
+
+class McpToolCallBeginEvent(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    call_id: str
+    invocation: McpInvocation
+
+
+class McpToolCallEndEvent(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    call_id: str
+    invocation: McpInvocation
+    duration: str
+    result: dict[str, Any]
+
+
+class NewConversationParams(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    model: str | None = None
+    profile: str | None = None
+    cwd: str | None = None
+    approvalPolicy: AskForApproval | None = None
+    sandbox: SandboxMode | None = None
+    config: dict[str, JsonValue] | None = None
+    baseInstructions: str | None = None
+    includePlanTool: bool | None = None
+    includeApplyPatchTool: bool | None = None
+
+
+class NewConversationResponse(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    conversationId: ConversationId
+    model: str
+    rolloutPath: str
+
+
+class PatchApplyBeginEvent(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    call_id: str
+    auto_approved: bool
+    changes: dict[str, FileChange]
+
+
+class PatchApplyEndEvent(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    call_id: str
+    stdout: str
+    stderr: str
+    success: bool
+
+
+class PlanItemArg(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    step: str
+    status: StepStatus
+
+
+class Profile(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    model: str | None = None
+    modelProvider: str | None = None
+    approvalPolicy: AskForApproval | None = None
+    modelReasoningEffort: ReasoningEffort | None = None
+    modelReasoningSummary: ReasoningSummary | None = None
+    modelVerbosity: Verbosity | None = None
+    chatgptBaseUrl: str | None = None
+
+
+class ReasoningItemReasoningSummary(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    type: Literal["summary_text"]
+    text: str
+
+
+class RemoveConversationListenerParams(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    subscriptionId: str
+
+
+class ResourceLink(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    name: str
+    type: str
+    uri: str
+
+
+class ResumeConversationParams(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    path: str
+    overrides: NewConversationParams | None = None
+
+
+class ResumeConversationResponse(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    conversationId: ConversationId
+    model: str
+    initialMessages: list[EventMsg] | None = None
+
+
+class SandboxSettings(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    writableRoots: list[str]
+    networkAccess: bool | None = None
+    excludeTmpdirEnvVar: bool | None = None
+    excludeSlashTmp: bool | None = None
+
+
+class SendUserMessageParams(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    conversationId: ConversationId
+    items: list[InputItem]
+
+
+class SendUserTurnParams(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    conversationId: ConversationId
+    items: list[InputItem]
+    cwd: str
+    approvalPolicy: AskForApproval
+    sandboxPolicy: SandboxPolicy
+    model: str
+    effort: ReasoningEffort
+    summary: ReasoningSummary
+
+
+class ServerCapabilities(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    pass
+
+
+class ServerCapabilitiesPrompts(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    pass
+
+
+class ServerCapabilitiesResources(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    pass
+
+
+class ServerCapabilitiesTools(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    pass
+
+
+class SessionConfiguredEvent(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    session_id: ConversationId
+    model: str
+    history_log_id: int
+    history_entry_count: float
+    initial_messages: list[EventMsg] | None = None
+    rollout_path: str
+
+
+class StreamErrorEvent(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    message: str
+
+
+class TaskCompleteEvent(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    last_agent_message: str | None = None
+
+
+class TaskStartedEvent(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    model_context_window: int | None = None
+
+
+class TextContent(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    text: str
+    type: str
+
+
+class TextResourceContents(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    text: str
+    uri: str
+
+
+class TokenCountEvent(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    info: TokenUsageInfo | None = None
+
+
+class TokenUsage(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    input_tokens: int
+    cached_input_tokens: int
+    output_tokens: int
+    reasoning_output_tokens: int
+    total_tokens: int
+
+
+class TokenUsageInfo(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    total_token_usage: TokenUsage
+    last_token_usage: TokenUsage
+    model_context_window: int | None = None
+
+
+class Tool(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    inputSchema: ToolInputSchema
+    name: str
+
+
+class ToolAnnotations(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    pass
+
+
+class ToolInputSchema(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    type: str
+
+
+class ToolOutputSchema(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    type: str
+
+
+class Tools(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    webSearch: bool | None = None
+    viewImage: bool | None = None
+
+
+class TurnAbortedEvent(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    reason: TurnAbortReason
+
+
+class TurnDiffEvent(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    unified_diff: str
+
+
+class UpdatePlanArgs(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    explanation: str | None = None
+    plan: list[PlanItemArg]
+
+
+class UserMessageEvent(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    message: str
+    kind: InputMessageKind | None = None
+
+
+class UserSavedConfig(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    approvalPolicy: AskForApproval | None = None
+    sandboxMode: SandboxMode | None = None
+    sandboxSettings: SandboxSettings | None = None
+    model: str | None = None
+    modelReasoningEffort: ReasoningEffort | None = None
+    modelReasoningSummary: ReasoningSummary | None = None
+    modelVerbosity: Verbosity | None = None
+    tools: Tools | None = None
+    profile: str | None = None
+    profiles: dict[str, Profile]
+
+
+class WebSearchBeginEvent(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    call_id: str
+
+
+class WebSearchEndEvent(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    call_id: str
+    query: str
+
+
+class AskForApproval_Variant1(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    pass
+
+
+class AskForApproval_Variant2(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    pass
+
+
+class AskForApproval_Variant3(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    pass
+
+
+class AskForApproval_Variant4(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    pass
+
+
+class AuthMode_Variant1(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    pass
+
+
+class AuthMode_Variant2(BaseModel):
     model_config = ConfigDict(extra="ignore")
     pass
 
@@ -243,258 +762,201 @@ class ClientRequest_ExecOneOffCommand(BaseModel):
     params: ExecOneOffCommandParams
 
 
-class ContentItem_Variant1(BaseModel):
+class ContentBlock_Variant1(BaseModel):
     model_config = ConfigDict(extra="ignore")
-    type: Literal["input_text"]
     text: str
+    type: str
 
 
-class ContentItem_Variant2(BaseModel):
+class ContentBlock_Variant2(BaseModel):
     model_config = ConfigDict(extra="ignore")
-    type: Literal["input_image"]
-    image_url: str
+    data: str
+    mimeType: str
+    type: str
 
 
-class ContentItem_Variant3(BaseModel):
+class ContentBlock_Variant3(BaseModel):
     model_config = ConfigDict(extra="ignore")
-    type: Literal["output_text"]
-    text: str
+    data: str
+    mimeType: str
+    type: str
 
 
-class ConversationHistoryResponseEvent_Variant1(BaseModel):
-    model_config = ConfigDict(extra="ignore")
-    conversation_id: ConversationId
-    entries: list[ResponseItem]
-
-
-class ConversationSummary_Variant1(BaseModel):
-    model_config = ConfigDict(extra="ignore")
-    conversationId: ConversationId
-    path: str
-    preview: str
-    timestamp: str | None = None
-
-
-class CustomPrompt_Variant1(BaseModel):
+class ContentBlock_Variant4(BaseModel):
     model_config = ConfigDict(extra="ignore")
     name: str
-    path: str
-    content: str
+    type: str
+    uri: str
 
 
-class EmbeddedResource_Variant1(BaseModel):
+class ContentBlock_Variant5(BaseModel):
     model_config = ConfigDict(extra="ignore")
     resource: EmbeddedResourceResource
     type: str
 
 
-class ErrorEvent_Variant1(BaseModel):
+class ContentItem_InputText(BaseModel):
     model_config = ConfigDict(extra="ignore")
+    type: Literal["input_text"]
+    text: str
+
+
+class ContentItem_InputImage(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    type: Literal["input_image"]
+    image_url: str
+
+
+class ContentItem_OutputText(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    type: Literal["output_text"]
+    text: str
+
+
+class EmbeddedResourceResource_Variant1(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    text: str
+    uri: str
+
+
+class EmbeddedResourceResource_Variant2(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    blob: str
+    uri: str
+
+
+class EventMsg_Error(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    type: Literal["error"]
     message: str
 
 
-class EventMsg_Variant1(BaseModel):
+class EventMsg_TaskStarted(BaseModel):
     model_config = ConfigDict(extra="ignore")
-    pass
+    type: Literal["task_started"]
+    model_context_window: int | None = None
 
 
-class EventMsg_Variant2(BaseModel):
+class EventMsg_TaskComplete(BaseModel):
     model_config = ConfigDict(extra="ignore")
-    pass
+    type: Literal["task_complete"]
+    last_agent_message: str | None = None
 
 
-class EventMsg_Variant3(BaseModel):
+class EventMsg_TokenCount(BaseModel):
     model_config = ConfigDict(extra="ignore")
-    pass
+    type: Literal["token_count"]
+    info: TokenUsageInfo | None = None
 
 
-class EventMsg_Variant4(BaseModel):
+class EventMsg_AgentMessage(BaseModel):
     model_config = ConfigDict(extra="ignore")
-    pass
+    type: Literal["agent_message"]
+    message: str
 
 
-class EventMsg_Variant5(BaseModel):
+class EventMsg_UserMessage(BaseModel):
     model_config = ConfigDict(extra="ignore")
-    pass
+    type: Literal["user_message"]
+    message: str
+    kind: InputMessageKind | None = None
 
 
-class EventMsg_Variant6(BaseModel):
+class EventMsg_AgentMessageDelta(BaseModel):
     model_config = ConfigDict(extra="ignore")
-    pass
+    type: Literal["agent_message_delta"]
+    delta: str
 
 
-class EventMsg_Variant7(BaseModel):
+class EventMsg_AgentReasoning(BaseModel):
     model_config = ConfigDict(extra="ignore")
-    pass
+    type: Literal["agent_reasoning"]
+    text: str
 
 
-class EventMsg_Variant8(BaseModel):
+class EventMsg_AgentReasoningDelta(BaseModel):
     model_config = ConfigDict(extra="ignore")
-    pass
+    type: Literal["agent_reasoning_delta"]
+    delta: str
 
 
-class EventMsg_Variant9(BaseModel):
+class EventMsg_AgentReasoningRawContent(BaseModel):
     model_config = ConfigDict(extra="ignore")
-    pass
+    type: Literal["agent_reasoning_raw_content"]
+    text: str
 
 
-class EventMsg_Variant10(BaseModel):
+class EventMsg_AgentReasoningRawContentDelta(BaseModel):
     model_config = ConfigDict(extra="ignore")
-    pass
+    type: Literal["agent_reasoning_raw_content_delta"]
+    delta: str
 
 
-class EventMsg_Variant11(BaseModel):
+class EventMsg_AgentReasoningSectionBreak(BaseModel):
     model_config = ConfigDict(extra="ignore")
-    pass
+    type: Literal["agent_reasoning_section_break"]
 
 
-class EventMsg_Variant12(BaseModel):
+class EventMsg_SessionConfigured(BaseModel):
     model_config = ConfigDict(extra="ignore")
-    pass
+    type: Literal["session_configured"]
+    session_id: ConversationId
+    model: str
+    history_log_id: int
+    history_entry_count: float
+    initial_messages: list[EventMsg] | None = None
+    rollout_path: str
 
 
-class EventMsg_Variant13(BaseModel):
+class EventMsg_McpToolCallBegin(BaseModel):
     model_config = ConfigDict(extra="ignore")
-    pass
-
-
-class EventMsg_Variant14(BaseModel):
-    model_config = ConfigDict(extra="ignore")
-    pass
-
-
-class EventMsg_Variant15(BaseModel):
-    model_config = ConfigDict(extra="ignore")
-    pass
-
-
-class EventMsg_Variant16(BaseModel):
-    model_config = ConfigDict(extra="ignore")
-    pass
-
-
-class EventMsg_Variant17(BaseModel):
-    model_config = ConfigDict(extra="ignore")
-    pass
-
-
-class EventMsg_Variant18(BaseModel):
-    model_config = ConfigDict(extra="ignore")
-    pass
-
-
-class EventMsg_Variant19(BaseModel):
-    model_config = ConfigDict(extra="ignore")
-    pass
-
-
-class EventMsg_Variant20(BaseModel):
-    model_config = ConfigDict(extra="ignore")
-    pass
-
-
-class EventMsg_Variant21(BaseModel):
-    model_config = ConfigDict(extra="ignore")
-    pass
-
-
-class EventMsg_Variant22(BaseModel):
-    model_config = ConfigDict(extra="ignore")
-    pass
-
-
-class EventMsg_Variant23(BaseModel):
-    model_config = ConfigDict(extra="ignore")
-    pass
-
-
-class EventMsg_Variant24(BaseModel):
-    model_config = ConfigDict(extra="ignore")
-    pass
-
-
-class EventMsg_Variant25(BaseModel):
-    model_config = ConfigDict(extra="ignore")
-    pass
-
-
-class EventMsg_Variant26(BaseModel):
-    model_config = ConfigDict(extra="ignore")
-    pass
-
-
-class EventMsg_Variant27(BaseModel):
-    model_config = ConfigDict(extra="ignore")
-    pass
-
-
-class EventMsg_Variant28(BaseModel):
-    model_config = ConfigDict(extra="ignore")
-    pass
-
-
-class EventMsg_Variant29(BaseModel):
-    model_config = ConfigDict(extra="ignore")
-    pass
-
-
-class EventMsg_Variant30(BaseModel):
-    model_config = ConfigDict(extra="ignore")
-    pass
-
-
-class EventMsg_Variant31(BaseModel):
-    model_config = ConfigDict(extra="ignore")
-    pass
-
-
-class EventMsg_Variant32(BaseModel):
-    model_config = ConfigDict(extra="ignore")
-    pass
-
-
-class EventMsg_Variant33(BaseModel):
-    model_config = ConfigDict(extra="ignore")
-    type: Literal["shutdown_complete"]
-
-
-class EventMsg_Variant34(BaseModel):
-    model_config = ConfigDict(extra="ignore")
-    pass
-
-
-class ExecApprovalRequestEvent_Variant1(BaseModel):
-    model_config = ConfigDict(extra="ignore")
+    type: Literal["mcp_tool_call_begin"]
     call_id: str
-    command: list[str]
-    cwd: str
-    reason: str | None = None
+    invocation: McpInvocation
 
 
-class ExecCommandApprovalParams_Variant1(BaseModel):
+class EventMsg_McpToolCallEnd(BaseModel):
     model_config = ConfigDict(extra="ignore")
-    conversation_id: ConversationId
+    type: Literal["mcp_tool_call_end"]
     call_id: str
-    command: list[str]
-    cwd: str
-    reason: str | None = None
+    invocation: McpInvocation
+    duration: str
+    result: dict[str, Any]
 
 
-class ExecCommandApprovalResponse_Variant1(BaseModel):
+class EventMsg_WebSearchBegin(BaseModel):
     model_config = ConfigDict(extra="ignore")
-    decision: ReviewDecision
+    type: Literal["web_search_begin"]
+    call_id: str
 
 
-class ExecCommandBeginEvent_Variant1(BaseModel):
+class EventMsg_WebSearchEnd(BaseModel):
     model_config = ConfigDict(extra="ignore")
+    type: Literal["web_search_end"]
+    call_id: str
+    query: str
+
+
+class EventMsg_ExecCommandBegin(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    type: Literal["exec_command_begin"]
     call_id: str
     command: list[str]
     cwd: str
     parsed_cmd: list[ParsedCommand]
 
 
-class ExecCommandEndEvent_Variant1(BaseModel):
+class EventMsg_ExecCommandOutputDelta(BaseModel):
     model_config = ConfigDict(extra="ignore")
+    type: Literal["exec_command_output_delta"]
+    call_id: str
+    stream: ExecOutputStream
+    chunk: str
+
+
+class EventMsg_ExecCommandEnd(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    type: Literal["exec_command_end"]
     call_id: str
     stdout: str
     stderr: str
@@ -504,19 +966,112 @@ class ExecCommandEndEvent_Variant1(BaseModel):
     formatted_output: str
 
 
-class ExecCommandOutputDeltaEvent_Variant1(BaseModel):
+class EventMsg_ExecApprovalRequest(BaseModel):
     model_config = ConfigDict(extra="ignore")
+    type: Literal["exec_approval_request"]
     call_id: str
-    stream: ExecOutputStream
-    chunk: str
-
-
-class ExecOneOffCommandParams_Variant1(BaseModel):
-    model_config = ConfigDict(extra="ignore")
     command: list[str]
-    timeoutMs: int | None = None
-    cwd: str | None = None
-    sandboxPolicy: SandboxPolicy | None = None
+    cwd: str
+    reason: str | None = None
+
+
+class EventMsg_ApplyPatchApprovalRequest(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    type: Literal["apply_patch_approval_request"]
+    call_id: str
+    changes: dict[str, FileChange]
+    reason: str | None = None
+    grant_root: str | None = None
+
+
+class EventMsg_BackgroundEvent(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    type: Literal["background_event"]
+    message: str
+
+
+class EventMsg_StreamError(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    type: Literal["stream_error"]
+    message: str
+
+
+class EventMsg_PatchApplyBegin(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    type: Literal["patch_apply_begin"]
+    call_id: str
+    auto_approved: bool
+    changes: dict[str, FileChange]
+
+
+class EventMsg_PatchApplyEnd(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    type: Literal["patch_apply_end"]
+    call_id: str
+    stdout: str
+    stderr: str
+    success: bool
+
+
+class EventMsg_TurnDiff(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    type: Literal["turn_diff"]
+    unified_diff: str
+
+
+class EventMsg_GetHistoryEntryResponse(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    type: Literal["get_history_entry_response"]
+    offset: float
+    log_id: int
+    entry: HistoryEntry | None = None
+
+
+class EventMsg_McpListToolsResponse(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    type: Literal["mcp_list_tools_response"]
+    tools: dict[str, Tool]
+
+
+class EventMsg_ListCustomPromptsResponse(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    type: Literal["list_custom_prompts_response"]
+    custom_prompts: list[CustomPrompt]
+
+
+class EventMsg_PlanUpdate(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    type: Literal["plan_update"]
+    explanation: str | None = None
+    plan: list[PlanItemArg]
+
+
+class EventMsg_TurnAborted(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    type: Literal["turn_aborted"]
+    reason: TurnAbortReason
+
+
+class EventMsg_ShutdownComplete(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    type: Literal["shutdown_complete"]
+
+
+class EventMsg_ConversationHistory(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    type: Literal["conversation_history"]
+    conversation_id: ConversationId
+    entries: list[ResponseItem]
+
+
+class ExecOutputStream_Variant1(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    pass
+
+
+class ExecOutputStream_Variant2(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    pass
 
 
 class FileChange_Variant1(BaseModel):
@@ -534,219 +1089,69 @@ class FileChange_Variant3(BaseModel):
     update: dict[str, Any]
 
 
-class FunctionCallOutputPayload_Variant1(BaseModel):
-    model_config = ConfigDict(extra="ignore")
-    content: str
-    success: bool | None = None
-
-
-class GetAuthStatusParams_Variant1(BaseModel):
-    model_config = ConfigDict(extra="ignore")
-    includeToken: bool | None = None
-    refreshToken: bool | None = None
-
-
-class GetAuthStatusResponse_Variant1(BaseModel):
-    model_config = ConfigDict(extra="ignore")
-    authMethod: AuthMode | None = None
-    preferredAuthMethod: AuthMode
-    authToken: str | None = None
-
-
-class GetHistoryEntryResponseEvent_Variant1(BaseModel):
-    model_config = ConfigDict(extra="ignore")
-    offset: float
-    log_id: int
-    entry: HistoryEntry | None = None
-
-
-class GetUserAgentResponse_Variant1(BaseModel):
-    model_config = ConfigDict(extra="ignore")
-    userAgent: str
-
-
-class GetUserSavedConfigResponse_Variant1(BaseModel):
-    model_config = ConfigDict(extra="ignore")
-    config: UserSavedConfig
-
-
-class GitDiffToRemoteParams_Variant1(BaseModel):
-    model_config = ConfigDict(extra="ignore")
-    cwd: str
-
-
-class GitDiffToRemoteResponse_Variant1(BaseModel):
-    model_config = ConfigDict(extra="ignore")
-    sha: GitSha
-    diff: str
-
-
-class HistoryEntry_Variant1(BaseModel):
-    model_config = ConfigDict(extra="ignore")
-    conversation_id: str
-    ts: int
-    text: str
-
-
-class ImageContent_Variant1(BaseModel):
-    model_config = ConfigDict(extra="ignore")
-    data: str
-    mimeType: str
-    type: str
-
-
-class InitializeResult_Variant1(BaseModel):
-    model_config = ConfigDict(extra="ignore")
-    capabilities: ServerCapabilities
-    protocolVersion: str
-    serverInfo: McpServerInfo
-
-
-class InputItem_Variant1(BaseModel):
+class InputItem_Text(BaseModel):
     model_config = ConfigDict(extra="ignore")
     type: Literal["text"]
     data: dict[str, Any]
 
 
-class InputItem_Variant2(BaseModel):
+class InputItem_Image(BaseModel):
     model_config = ConfigDict(extra="ignore")
     type: Literal["image"]
     data: dict[str, Any]
 
 
-class InputItem_Variant3(BaseModel):
+class InputItem_LocalImage(BaseModel):
     model_config = ConfigDict(extra="ignore")
     type: Literal["localImage"]
     data: dict[str, Any]
 
 
-class InterruptConversationParams_Variant1(BaseModel):
-    model_config = ConfigDict(extra="ignore")
-    conversationId: ConversationId
-
-
-class InterruptConversationResponse_Variant1(BaseModel):
-    model_config = ConfigDict(extra="ignore")
-    abortReason: TurnAbortReason
-
-
-class ListConversationsParams_Variant1(BaseModel):
-    model_config = ConfigDict(extra="ignore")
-    pageSize: float | None = None
-    cursor: str | None = None
-
-
-class ListConversationsResponse_Variant1(BaseModel):
-    model_config = ConfigDict(extra="ignore")
-    items: list[ConversationSummary]
-    nextCursor: str | None = None
-
-
-class ListCustomPromptsResponseEvent_Variant1(BaseModel):
-    model_config = ConfigDict(extra="ignore")
-    custom_prompts: list[CustomPrompt]
-
-
-class LocalShellAction_Variant1(BaseModel):
+class InputMessageKind_Variant1(BaseModel):
     model_config = ConfigDict(extra="ignore")
     pass
 
 
-class LocalShellExecAction_Variant1(BaseModel):
-    model_config = ConfigDict(extra="ignore")
-    command: list[str]
-    timeout_ms: int | None = None
-    working_directory: str | None = None
-    env: dict[str, str] | None = None
-    user: str | None = None
-
-
-class LoginChatGptCompleteNotification_Variant1(BaseModel):
-    model_config = ConfigDict(extra="ignore")
-    loginId: str
-    success: bool
-    error: str | None = None
-
-
-class LoginChatGptResponse_Variant1(BaseModel):
-    model_config = ConfigDict(extra="ignore")
-    loginId: str
-    authUrl: str
-
-
-class LogoutChatGptResponse(BaseModel):
+class InputMessageKind_Variant2(BaseModel):
     model_config = ConfigDict(extra="ignore")
     pass
 
 
-class McpInvocation_Variant1(BaseModel):
+class InputMessageKind_Variant3(BaseModel):
     model_config = ConfigDict(extra="ignore")
-    server: str
-    tool: str
-    arguments: JsonValue | None = None
+    pass
 
 
-class McpListToolsResponseEvent_Variant1(BaseModel):
+class LocalShellStatus_Variant1(BaseModel):
     model_config = ConfigDict(extra="ignore")
-    tools: dict[str, Tool]
+    pass
 
 
-class McpServerInfo_Variant1(BaseModel):
+class LocalShellStatus_Variant2(BaseModel):
     model_config = ConfigDict(extra="ignore")
-    name: str
-    version: str
-    user_agent: str
+    pass
 
 
-class McpToolCallBeginEvent_Variant1(BaseModel):
+class LocalShellStatus_Variant3(BaseModel):
     model_config = ConfigDict(extra="ignore")
-    call_id: str
-    invocation: McpInvocation
+    pass
 
 
-class McpToolCallEndEvent_Variant1(BaseModel):
-    model_config = ConfigDict(extra="ignore")
-    call_id: str
-    invocation: McpInvocation
-    duration: str
-    result: dict[str, Any]
-
-
-class NewConversationParams_Variant1(BaseModel):
-    model_config = ConfigDict(extra="ignore")
-    model: str | None = None
-    profile: str | None = None
-    cwd: str | None = None
-    approvalPolicy: AskForApproval | None = None
-    sandbox: SandboxMode | None = None
-    config: dict[str, JsonValue] | None = None
-    baseInstructions: str | None = None
-    includePlanTool: bool | None = None
-    includeApplyPatchTool: bool | None = None
-
-
-class NewConversationResponse_Variant1(BaseModel):
-    model_config = ConfigDict(extra="ignore")
-    conversationId: ConversationId
-    model: str
-    rolloutPath: str
-
-
-class ParsedCommand_Variant1(BaseModel):
+class ParsedCommand_Read(BaseModel):
     model_config = ConfigDict(extra="ignore")
     type: Literal["read"]
     cmd: str
     name: str
 
 
-class ParsedCommand_Variant2(BaseModel):
+class ParsedCommand_ListFiles(BaseModel):
     model_config = ConfigDict(extra="ignore")
     type: Literal["list_files"]
     cmd: str
     path: str | None = None
 
 
-class ParsedCommand_Variant3(BaseModel):
+class ParsedCommand_Search(BaseModel):
     model_config = ConfigDict(extra="ignore")
     type: Literal["search"]
     cmd: str
@@ -754,80 +1159,75 @@ class ParsedCommand_Variant3(BaseModel):
     path: str | None = None
 
 
-class ParsedCommand_Variant4(BaseModel):
+class ParsedCommand_Unknown(BaseModel):
     model_config = ConfigDict(extra="ignore")
     type: Literal["unknown"]
     cmd: str
 
 
-class PatchApplyBeginEvent_Variant1(BaseModel):
+class ReasoningEffort_Variant1(BaseModel):
     model_config = ConfigDict(extra="ignore")
-    call_id: str
-    auto_approved: bool
-    changes: dict[str, FileChange]
+    pass
 
 
-class PatchApplyEndEvent_Variant1(BaseModel):
+class ReasoningEffort_Variant2(BaseModel):
     model_config = ConfigDict(extra="ignore")
-    call_id: str
-    stdout: str
-    stderr: str
-    success: bool
+    pass
 
 
-class PlanItemArg_Variant1(BaseModel):
+class ReasoningEffort_Variant3(BaseModel):
     model_config = ConfigDict(extra="ignore")
-    step: str
-    status: StepStatus
+    pass
 
 
-class Profile_Variant1(BaseModel):
+class ReasoningEffort_Variant4(BaseModel):
     model_config = ConfigDict(extra="ignore")
-    model: str | None = None
-    modelProvider: str | None = None
-    approvalPolicy: AskForApproval | None = None
-    modelReasoningEffort: ReasoningEffort | None = None
-    modelReasoningSummary: ReasoningSummary | None = None
-    modelVerbosity: Verbosity | None = None
-    chatgptBaseUrl: str | None = None
+    pass
 
 
-class ReasoningItemContent_Variant1(BaseModel):
+class ReasoningItemContent_ReasoningText(BaseModel):
     model_config = ConfigDict(extra="ignore")
     type: Literal["reasoning_text"]
     text: str
 
 
-class ReasoningItemContent_Variant2(BaseModel):
+class ReasoningItemContent_Text(BaseModel):
     model_config = ConfigDict(extra="ignore")
     type: Literal["text"]
     text: str
 
 
-class ReasoningItemReasoningSummary_Variant1(BaseModel):
-    model_config = ConfigDict(extra="ignore")
-    type: Literal["summary_text"]
-    text: str
-
-
-class RemoveConversationListenerParams_Variant1(BaseModel):
-    model_config = ConfigDict(extra="ignore")
-    subscriptionId: str
-
-
-class RemoveConversationSubscriptionResponse(BaseModel):
+class ReasoningSummary_Variant1(BaseModel):
     model_config = ConfigDict(extra="ignore")
     pass
 
 
-class ResourceLink_Variant1(BaseModel):
+class ReasoningSummary_Variant2(BaseModel):
     model_config = ConfigDict(extra="ignore")
-    name: str
-    type: str
-    uri: str
+    pass
 
 
-class ResponseItem_Variant1(BaseModel):
+class ReasoningSummary_Variant3(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    pass
+
+
+class ReasoningSummary_Variant4(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    pass
+
+
+class RequestId_Variant1(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    pass
+
+
+class RequestId_Variant2(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    pass
+
+
+class ResponseItem_Message(BaseModel):
     model_config = ConfigDict(extra="ignore")
     type: Literal["message"]
     id: str | None = None
@@ -835,14 +1235,14 @@ class ResponseItem_Variant1(BaseModel):
     content: list[ContentItem]
 
 
-class ResponseItem_Variant2(BaseModel):
+class ResponseItem_Reasoning(BaseModel):
     model_config = ConfigDict(extra="ignore")
     type: Literal["reasoning"]
     summary: list[ReasoningItemReasoningSummary]
     encrypted_content: str | None = None
 
 
-class ResponseItem_Variant3(BaseModel):
+class ResponseItem_LocalShellCall(BaseModel):
     model_config = ConfigDict(extra="ignore")
     type: Literal["local_shell_call"]
     id: str | None = None
@@ -851,7 +1251,7 @@ class ResponseItem_Variant3(BaseModel):
     action: LocalShellAction
 
 
-class ResponseItem_Variant4(BaseModel):
+class ResponseItem_FunctionCall(BaseModel):
     model_config = ConfigDict(extra="ignore")
     type: Literal["function_call"]
     id: str | None = None
@@ -860,14 +1260,14 @@ class ResponseItem_Variant4(BaseModel):
     call_id: str
 
 
-class ResponseItem_Variant5(BaseModel):
+class ResponseItem_FunctionCallOutput(BaseModel):
     model_config = ConfigDict(extra="ignore")
     type: Literal["function_call_output"]
     call_id: str
     output: FunctionCallOutputPayload
 
 
-class ResponseItem_Variant6(BaseModel):
+class ResponseItem_CustomToolCall(BaseModel):
     model_config = ConfigDict(extra="ignore")
     type: Literal["custom_tool_call"]
     id: str | None = None
@@ -876,36 +1276,68 @@ class ResponseItem_Variant6(BaseModel):
     input: str
 
 
-class ResponseItem_Variant7(BaseModel):
+class ResponseItem_CustomToolCallOutput(BaseModel):
     model_config = ConfigDict(extra="ignore")
     type: Literal["custom_tool_call_output"]
     call_id: str
     output: str
 
 
-class ResponseItem_Variant8(BaseModel):
+class ResponseItem_WebSearchCall(BaseModel):
     model_config = ConfigDict(extra="ignore")
     type: Literal["web_search_call"]
     id: str | None = None
     action: WebSearchAction
 
 
-class ResponseItem_Variant9(BaseModel):
+class ResponseItem_Other(BaseModel):
     model_config = ConfigDict(extra="ignore")
     type: Literal["other"]
 
 
-class ResumeConversationParams_Variant1(BaseModel):
+class ReviewDecision_Variant1(BaseModel):
     model_config = ConfigDict(extra="ignore")
-    path: str
-    overrides: NewConversationParams | None = None
+    pass
 
 
-class ResumeConversationResponse_Variant1(BaseModel):
+class ReviewDecision_Variant2(BaseModel):
     model_config = ConfigDict(extra="ignore")
-    conversationId: ConversationId
-    model: str
-    initialMessages: list[EventMsg] | None = None
+    pass
+
+
+class ReviewDecision_Variant3(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    pass
+
+
+class ReviewDecision_Variant4(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    pass
+
+
+class Role_Variant1(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    pass
+
+
+class Role_Variant2(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    pass
+
+
+class SandboxMode_Variant1(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    pass
+
+
+class SandboxMode_Variant2(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    pass
+
+
+class SandboxMode_Variant3(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    pass
 
 
 class SandboxPolicy_Variant1(BaseModel):
@@ -924,62 +1356,6 @@ class SandboxPolicy_Variant3(BaseModel):
     network_access: bool
     exclude_tmpdir_env_var: bool
     exclude_slash_tmp: bool
-
-
-class SandboxSettings_Variant1(BaseModel):
-    model_config = ConfigDict(extra="ignore")
-    writableRoots: list[str]
-    networkAccess: bool | None = None
-    excludeTmpdirEnvVar: bool | None = None
-    excludeSlashTmp: bool | None = None
-
-
-class SendUserMessageParams_Variant1(BaseModel):
-    model_config = ConfigDict(extra="ignore")
-    conversationId: ConversationId
-    items: list[InputItem]
-
-
-class SendUserMessageResponse(BaseModel):
-    model_config = ConfigDict(extra="ignore")
-    pass
-
-
-class SendUserTurnParams_Variant1(BaseModel):
-    model_config = ConfigDict(extra="ignore")
-    conversationId: ConversationId
-    items: list[InputItem]
-    cwd: str
-    approvalPolicy: AskForApproval
-    sandboxPolicy: SandboxPolicy
-    model: str
-    effort: ReasoningEffort
-    summary: ReasoningSummary
-
-
-class SendUserTurnResponse(BaseModel):
-    model_config = ConfigDict(extra="ignore")
-    pass
-
-
-class ServerCapabilities_Variant1(BaseModel):
-    model_config = ConfigDict(extra="ignore")
-    pass
-
-
-class ServerCapabilitiesPrompts_Variant1(BaseModel):
-    model_config = ConfigDict(extra="ignore")
-    pass
-
-
-class ServerCapabilitiesResources_Variant1(BaseModel):
-    model_config = ConfigDict(extra="ignore")
-    pass
-
-
-class ServerCapabilitiesTools_Variant1(BaseModel):
-    model_config = ConfigDict(extra="ignore")
-    pass
 
 
 class ServerNotification_AuthStatusChange(BaseModel):
@@ -1008,168 +1384,99 @@ class ServerRequest_ExecCommandApproval(BaseModel):
     params: ExecCommandApprovalParams
 
 
-class SessionConfiguredEvent_Variant1(BaseModel):
-    model_config = ConfigDict(extra="ignore")
-    session_id: ConversationId
-    model: str
-    history_log_id: int
-    history_entry_count: float
-    initial_messages: list[EventMsg] | None = None
-    rollout_path: str
-
-
-class StreamErrorEvent_Variant1(BaseModel):
-    model_config = ConfigDict(extra="ignore")
-    message: str
-
-
-class TaskCompleteEvent_Variant1(BaseModel):
-    model_config = ConfigDict(extra="ignore")
-    last_agent_message: str | None = None
-
-
-class TaskStartedEvent_Variant1(BaseModel):
-    model_config = ConfigDict(extra="ignore")
-    model_context_window: int | None = None
-
-
-class TextContent_Variant1(BaseModel):
-    model_config = ConfigDict(extra="ignore")
-    text: str
-    type: str
-
-
-class TextResourceContents_Variant1(BaseModel):
-    model_config = ConfigDict(extra="ignore")
-    text: str
-    uri: str
-
-
-class TokenCountEvent_Variant1(BaseModel):
-    model_config = ConfigDict(extra="ignore")
-    info: TokenUsageInfo | None = None
-
-
-class TokenUsage_Variant1(BaseModel):
-    model_config = ConfigDict(extra="ignore")
-    input_tokens: int
-    cached_input_tokens: int
-    output_tokens: int
-    reasoning_output_tokens: int
-    total_tokens: int
-
-
-class TokenUsageInfo_Variant1(BaseModel):
-    model_config = ConfigDict(extra="ignore")
-    total_token_usage: TokenUsage
-    last_token_usage: TokenUsage
-    model_context_window: int | None = None
-
-
-class Tool_Variant1(BaseModel):
-    model_config = ConfigDict(extra="ignore")
-    inputSchema: ToolInputSchema
-    name: str
-
-
-class ToolAnnotations_Variant1(BaseModel):
+class StepStatus_Variant1(BaseModel):
     model_config = ConfigDict(extra="ignore")
     pass
 
 
-class ToolInputSchema_Variant1(BaseModel):
+class StepStatus_Variant2(BaseModel):
     model_config = ConfigDict(extra="ignore")
-    type: str
+    pass
 
 
-class ToolOutputSchema_Variant1(BaseModel):
+class StepStatus_Variant3(BaseModel):
     model_config = ConfigDict(extra="ignore")
-    type: str
+    pass
 
 
-class Tools_Variant1(BaseModel):
+class TurnAbortReason_Variant1(BaseModel):
     model_config = ConfigDict(extra="ignore")
-    webSearch: bool | None = None
-    viewImage: bool | None = None
+    pass
 
 
-class TurnAbortedEvent_Variant1(BaseModel):
+class TurnAbortReason_Variant2(BaseModel):
     model_config = ConfigDict(extra="ignore")
-    reason: TurnAbortReason
+    pass
 
 
-class TurnDiffEvent_Variant1(BaseModel):
+class Verbosity_Variant1(BaseModel):
     model_config = ConfigDict(extra="ignore")
-    unified_diff: str
+    pass
 
 
-class UpdatePlanArgs_Variant1(BaseModel):
+class Verbosity_Variant2(BaseModel):
     model_config = ConfigDict(extra="ignore")
-    explanation: str | None = None
-    plan: list[PlanItemArg]
+    pass
 
 
-class UserMessageEvent_Variant1(BaseModel):
+class Verbosity_Variant3(BaseModel):
     model_config = ConfigDict(extra="ignore")
-    message: str
-    kind: InputMessageKind | None = None
+    pass
 
 
-class UserSavedConfig_Variant1(BaseModel):
-    model_config = ConfigDict(extra="ignore")
-    approvalPolicy: AskForApproval | None = None
-    sandboxMode: SandboxMode | None = None
-    sandboxSettings: SandboxSettings | None = None
-    model: str | None = None
-    modelReasoningEffort: ReasoningEffort | None = None
-    modelReasoningSummary: ReasoningSummary | None = None
-    modelVerbosity: Verbosity | None = None
-    tools: Tools | None = None
-    profile: str | None = None
-    profiles: dict[str, Profile]
-
-
-class WebSearchAction_Variant1(BaseModel):
+class WebSearchAction_Search(BaseModel):
     model_config = ConfigDict(extra="ignore")
     type: Literal["search"]
     query: str
 
 
-class WebSearchAction_Variant2(BaseModel):
+class WebSearchAction_Other(BaseModel):
     model_config = ConfigDict(extra="ignore")
     type: Literal["other"]
 
 
-class WebSearchBeginEvent_Variant1(BaseModel):
+class AgentReasoningSectionBreakEvent(BaseModel):
     model_config = ConfigDict(extra="ignore")
-    call_id: str
+    pass
 
 
-class WebSearchEndEvent_Variant1(BaseModel):
+class ArchiveConversationResponse(BaseModel):
     model_config = ConfigDict(extra="ignore")
-    call_id: str
-    query: str
+    pass
 
 
-AddConversationListenerParams = AddConversationListenerParams_Variant1
-AddConversationSubscriptionResponse = AddConversationSubscriptionResponse_Variant1
-AgentMessageDeltaEvent = AgentMessageDeltaEvent_Variant1
-AgentMessageEvent = AgentMessageEvent_Variant1
-AgentReasoningDeltaEvent = AgentReasoningDeltaEvent_Variant1
-AgentReasoningEvent = AgentReasoningEvent_Variant1
-AgentReasoningRawContentDeltaEvent = AgentReasoningRawContentDeltaEvent_Variant1
-AgentReasoningRawContentEvent = AgentReasoningRawContentEvent_Variant1
-Annotations = Annotations_Variant1
-ApplyPatchApprovalParams = ApplyPatchApprovalParams_Variant1
-ApplyPatchApprovalRequestEvent = ApplyPatchApprovalRequestEvent_Variant1
-ApplyPatchApprovalResponse = ApplyPatchApprovalResponse_Variant1
-ArchiveConversationParams = ArchiveConversationParams_Variant1
-AudioContent = AudioContent_Variant1
-AuthStatusChangeNotification = AuthStatusChangeNotification_Variant1
-BackgroundEventEvent = BackgroundEventEvent_Variant1
-BlobResourceContents = BlobResourceContents_Variant1
-CallToolResult = CallToolResult_Variant1
-CancelLoginChatGptParams = CancelLoginChatGptParams_Variant1
+class CancelLoginChatGptResponse(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    pass
+
+
+class LogoutChatGptResponse(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    pass
+
+
+class RemoveConversationSubscriptionResponse(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    pass
+
+
+class SendUserMessageResponse(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    pass
+
+
+class SendUserTurnResponse(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    pass
+
+
+AskForApproval = (
+    AskForApproval_Variant1
+    | AskForApproval_Variant2
+    | AskForApproval_Variant3
+    | AskForApproval_Variant4
+)
+AuthMode = AuthMode_Variant1 | AuthMode_Variant2
 ClientRequest = (
     ClientRequest_NewConversation
     | ClientRequest_ListConversations
@@ -1189,164 +1496,100 @@ ClientRequest = (
     | ClientRequest_GetUserAgent
     | ClientRequest_ExecOneOffCommand
 )
-ContentItem = ContentItem_Variant1 | ContentItem_Variant2 | ContentItem_Variant3
-ConversationHistoryResponseEvent = ConversationHistoryResponseEvent_Variant1
-ConversationSummary = ConversationSummary_Variant1
-CustomPrompt = CustomPrompt_Variant1
-EmbeddedResource = EmbeddedResource_Variant1
-ErrorEvent = ErrorEvent_Variant1
+ContentBlock = (
+    ContentBlock_Variant1
+    | ContentBlock_Variant2
+    | ContentBlock_Variant3
+    | ContentBlock_Variant4
+    | ContentBlock_Variant5
+)
+ContentItem = ContentItem_InputText | ContentItem_InputImage | ContentItem_OutputText
+EmbeddedResourceResource = EmbeddedResourceResource_Variant1 | EmbeddedResourceResource_Variant2
 EventMsg = (
-    EventMsg_Variant1
-    | EventMsg_Variant2
-    | EventMsg_Variant3
-    | EventMsg_Variant4
-    | EventMsg_Variant5
-    | EventMsg_Variant6
-    | EventMsg_Variant7
-    | EventMsg_Variant8
-    | EventMsg_Variant9
-    | EventMsg_Variant10
-    | EventMsg_Variant11
-    | EventMsg_Variant12
-    | EventMsg_Variant13
-    | EventMsg_Variant14
-    | EventMsg_Variant15
-    | EventMsg_Variant16
-    | EventMsg_Variant17
-    | EventMsg_Variant18
-    | EventMsg_Variant19
-    | EventMsg_Variant20
-    | EventMsg_Variant21
-    | EventMsg_Variant22
-    | EventMsg_Variant23
-    | EventMsg_Variant24
-    | EventMsg_Variant25
-    | EventMsg_Variant26
-    | EventMsg_Variant27
-    | EventMsg_Variant28
-    | EventMsg_Variant29
-    | EventMsg_Variant30
-    | EventMsg_Variant31
-    | EventMsg_Variant32
-    | EventMsg_Variant33
-    | EventMsg_Variant34
+    EventMsg_Error
+    | EventMsg_TaskStarted
+    | EventMsg_TaskComplete
+    | EventMsg_TokenCount
+    | EventMsg_AgentMessage
+    | EventMsg_UserMessage
+    | EventMsg_AgentMessageDelta
+    | EventMsg_AgentReasoning
+    | EventMsg_AgentReasoningDelta
+    | EventMsg_AgentReasoningRawContent
+    | EventMsg_AgentReasoningRawContentDelta
+    | EventMsg_AgentReasoningSectionBreak
+    | EventMsg_SessionConfigured
+    | EventMsg_McpToolCallBegin
+    | EventMsg_McpToolCallEnd
+    | EventMsg_WebSearchBegin
+    | EventMsg_WebSearchEnd
+    | EventMsg_ExecCommandBegin
+    | EventMsg_ExecCommandOutputDelta
+    | EventMsg_ExecCommandEnd
+    | EventMsg_ExecApprovalRequest
+    | EventMsg_ApplyPatchApprovalRequest
+    | EventMsg_BackgroundEvent
+    | EventMsg_StreamError
+    | EventMsg_PatchApplyBegin
+    | EventMsg_PatchApplyEnd
+    | EventMsg_TurnDiff
+    | EventMsg_GetHistoryEntryResponse
+    | EventMsg_McpListToolsResponse
+    | EventMsg_ListCustomPromptsResponse
+    | EventMsg_PlanUpdate
+    | EventMsg_TurnAborted
+    | EventMsg_ShutdownComplete
+    | EventMsg_ConversationHistory
 )
-ExecApprovalRequestEvent = ExecApprovalRequestEvent_Variant1
-ExecCommandApprovalParams = ExecCommandApprovalParams_Variant1
-ExecCommandApprovalResponse = ExecCommandApprovalResponse_Variant1
-ExecCommandBeginEvent = ExecCommandBeginEvent_Variant1
-ExecCommandEndEvent = ExecCommandEndEvent_Variant1
-ExecCommandOutputDeltaEvent = ExecCommandOutputDeltaEvent_Variant1
-ExecOneOffCommandParams = ExecOneOffCommandParams_Variant1
+ExecOutputStream = ExecOutputStream_Variant1 | ExecOutputStream_Variant2
 FileChange = FileChange_Variant1 | FileChange_Variant2 | FileChange_Variant3
-FunctionCallOutputPayload = FunctionCallOutputPayload_Variant1
-GetAuthStatusParams = GetAuthStatusParams_Variant1
-GetAuthStatusResponse = GetAuthStatusResponse_Variant1
-GetHistoryEntryResponseEvent = GetHistoryEntryResponseEvent_Variant1
-GetUserAgentResponse = GetUserAgentResponse_Variant1
-GetUserSavedConfigResponse = GetUserSavedConfigResponse_Variant1
-GitDiffToRemoteParams = GitDiffToRemoteParams_Variant1
-GitDiffToRemoteResponse = GitDiffToRemoteResponse_Variant1
-HistoryEntry = HistoryEntry_Variant1
-ImageContent = ImageContent_Variant1
-InitializeResult = InitializeResult_Variant1
-InputItem = InputItem_Variant1 | InputItem_Variant2 | InputItem_Variant3
-InterruptConversationParams = InterruptConversationParams_Variant1
-InterruptConversationResponse = InterruptConversationResponse_Variant1
-ListConversationsParams = ListConversationsParams_Variant1
-ListConversationsResponse = ListConversationsResponse_Variant1
-ListCustomPromptsResponseEvent = ListCustomPromptsResponseEvent_Variant1
-LocalShellAction = LocalShellAction_Variant1
-LocalShellExecAction = LocalShellExecAction_Variant1
-LoginChatGptCompleteNotification = LoginChatGptCompleteNotification_Variant1
-LoginChatGptResponse = LoginChatGptResponse_Variant1
-McpInvocation = McpInvocation_Variant1
-McpListToolsResponseEvent = McpListToolsResponseEvent_Variant1
-McpServerInfo = McpServerInfo_Variant1
-McpToolCallBeginEvent = McpToolCallBeginEvent_Variant1
-McpToolCallEndEvent = McpToolCallEndEvent_Variant1
-NewConversationParams = NewConversationParams_Variant1
-NewConversationResponse = NewConversationResponse_Variant1
+InputItem = InputItem_Text | InputItem_Image | InputItem_LocalImage
+InputMessageKind = InputMessageKind_Variant1 | InputMessageKind_Variant2 | InputMessageKind_Variant3
+LocalShellStatus = LocalShellStatus_Variant1 | LocalShellStatus_Variant2 | LocalShellStatus_Variant3
 ParsedCommand = (
-    ParsedCommand_Variant1
-    | ParsedCommand_Variant2
-    | ParsedCommand_Variant3
-    | ParsedCommand_Variant4
+    ParsedCommand_Read | ParsedCommand_ListFiles | ParsedCommand_Search | ParsedCommand_Unknown
 )
-PatchApplyBeginEvent = PatchApplyBeginEvent_Variant1
-PatchApplyEndEvent = PatchApplyEndEvent_Variant1
-PlanItemArg = PlanItemArg_Variant1
-Profile = Profile_Variant1
-ReasoningItemContent = ReasoningItemContent_Variant1 | ReasoningItemContent_Variant2
-ReasoningItemReasoningSummary = ReasoningItemReasoningSummary_Variant1
-RemoveConversationListenerParams = RemoveConversationListenerParams_Variant1
-ResourceLink = ResourceLink_Variant1
+ReasoningEffort = (
+    ReasoningEffort_Variant1
+    | ReasoningEffort_Variant2
+    | ReasoningEffort_Variant3
+    | ReasoningEffort_Variant4
+)
+ReasoningItemContent = ReasoningItemContent_ReasoningText | ReasoningItemContent_Text
+ReasoningSummary = (
+    ReasoningSummary_Variant1
+    | ReasoningSummary_Variant2
+    | ReasoningSummary_Variant3
+    | ReasoningSummary_Variant4
+)
+RequestId = RequestId_Variant1 | RequestId_Variant2
 ResponseItem = (
-    ResponseItem_Variant1
-    | ResponseItem_Variant2
-    | ResponseItem_Variant3
-    | ResponseItem_Variant4
-    | ResponseItem_Variant5
-    | ResponseItem_Variant6
-    | ResponseItem_Variant7
-    | ResponseItem_Variant8
-    | ResponseItem_Variant9
+    ResponseItem_Message
+    | ResponseItem_Reasoning
+    | ResponseItem_LocalShellCall
+    | ResponseItem_FunctionCall
+    | ResponseItem_FunctionCallOutput
+    | ResponseItem_CustomToolCall
+    | ResponseItem_CustomToolCallOutput
+    | ResponseItem_WebSearchCall
+    | ResponseItem_Other
 )
-ResumeConversationParams = ResumeConversationParams_Variant1
-ResumeConversationResponse = ResumeConversationResponse_Variant1
+ReviewDecision = (
+    ReviewDecision_Variant1
+    | ReviewDecision_Variant2
+    | ReviewDecision_Variant3
+    | ReviewDecision_Variant4
+)
+Role = Role_Variant1 | Role_Variant2
+SandboxMode = SandboxMode_Variant1 | SandboxMode_Variant2 | SandboxMode_Variant3
 SandboxPolicy = SandboxPolicy_Variant1 | SandboxPolicy_Variant2 | SandboxPolicy_Variant3
-SandboxSettings = SandboxSettings_Variant1
-SendUserMessageParams = SendUserMessageParams_Variant1
-SendUserTurnParams = SendUserTurnParams_Variant1
-ServerCapabilities = ServerCapabilities_Variant1
-ServerCapabilitiesPrompts = ServerCapabilitiesPrompts_Variant1
-ServerCapabilitiesResources = ServerCapabilitiesResources_Variant1
-ServerCapabilitiesTools = ServerCapabilitiesTools_Variant1
 ServerNotification = ServerNotification_AuthStatusChange | ServerNotification_LoginChatGptComplete
 ServerRequest = ServerRequest_ApplyPatchApproval | ServerRequest_ExecCommandApproval
-SessionConfiguredEvent = SessionConfiguredEvent_Variant1
-StreamErrorEvent = StreamErrorEvent_Variant1
-TaskCompleteEvent = TaskCompleteEvent_Variant1
-TaskStartedEvent = TaskStartedEvent_Variant1
-TextContent = TextContent_Variant1
-TextResourceContents = TextResourceContents_Variant1
-TokenCountEvent = TokenCountEvent_Variant1
-TokenUsage = TokenUsage_Variant1
-TokenUsageInfo = TokenUsageInfo_Variant1
-Tool = Tool_Variant1
-ToolAnnotations = ToolAnnotations_Variant1
-ToolInputSchema = ToolInputSchema_Variant1
-ToolOutputSchema = ToolOutputSchema_Variant1
-Tools = Tools_Variant1
-TurnAbortedEvent = TurnAbortedEvent_Variant1
-TurnDiffEvent = TurnDiffEvent_Variant1
-UpdatePlanArgs = UpdatePlanArgs_Variant1
-UserMessageEvent = UserMessageEvent_Variant1
-UserSavedConfig = UserSavedConfig_Variant1
-WebSearchAction = WebSearchAction_Variant1 | WebSearchAction_Variant2
-WebSearchBeginEvent = WebSearchBeginEvent_Variant1
-WebSearchEndEvent = WebSearchEndEvent_Variant1
+StepStatus = StepStatus_Variant1 | StepStatus_Variant2 | StepStatus_Variant3
+TurnAbortReason = TurnAbortReason_Variant1 | TurnAbortReason_Variant2
+Verbosity = Verbosity_Variant1 | Verbosity_Variant2 | Verbosity_Variant3
+WebSearchAction = WebSearchAction_Search | WebSearchAction_Other
 
-AskForApproval = (
-    Literal["never"] | Literal["on-failure"] | Literal["on-request"] | Literal["untrusted"]
-)
-AuthMode = Literal["apikey"] | Literal["chatgpt"]
-ContentBlock = AudioContent | EmbeddedResource | ImageContent | ResourceLink | TextContent
 ConversationId = str
-EmbeddedResourceResource = BlobResourceContents | TextResourceContents
-ExecOutputStream = Literal["stderr"] | Literal["stdout"]
 GitSha = str
-InputMessageKind = Literal["environment_context"] | Literal["plain"] | Literal["user_instructions"]
-LocalShellStatus = Literal["completed"] | Literal["in_progress"] | Literal["incomplete"]
-ReasoningEffort = Literal["high"] | Literal["low"] | Literal["medium"] | Literal["minimal"]
-ReasoningSummary = Literal["auto"] | Literal["concise"] | Literal["detailed"] | Literal["none"]
-RequestId = int | str
-ReviewDecision = (
-    Literal["abort"] | Literal["approved"] | Literal["approved_for_session"] | Literal["denied"]
-)
-Role = Literal["assistant"] | Literal["user"]
-SandboxMode = Literal["danger-full-access"] | Literal["read-only"] | Literal["workspace-write"]
-StepStatus = Literal["completed"] | Literal["in_progress"] | Literal["pending"]
-TurnAbortReason = Literal["interrupted"] | Literal["replaced"]
-Verbosity = Literal["high"] | Literal["low"] | Literal["medium"]
 JsonValue = Any

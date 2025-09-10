@@ -4,17 +4,21 @@ import json
 import os
 import subprocess
 from collections.abc import Iterator
+from typing import Any
 
 from pydantic import BaseModel
 
-from .types import EventMsg
-
 
 class Event(BaseModel):
-    """Protocol event envelope emitted by `codex exec --json`."""
+    """Protocol event envelope emitted by `codex exec --json`.
+
+    Note: `msg` is kept as a raw mapping to preserve all fields from
+    intersection types. If you need strong typing, try validating
+    against `codex.protocol.types.EventMsg` manually.
+    """
 
     id: str
-    msg: EventMsg
+    msg: dict[str, Any]
 
 
 def stream_exec_events(
