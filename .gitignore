@@ -45,7 +45,11 @@ coverage.xml
 uv.lock
 
 # Generated artifacts
+# Generated artifacts
 .generated/
+
+# Ignore new markdown files by default
+*.md
 
 # Local environment files
 .env
