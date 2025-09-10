@@ -22,8 +22,10 @@ def stream_exec_events(
     *,
     executable: str = "codex",
     model: str | None = None,
+    oss: bool = False,
     full_auto: bool = False,
     cd: str | None = None,
+    skip_git_repo_check: bool = False,
     env: dict[str, str] | None = None,
 ) -> Iterator[Event]:
     """Spawn `codex exec --json` and yield Event objects from NDJSON stdout.
@@ -35,8 +37,12 @@ def stream_exec_events(
         cmd += ["--cd", cd]
     if model:
         cmd += ["-m", model]
+    if oss:
+        cmd.append("--oss")
     if full_auto:
         cmd.append("--full-auto")
+    if skip_git_repo_check:
+        cmd.append("--skip-git-repo-check")
     cmd += ["exec", "--json", prompt]
 
     with subprocess.Popen(

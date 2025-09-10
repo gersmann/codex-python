@@ -54,7 +54,13 @@ clean:
 gen-protocol:
 	@echo "Generating TypeScript protocol types via codex-proj/codex-rs ..."
 	@mkdir -p .generated/ts
-	@cd codex-proj/codex-rs && cargo run -p codex-protocol-ts -- --out ../../.generated/ts
+	@if command -v codex >/dev/null 2>&1; then \
+		echo "Using 'codex generate-types'"; \
+		codex generate-types --out .generated/ts; \
+	else \
+		echo "Using cargo run -p codex-protocol-ts"; \
+		cd codex-proj/codex-rs && cargo run -p codex-protocol-ts -- --out ../../.generated/ts; \
+	fi
 	@echo "Generating Python bindings ..."
 	@python3 scripts/generate_protocol_py.py .generated/ts
 	@$(MAKE) fmt

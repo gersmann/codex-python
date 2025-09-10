@@ -51,8 +51,10 @@ def run_exec(
     prompt: str,
     *,
     model: str | None = None,
+    oss: bool = False,
     full_auto: bool = False,
     cd: str | None = None,
+    skip_git_repo_check: bool = False,
     timeout: float | None = None,
     env: Mapping[str, str] | None = None,
     executable: str = "codex",
@@ -73,8 +75,12 @@ def run_exec(
         cmd.extend(["--cd", cd])
     if model:
         cmd.extend(["-m", model])
+    if oss:
+        cmd.append("--oss")
     if full_auto:
         cmd.append("--full-auto")
+    if skip_git_repo_check:
+        cmd.append("--skip-git-repo-check")
     if extra_args:
         cmd.extend(list(extra_args))
 
@@ -127,8 +133,10 @@ class CodexClient:
         prompt: str,
         *,
         model: str | None = None,
+        oss: bool | None = None,
         full_auto: bool | None = None,
         cd: str | None = None,
+        skip_git_repo_check: bool | None = None,
         timeout: float | None = None,
         env: Mapping[str, str] | None = None,
         extra_args: Iterable[str] | None = None,
@@ -140,6 +148,8 @@ class CodexClient:
         eff_model = model if model is not None else self.model
         eff_full_auto = full_auto if full_auto is not None else self.full_auto
         eff_cd = cd if cd is not None else self.cd
+        eff_oss = bool(oss) if oss is not None else False
+        eff_skip_git = bool(skip_git_repo_check) if skip_git_repo_check is not None else False
 
         # Merge environment overlays; run_exec will merge with os.environ
         merged_env: Mapping[str, str] | None
@@ -160,8 +170,10 @@ class CodexClient:
         return run_exec(
             prompt,
             model=eff_model,
+            oss=eff_oss,
             full_auto=eff_full_auto,
             cd=eff_cd,
+            skip_git_repo_check=eff_skip_git,
             timeout=timeout,
             env=merged_env,
             executable=self.executable,

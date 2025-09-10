@@ -271,7 +271,7 @@ def generate_from_ts(ts_dir: Path) -> str:
     # Emit data structures first (Pydantic models)
     for td in tdicts:
         out.append(f"class {td.name}(BaseModel):\n")
-        out.append("    model_config = ConfigDict(extra='forbid')\n")
+        out.append("    model_config = ConfigDict(extra='ignore')\n")
         if not td.fields:
             out.append("    pass\n\n")
             continue
