@@ -54,3 +54,8 @@ The format is based on Keep a Changelog and this project adheres to Semantic Ver
 - Ensure distribution naming is consistent for sdist and wheels (`codex-python`).
 
 [0.2.2]: https://github.com/gersmann/codex-python/releases/tag/v0.2.2
+\n+## [0.2.3] - 2025-09-11
+### Fixed
+- Publish workflow: flatten downloaded artifacts with `merge-multiple: true` so `twine` sees files directly in `dist/` (resolves "Unknown distribution format: 'sdist'" / "no packages in dist/").
+
+[0.2.3]: https://github.com/gersmann/codex-python/releases/tag/v0.2.3

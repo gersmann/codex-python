@@ -1,6 +1,6 @@
 [build-system]
-requires = ["hatchling>=1.25"]
-build-backend = "hatchling.build"
+requires = ["maturin>=1.0,<2.0"]
+build-backend = "maturin"
 
 [project]
 name = "codex-python"
@@ -27,12 +27,11 @@ Homepage = "https://github.com/gersmann/codex-python"
 Repository = "https://github.com/gersmann/codex-python"
 Issues = "https://github.com/gersmann/codex-python/issues"
 
-[tool.hatch.version]
-path = "codex/__init__.py"
-
-[tool.hatch.build.targets.wheel]
-packages = ["codex"]
-force-include = { "codex/py.typed" = "codex/py.typed" }
+[tool.maturin]
+# Point maturin to the Rust crate and include this repository's Python sources.
+manifest-path = "crates/codex_native/Cargo.toml"
+python-source = "."
+python-packages = ["codex"]
 
 # Development dependency groups (used by uv)
 [dependency-groups]

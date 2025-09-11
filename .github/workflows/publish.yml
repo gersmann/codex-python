@@ -35,22 +35,27 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
 
-      - name: Install maturin
+      - name: Install build backend
         run: |
           python -m pip install --upgrade pip
-          pip install maturin
+          pip install build maturin
 
-      - name: Build wheels with maturin
+      - name: Sync Python __version__ from Cargo.toml
+        shell: bash
+        run: |
+          python -c "import tomllib, re; from pathlib import Path; c=tomllib.loads(Path('crates/codex_native/Cargo.toml').read_text()); v=c['package']['version']; p=Path('codex/__init__.py'); s=p.read_text(encoding='utf-8'); s=re.sub(r'__version__\\s*=\\s*\"[^\"]*\"', f'__version__ = \"{v}\"', s); p.write_text(s, encoding='utf-8'); print('Synced __version__ =', v)"
+
+      - name: Build wheels with PEP 517 (maturin backend)
         env:
           PYO3_USE_ABI3_FORWARD_COMPATIBILITY: '1'
         run: |
-          maturin build -m crates/codex_native/Cargo.toml --release --interpreter python
+          python -m build --wheel
 
       - name: Upload wheels
         uses: actions/upload-artifact@v4
         with:
           name: wheels-${{ matrix.os }}-${{ matrix.python-version }}
-          path: crates/codex_native/target/wheels/*.whl
+          path: dist/*.whl
 
   build-sdist:
     name: Build sdist
@@ -67,14 +72,19 @@ jobs:
         with:
           python-version: '3.13'
 
-      - name: Install maturin
+      - name: Install build tool
         run: |
           python -m pip install --upgrade pip
-          pip install maturin
+          pip install build maturin
 
-      - name: Build sdist
+      - name: Sync Python __version__ from Cargo.toml
+        shell: bash
         run: |
-          maturin sdist -m crates/codex_native/Cargo.toml --out dist
+          python -c "import tomllib, re; from pathlib import Path; c=tomllib.loads(Path('crates/codex_native/Cargo.toml').read_text()); v=c['package']['version']; p=Path('codex/__init__.py'); s=p.read_text(encoding='utf-8'); s=re.sub(r'__version__\\s*=\\s*\"[^\"]*\"', f'__version__ = \"{v}\"', s); p.write_text(s, encoding='utf-8'); print('Synced __version__ =', v)"
+
+      - name: Build sdist (PEP 517)
+        run: |
+          python -m build --sdist
 
       - name: Upload sdist
         uses: actions/upload-artifact@v4
