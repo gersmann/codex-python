@@ -94,6 +94,17 @@ jobs:
           # Merge all artifacts directly into dist/ so Twine finds files
           merge-multiple: true
 
+      - name: Flatten artifacts into dist/
+        shell: bash
+        run: |
+          shopt -s globstar nullglob
+          mkdir -p dist_flat
+          for f in dist/**/*.whl dist/**/*.tar.gz; do
+            mv "$f" dist_flat/
+          done
+          rm -rf dist
+          mv dist_flat dist
+
       - name: Publish to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
         with:
