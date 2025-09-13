@@ -31,4 +31,4 @@ __all__ = [
 ]
 
 # Package version. Kept in sync with Cargo.toml via CI before builds.
-__version__ = "..1"
+__version__ = "0.2.6"
