@@ -332,7 +332,7 @@ def _ensure_model_auth() -> None:
 def _run_codex(prompt: str) -> str:
     _ensure_model_auth()
 
-    model = os.environ.get("CODEX_MODEL", "gpt-5").strip()
+    model = os.environ.get("CODEX_MODEL", "gpt-4.1").strip()
     provider = os.environ.get("CODEX_PROVIDER", "openai").strip()
 
     # Optional hint for reasoning effort (guidance in instructions)
@@ -344,15 +344,9 @@ def _run_codex(prompt: str) -> str:
         include_apply_patch_tool=False,
         include_view_image_tool=False,
         show_raw_agent_reasoning=False,
-        tools_web_search_request=True,
         model=model,
+        model_reasoning_effort=reasoning_effort,
         model_provider=provider,
-        base_instructions=(
-            "You are a precise code review assistant.\n"
-            "You must respond with a single JSON object, matching the provided schema exactly.\n"
-            "Do not include any Markdown fences or extra commentary.\n"
-            f"Target reasoning effort: {reasoning_effort}."
-        ),
     ).to_dict()
 
     last_msg: str | None = None

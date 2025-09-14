@@ -31,4 +31,5 @@ jobs:
           CODEX_REASONING_EFFORT: medium
           DEBUG_CODEREVIEW: 5
         run: |
+          python3 --version
           python3 scripts/codex_autoreview.py
