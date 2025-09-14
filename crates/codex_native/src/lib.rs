@@ -1,7 +1,5 @@
 use anyhow::{Context, Result};
-use codex_core::config::{
-    find_codex_home, load_config_as_toml_with_cli_overrides, Config, ConfigOverrides, ConfigToml,
-};
+use codex_core::config::{find_codex_home, Config, ConfigOverrides, ConfigToml};
 use codex_core::protocol::{EventMsg, InputItem};
 use codex_core::{AuthManager, ConversationManager};
 // use of SandboxMode is handled within core::config; not needed here
@@ -42,7 +40,6 @@ fn run_exec_collect(
 async fn run_exec_impl(prompt: String, config: Config) -> Result<Vec<JsonValue>> {
     let conversation_manager = ConversationManager::new(AuthManager::shared(
         config.codex_home.clone(),
-        config.preferred_auth_method,
     ));
     let new_conv = conversation_manager.new_conversation(config).await?;
     let conversation = new_conv.conversation.clone();
@@ -274,10 +271,22 @@ fn build_config(
     }
 
     if load_default_config {
+        // Start from built-in defaults and apply CLI + typed overrides.
         Ok(Config::load_with_cli_overrides(cli_overrides, overrides_struct)?)
     } else {
+        // Do NOT read any on-disk config. Build a TOML value purely from CLI-style overrides
+        // and then apply the strongly-typed overrides on top. We still resolve CODEX_HOME to
+        // pass through for paths/auth handling, but we avoid parsing a config file.
         let codex_home = find_codex_home()?;
-        let cfg = load_config_as_toml_with_cli_overrides(&codex_home, cli_overrides)?;
+
+        // Build a base TOML value from dotted CLI overrides only (no file IO).
+        let mut base_tbl: TomlTable = TomlTable::new();
+        for (k, v) in cli_overrides.into_iter() {
+            insert_dotted_toml(&mut base_tbl, &k, v);
+        }
+
+        let root_value = TomlValue::Table(base_tbl);
+        let cfg: ConfigToml = root_value.try_into().map_err(|e| anyhow::anyhow!(e))?;
         Ok(Config::load_from_base_config_with_overrides(cfg, overrides_struct, codex_home)?)
     }
 }
@@ -350,12 +359,46 @@ fn flatten_overrides(out: &mut Vec<(String, TomlValue)>, prefix: &str, val: Toml
     }
 }
 
+/// Insert a TOML value into `tbl` at a dotted path like "a.b.c".
+fn insert_dotted_toml(tbl: &mut TomlTable, dotted: &str, val: TomlValue) {
+    let parts: Vec<&str> = dotted.split('.').collect();
+    insert_parts(tbl, &parts, val);
+}
+
+fn insert_parts(current: &mut TomlTable, parts: &[&str], val: TomlValue) {
+    if parts.is_empty() {
+        return;
+    }
+    if parts.len() == 1 {
+        current.insert(parts[0].to_string(), val);
+        return;
+    }
+
+    let key = parts[0].to_string();
+    // Get or create an intermediate table at this segment.
+    if let Some(existing) = current.get_mut(&key) {
+        match existing {
+            TomlValue::Table(ref mut t) => {
+                insert_parts(t, &parts[1..], val);
+            }
+            _ => {
+                let mut next = TomlTable::new();
+                insert_parts(&mut next, &parts[1..], val);
+                *existing = TomlValue::Table(next);
+            }
+        }
+    } else {
+        let mut next = TomlTable::new();
+        insert_parts(&mut next, &parts[1..], val);
+        current.insert(key, TomlValue::Table(next));
+    }
+}
+
 fn run_exec_stream_impl(prompt: String, config: Config, tx: mpsc::Sender<JsonValue>) -> Result<()> {
     let rt = tokio::runtime::Runtime::new()?;
     rt.block_on(async move {
         let conversation_manager = ConversationManager::new(AuthManager::shared(
             config.codex_home.clone(),
-            config.preferred_auth_method,
         ));
         let new_conv = conversation_manager.new_conversation(config).await?;
         let conversation = new_conv.conversation.clone();

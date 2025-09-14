@@ -4,7 +4,7 @@ from collections.abc import Iterable, Iterator, Mapping, Sequence
 from dataclasses import dataclass
 
 from .config import CodexConfig
-from .event import Event
+from .event import AnyEventMsg, Event
 from .native import run_exec_collect as native_run_exec_collect
 from .native import start_exec_stream as native_start_exec_stream
 
@@ -32,7 +32,15 @@ class Conversation:
     def __iter__(self) -> Iterator[Event]:
         """Yield `Event` objects from the native stream."""
         for item in self._stream:
-            yield Event.model_validate(item)
+            try:
+                yield Event.model_validate(item)
+            except Exception:
+                ev_id = item.get("id") if isinstance(item, dict) else None
+                msg_obj = item.get("msg") if isinstance(item, dict) else None
+                if isinstance(msg_obj, dict) and isinstance(msg_obj.get("type"), str):
+                    yield Event(id=ev_id or "unknown", msg=AnyEventMsg(**msg_obj))
+                else:
+                    yield Event(id=ev_id or "unknown", msg=AnyEventMsg(type="unknown"))
 
 
 @dataclass(slots=True)
@@ -88,6 +96,18 @@ def run_exec(
             config_overrides=config.to_dict() if config else None,
             load_default_config=load_default_config,
         )
-        return [Event.model_validate(e) for e in events]
     except RuntimeError as e:
         raise CodexNativeError() from e
+
+    out: list[Event] = []
+    for item in events:
+        try:
+            out.append(Event.model_validate(item))
+        except Exception:
+            ev_id = item.get("id") if isinstance(item, dict) else None
+            msg_obj = item.get("msg") if isinstance(item, dict) else None
+            if isinstance(msg_obj, dict) and isinstance(msg_obj.get("type"), str):
+                out.append(Event(id=ev_id or "unknown", msg=AnyEventMsg(**msg_obj)))
+            else:
+                out.append(Event(id=ev_id or "unknown", msg=AnyEventMsg(type="unknown")))
+    return out

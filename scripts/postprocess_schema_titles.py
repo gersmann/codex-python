@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 from __future__ import annotations
 
+import argparse
 import json
-import sys
 from pathlib import Path
 
 TARGETS = [
@@ -68,9 +68,11 @@ def add_titles(schema: dict) -> tuple[bool, int]:
 
 
 def relax_required_for_nullables(schema: dict) -> tuple[bool, int]:
-    defs = schema.get("definitions") or schema.get("$defs")
-    if not isinstance(defs, dict):
-        return (False, 0)
+    """Recursively remove nullable properties from 'required' arrays.
+
+    Applies to the whole schema tree, not just top-level $defs/definitions, to
+    capture inline object schemas generated within oneOf/anyOf branches.
+    """
     changed = False
     count = 0
 
@@ -80,6 +82,8 @@ def relax_required_for_nullables(schema: dict) -> tuple[bool, int]:
         t = prop_schema.get("type")
         if isinstance(t, list) and "null" in t:
             return True
+        if t == "null":
+            return True
         for key in ("anyOf", "oneOf"):
             arr = prop_schema.get(key)
             if isinstance(arr, list):
@@ -88,18 +92,36 @@ def relax_required_for_nullables(schema: dict) -> tuple[bool, int]:
                         return True
         return False
 
-    for defn in defs.values():
-        if not isinstance(defn, dict):
-            continue
-        props = defn.get("properties")
-        req = defn.get("required")
-        if not isinstance(props, dict) or not isinstance(req, list):
-            continue
-        new_req = [name for name in req if not prop_is_nullable(props.get(name, {}))]
-        if len(new_req) != len(req):
-            defn["required"] = new_req
-            changed = True
-            count += len(req) - len(new_req)
+    def walk(node: object) -> None:
+        nonlocal changed, count
+        if isinstance(node, dict):
+            props = node.get("properties")
+            req = node.get("required")
+            if isinstance(props, dict) and isinstance(req, list):
+                new_req = [name for name in req if not prop_is_nullable(props.get(name, {}))]
+                if len(new_req) != len(req):
+                    node["required"] = new_req
+                    changed = True
+                    count += len(req) - len(new_req)
+            # Recurse into common schema containers
+            for k in ("items", "additionalProperties", "not"):
+                if isinstance(node.get(k), dict):
+                    walk(node[k])
+            for k in ("anyOf", "oneOf", "allOf"):
+                arr = node.get(k)
+                if isinstance(arr, list):
+                    for sub in arr:
+                        walk(sub)
+            for k in ("definitions", "$defs", "patternProperties"):
+                m = node.get(k)
+                if isinstance(m, dict):
+                    for sub in m.values():
+                        walk(sub)
+        elif isinstance(node, list):
+            for sub in node:
+                walk(sub)
+
+    walk(schema)
     return changed, count
 
 
@@ -243,20 +265,106 @@ def enforce_integer_fields(schema: dict) -> int:
     return changed
 
 
+def enforce_duration_union(schema: dict) -> int:
+    """Allow duration fields to be either string or {secs,nanos} object.
+
+    Some upstream emitters serialize Rust `Duration` as an object
+    `{secs, nanos}` while the TypeScript schema uses `string`.
+    To tolerate both without breaking older clients, convert any
+    property named `duration` that is currently `type: string` into
+    a `oneOf: [string, {secs:int, nanos:int}]`.
+    Applies recursively across the schema tree.
+    """
+    changed = 0
+
+    def patch_prop(node: dict) -> bool:
+        t = node.get("type")
+        if t == "string":
+            desc = node.get("description")
+            node.clear()
+            node["oneOf"] = [
+                {"type": "string", **({"description": desc} if desc else {})},
+                {
+                    "type": "object",
+                    "properties": {
+                        "secs": {"type": "integer"},
+                        "nanos": {"type": "integer"},
+                    },
+                    "required": ["secs", "nanos"],
+                    "additionalProperties": False,
+                    **({"description": desc} if desc else {}),
+                },
+            ]
+            return True
+        return False
+
+    def walk(node: object) -> None:
+        nonlocal changed
+        if isinstance(node, dict):
+            props = node.get("properties")
+            if (
+                isinstance(props, dict)
+                and "duration" in props
+                and isinstance(props["duration"], dict)
+            ):
+                if patch_prop(props["duration"]):
+                    changed += 1
+            # Recurse
+            for k in ("items", "additionalProperties", "not"):
+                if isinstance(node.get(k), dict):
+                    walk(node[k])
+            for k in ("anyOf", "oneOf", "allOf"):
+                arr = node.get(k)
+                if isinstance(arr, list):
+                    for sub in arr:
+                        walk(sub)
+            for k in ("definitions", "$defs", "patternProperties"):
+                m = node.get(k)
+                if isinstance(m, dict):
+                    for sub in m.values():
+                        walk(sub)
+        elif isinstance(node, list):
+            for sub in node:
+                walk(sub)
+
+    walk(schema)
+    return changed
+
+
 def main() -> int:
-    path = (
-        Path(sys.argv[1]) if len(sys.argv) > 1 else Path(".generated/schema/protocol.schema.json")
+    parser = argparse.ArgumentParser(
+        description="Post-process generated JSON Schema: add titles/hoist, integer coercions, and optional tweaks",
     )
+    parser.add_argument(
+        "schema",
+        nargs="?",
+        default=Path(".generated/schema/protocol.schema.json"),
+        type=Path,
+        help="Path to protocol.schema.json",
+    )
+    parser.add_argument(
+        "--relax-nullable-required",
+        action="store_true",
+        help="If set, remove nullable properties from 'required' to make them optional in Python.",
+    )
+    args = parser.parse_args()
+
+    path: Path = args.schema
     data = json.loads(path.read_text())
     t_changed, t_added = add_titles(data)
-    r_changed, r_count = relax_required_for_nullables(data)
+    r_changed = False
+    r_count = 0
+    if args.relax_nullable_required:
+        r_changed, r_count = relax_required_for_nullables(data)
     id_fixed = enforce_request_id_integer(data)
     exit_fixed = enforce_exec_exit_code_integer(data)
     coerced = enforce_integer_fields(data)
-    if t_changed or r_changed or id_fixed or exit_fixed or coerced:
+    durations = enforce_duration_union(data)
+    if t_changed or r_changed or id_fixed or exit_fixed or coerced or durations:
         path.write_text(json.dumps(data, indent=2, ensure_ascii=False) + "\n")
     print(
-        f"Schema postprocess: titles+hoist added={t_added}, relaxed_required={r_count}, requestId_fixed={'yes' if id_fixed else 'no'}, exit_code_fixed={'yes' if exit_fixed else 'no'}, integers_coerced={coerced} in {path.name}"
+        f"Schema postprocess: titles+hoist added={t_added}, relaxed_required={r_count if args.relax_nullable_required else 0}, "
+        f"requestId_fixed={'yes' if id_fixed else 'no'}, exit_code_fixed={'yes' if exit_fixed else 'no'}, integers_coerced={coerced}, durations_patched={durations} in {path.name}"
     )
     return 0
 

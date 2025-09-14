@@ -49,42 +49,14 @@ def main() -> int:
         lines.insert(insert_at, "# ruff: noqa: F821")
         s = "\n".join(lines) + ("\n" if not s.endswith("\n") else "")
 
-    # Convert optional fields that were marked required via Field(...)
-    # Examples to fix:
-    #   foo: str | None = Field(..., description='x')  -> Field(None, ...)
-    #   foo: Optional[int] = Field(...)               -> Field(None)
-    def _fix_optional_field_required(text: str) -> str:
-        # With kwargs, union syntax
-        text = re.sub(
-            r"^(\s+[A-Za-z_][A-Za-z0-9_]*\s*:\s*[^\n=]*\|\s*None\s*=\s*)Field\(\s*\.\.\.(\s*,[^)]*)\)",
-            r"\1Field(None\2)",
-            text,
-            flags=re.M,
-        )
-        # Without kwargs, union syntax
-        text = re.sub(
-            r"^(\s+[A-Za-z_][A-Za-z0-9_]*\s*:\s*[^\n=]*\|\s*None\s*=\s*)Field\(\s*\.\.\.\s*\)",
-            r"\1Field(None)",
-            text,
-            flags=re.M,
-        )
-        # With kwargs, Optional[...] syntax
-        text = re.sub(
-            r"^(\s+[A-Za-z_][A-Za-z0-9_]*\s*:\s*Optional\[[^\]]+\]\s*=\s*)Field\(\s*\.\.\.(\s*,[^)]*)\)",
-            r"\1Field(None\2)",
-            text,
-            flags=re.M,
-        )
-        # Without kwargs, Optional[...] syntax
-        text = re.sub(
-            r"^(\s+[A-Za-z_][A-Za-z0-9_]*\s*:\s*Optional\[[^\]]+\]\s*=\s*)Field\(\s*\.\.\.\s*\)",
-            r"\1Field(None)",
-            text,
-            flags=re.M,
-        )
-        return text
-
-    s = _fix_optional_field_required(s)
+    # Rename awkward auto-generated aliases to more readable names.
+    # Example: datamodel-codegen renders TS Record<string, never> as "Record3Cstring2Cnever3E".
+    rename_map = {
+        "Record3Cstring2Cnever3E": "EmptyObject",
+    }
+    for old, new in rename_map.items():
+        # Replace class declarations and all references (word boundary safe)
+        s = re.sub(rf"\b{old}\b", new, s)
 
     # Append model_rebuild() calls for union RootModel wrappers to resolve forward refs
     wrappers = [

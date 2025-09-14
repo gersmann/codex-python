@@ -129,9 +129,10 @@ fn run_typescript_json_schema(tsconfig_path: &Path, schema_path: &Path) -> Resul
         ));
     }
 
+    // Require ts-json-schema-generator v2.x (no legacy fallback).
     let status = Command::new(npx)
         .arg("--yes")
-        .arg("ts-json-schema-generator@1.5.1")
+        .arg("ts-json-schema-generator@^2")
         .arg("--path")
         .arg(&entry)
         .arg("--tsconfig")
