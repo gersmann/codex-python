@@ -41,12 +41,18 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        platform: [linux-x86_64, linux-aarch64, macos-universal2, windows-amd64]
+        platform: [linux-x86_64, linux-aarch64, linux-musl-x86_64, linux-musl-aarch64, macos-universal2, windows-amd64]
         include:
           - platform: linux-x86_64
             os: ubuntu-latest
             python-interpreter: python3.12
           - platform: linux-aarch64
+            os: ubuntu-latest
+            python-interpreter: python3.12
+          - platform: linux-musl-x86_64
+            os: ubuntu-latest
+            python-interpreter: python3.12
+          - platform: linux-musl-aarch64
             os: ubuntu-latest
             python-interpreter: python3.12
           - platform: macos-universal2
@@ -64,35 +70,42 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
 
       - name: Set up Python (host)
-        if: ${{ matrix.platform != 'linux-x86_64' && matrix.platform != 'linux-aarch64' }}
+        if: ${{ matrix.platform == 'macos-universal2' || matrix.platform == 'windows-amd64' }}
         uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-interpreter }}
 
       - name: Install build backend (host)
-        if: ${{ matrix.platform != 'linux-x86_64' && matrix.platform != 'linux-aarch64' }}
+        if: ${{ matrix.platform == 'macos-universal2' || matrix.platform == 'windows-amd64' }}
         run: |
           python -m pip install --upgrade pip
           pip install build maturin
 
       - name: Setup QEMU (for cross aarch64)
-        if: ${{ matrix.platform == 'linux-aarch64' }}
+        if: ${{ matrix.platform == 'linux-aarch64' || matrix.platform == 'linux-musl-aarch64' }}
         uses: docker/setup-qemu-action@v3
 
       - name: Build Linux x86_64 wheel (manylinux2014)
         if: ${{ matrix.platform == 'linux-x86_64' }}
         uses: PyO3/maturin-action@v1
+        env:
+          # Ensure glibc exposes htobe*/be*toh macros in <endian.h>
+          CFLAGS: -D_DEFAULT_SOURCE -D_BSD_SOURCE
         with:
           manylinux: '2014'
           command: build
           before-script-linux: |
             yum -y install curl perl-core >/dev/null 2>&1 || true
             (perl -MText::Template -e1 >/dev/null 2>&1 || (curl -sL https://cpanmin.us | perl - App::cpanminus Text::Template >/dev/null))
-          args: --release -m crates/codex_native/Cargo.toml -i ${{ matrix.python-interpreter }} -o dist
+          # Build via root pyproject so distribution name is 'codex-python'
+          # Use the default container python since we build abi3 once.
+          args: --release -i python3.12 -o dist
 
       - name: Build Linux aarch64 wheel (manylinux2014)
         if: ${{ matrix.platform == 'linux-aarch64' }}
         uses: PyO3/maturin-action@v1
+        env:
+          CFLAGS: -D_DEFAULT_SOURCE -D_BSD_SOURCE
         with:
           manylinux: '2014'
           target: aarch64-unknown-linux-gnu
@@ -100,22 +113,57 @@ jobs:
           before-script-linux: |
             yum -y install curl perl-core >/dev/null 2>&1 || true
             (perl -MText::Template -e1 >/dev/null 2>&1 || (curl -sL https://cpanmin.us | perl - App::cpanminus Text::Template >/dev/null))
-          args: --release -m crates/codex_native/Cargo.toml -i ${{ matrix.python-interpreter }} -o dist
+          # Build via root pyproject so distribution name is 'codex-python'
+          # Use the default container python since we build abi3 once.
+          args: --release -i python3.12 -o dist
+
+      - name: Build Linux x86_64 wheel (musllinux_1_2)
+        if: ${{ matrix.platform == 'linux-musl-x86_64' }}
+        uses: PyO3/maturin-action@v1
+        env:
+          CFLAGS: -D_DEFAULT_SOURCE -D_BSD_SOURCE
+        with:
+          manylinux: 'musllinux_1_2'
+          target: x86_64-unknown-linux-musl
+          command: build
+          before-script-linux: |
+            apk add --no-cache curl perl perl-text-template >/dev/null 2>&1 || true
+          # Build via root pyproject so distribution name is 'codex-python'
+          # Use the default container python since we build abi3 once.
+          args: --release -i python3.12 -o dist
+
+      - name: Build Linux aarch64 wheel (musllinux_1_2)
+        if: ${{ matrix.platform == 'linux-musl-aarch64' }}
+        uses: PyO3/maturin-action@v1
+        env:
+          CFLAGS: -D_DEFAULT_SOURCE -D_BSD_SOURCE
+        with:
+          manylinux: 'musllinux_1_2'
+          target: aarch64-unknown-linux-musl
+          command: build
+          before-script-linux: |
+            apk add --no-cache curl perl perl-text-template >/dev/null 2>&1 || true
+          # Build via root pyproject so distribution name is 'codex-python'
+          # Use the default container python since we build abi3 once.
+          args: --release -i python3.12 -o dist
 
       - name: Build macOS universal2 wheel
         if: ${{ matrix.platform == 'macos-universal2' }}
         run: |
           python -m pip install --upgrade pip
           pip install maturin
+          rustup target add x86_64-apple-darwin aarch64-apple-darwin
           # maturin >=1.0 removed --universal2; use --target universal2-apple-darwin
-          maturin build --release -m crates/codex_native/Cargo.toml -i python -o dist --target universal2-apple-darwin
+          # Build via root pyproject so distribution name is 'codex-python'
+          maturin build --release -i python -o dist --target universal2-apple-darwin
 
       - name: Build Windows wheel
         if: ${{ matrix.platform == 'windows-amd64' }}
         run: |
           python -m pip install --upgrade pip
           pip install maturin
-          maturin build --release -m crates/codex_native/Cargo.toml -i python -o dist
+          # Build via root pyproject so distribution name is 'codex-python'
+          maturin build --release -i python -o dist
 
       - name: Upload wheels
         uses: actions/upload-artifact@v4
