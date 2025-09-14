@@ -27,7 +27,8 @@ def main() -> int:
         lambda m: f"class {m.group(1)}(RootModel):",
         s,
     )
-    s = _re.sub(r"(\s+root:\s*\([^\)]+\))", r"\1  # noqa: F821", s)
+    # Avoid inserting inline comments before Field(...) assignments on the root line,
+    # rely on the file-level ruff directive instead.
     # If previous runs introduced quotes around variant names, strip them inside union lines
     s = _re.sub(
         r"'((?:EventMsg|ClientRequest|ServerRequest|ServerNotification|InputItem)[A-Za-z0-9_]+)'",
