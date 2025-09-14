@@ -7,7 +7,7 @@ help:
 	@echo "  make build    - Build sdist and wheel with uv"
 	@echo "  make publish  - Publish to PyPI via uv (uses PYPI_API_TOKEN)"
 	@echo "  make clean    - Remove build artifacts"
-	@echo "  make gen-protocol - Generate Python protocol bindings from codex-rs"
+	@echo "  make gen-protocol - Generate Python protocol bindings (TS -> JSON Schema -> Pydantic)"
 	@echo "  make wheelhouse-linux    - Prebuild manylinux & musllinux wheels (x86_64, aarch64)"
 	@echo "  make wheelhouse-clean    - Remove wheelhouse/"
 
@@ -53,23 +53,24 @@ publish: build
 clean:
 	rm -rf build dist *.egg-info .pytest_cache .mypy_cache .ruff_cache
 
+.PHONY: gen-protocol
 gen-protocol:
-	@echo "Generating TypeScript protocol types via codex-proj/codex-rs ..."
-	@mkdir -p .generated/ts
-	@if command -v codex >/dev/null 2>&1; then \
-		if codex --help | grep -q "generate-ts"; then \
-			echo "Using 'codex generate-ts'"; \
-			codex generate-ts --out .generated/ts; \
-		else \
-			echo "'codex' installed but no generate-ts; falling back"; \
-			cd codex-proj/codex-rs && cargo run -p codex-protocol-ts -- --out ../../.generated/ts; \
-		fi; \
-	else \
-		echo "Using cargo run -p codex-protocol-ts"; \
-		cd codex-proj/codex-rs && cargo run -p codex-protocol-ts -- --out ../../.generated/ts; \
-	fi
-	@echo "Generating Python bindings ..."
-	@python3 scripts/generate_protocol_py.py .generated/ts
+	@echo "Generating JSON Schema for protocol types (via codex-native helper)..."
+	@cargo run -q --manifest-path crates/codex_native/Cargo.toml --bin codex-protocol-schema -- --ts-out .generated/ts --schema-out .generated/schema
+	@echo "Post-processing schema for readable union variant names..."
+	@python3 scripts/postprocess_schema_titles.py
+	@echo "Converting JSON Schema to Pydantic models (codex/protocol/types.py)..."
+	@uv run --group dev datamodel-codegen \
+		--input .generated/schema/protocol.schema.json \
+		--input-file-type jsonschema \
+		--output-model-type pydantic_v2.BaseModel \
+		--base-class codex.protocol._base_model.BaseModelWithExtras \
+		--use-union-operator \
+		--use-standard-collections \
+		--use-title-as-name \
+		--target-python-version 3.12 \
+		--output codex/protocol/types.py
+	@python3 scripts/postprocess_protocol_types.py
 	@$(MAKE) fmt
 
 .PHONY: build-native dev-native
