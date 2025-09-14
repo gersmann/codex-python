@@ -45,12 +45,9 @@ coverage.xml
 uv.lock
 
 # Generated artifacts
-# Generated artifacts
 .generated/
 codex-proj/
 .githooks/
-test/
-tests/
 
 # Ignore new markdown files by default
 *.md
