@@ -103,6 +103,26 @@ def relax_required_for_nullables(schema: dict) -> tuple[bool, int]:
     return changed, count
 
 
+def enforce_request_id_integer(schema: dict) -> bool:
+    # Force RequestId to be string|integer (not number) so Python maps to str|int
+    defs = schema.get("definitions") or schema.get("$defs")
+    if not isinstance(defs, dict):
+        return False
+    node = defs.get("RequestId")
+    if not isinstance(node, dict):
+        return False
+    current = node.get("type")
+    desired = ["string", "integer"]
+    if current != desired:
+        node["type"] = desired
+        # remove other conflicting keys if any
+        for k in ("anyOf", "oneOf"):
+            if k in node:
+                node.pop(k)
+        return True
+    return False
+
+
 def main() -> int:
     path = (
         Path(sys.argv[1]) if len(sys.argv) > 1 else Path(".generated/schema/protocol.schema.json")
@@ -110,10 +130,11 @@ def main() -> int:
     data = json.loads(path.read_text())
     t_changed, t_added = add_titles(data)
     r_changed, r_count = relax_required_for_nullables(data)
-    if t_changed or r_changed:
+    id_fixed = enforce_request_id_integer(data)
+    if t_changed or r_changed or id_fixed:
         path.write_text(json.dumps(data, indent=2, ensure_ascii=False) + "\n")
     print(
-        f"Schema postprocess: titles+hoist added={t_added}, relaxed_required={r_count} in {path.name}"
+        f"Schema postprocess: titles+hoist added={t_added}, relaxed_required={r_count}, requestId_fixed={'yes' if id_fixed else 'no'} in {path.name}"
     )
     return 0
 
