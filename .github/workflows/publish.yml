@@ -96,7 +96,7 @@ jobs:
             (perl -MText::Template -e1 >/dev/null 2>&1 || (curl -sL https://cpanmin.us | perl - App::cpanminus Text::Template >/dev/null))
           # Build via root pyproject so distribution name is 'codex-python'
           # Use the default container python since we build abi3 once.
-          args: --release -i python -o dist
+          args: --release -i python3.12 -o dist
 
       - name: Build Linux aarch64 wheel (manylinux2014)
         if: ${{ matrix.platform == 'linux-aarch64' }}
@@ -110,7 +110,7 @@ jobs:
             (perl -MText::Template -e1 >/dev/null 2>&1 || (curl -sL https://cpanmin.us | perl - App::cpanminus Text::Template >/dev/null))
           # Build via root pyproject so distribution name is 'codex-python'
           # Use the default container python since we build abi3 once.
-          args: --release -i python -o dist
+          args: --release -i python3.12 -o dist
 
       - name: Build Linux x86_64 wheel (musllinux_1_2)
         if: ${{ matrix.platform == 'linux-musl-x86_64' }}
@@ -123,7 +123,7 @@ jobs:
             apk add --no-cache curl perl perl-text-template >/dev/null 2>&1 || true
           # Build via root pyproject so distribution name is 'codex-python'
           # Use the default container python since we build abi3 once.
-          args: --release -i python -o dist
+          args: --release -i python3.12 -o dist
 
       - name: Build Linux aarch64 wheel (musllinux_1_2)
         if: ${{ matrix.platform == 'linux-musl-aarch64' }}
@@ -136,7 +136,7 @@ jobs:
             apk add --no-cache curl perl perl-text-template >/dev/null 2>&1 || true
           # Build via root pyproject so distribution name is 'codex-python'
           # Use the default container python since we build abi3 once.
-          args: --release -i python -o dist
+          args: --release -i python3.12 -o dist
 
       - name: Build macOS universal2 wheel
         if: ${{ matrix.platform == 'macos-universal2' }}
