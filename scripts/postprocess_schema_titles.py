@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 from __future__ import annotations
 
+import argparse
 import json
-import sys
 from pathlib import Path
 
 TARGETS = [
@@ -244,19 +244,38 @@ def enforce_integer_fields(schema: dict) -> int:
 
 
 def main() -> int:
-    path = (
-        Path(sys.argv[1]) if len(sys.argv) > 1 else Path(".generated/schema/protocol.schema.json")
+    parser = argparse.ArgumentParser(
+        description="Post-process generated JSON Schema: add titles/hoist, integer coercions, and optional tweaks",
     )
+    parser.add_argument(
+        "schema",
+        nargs="?",
+        default=Path(".generated/schema/protocol.schema.json"),
+        type=Path,
+        help="Path to protocol.schema.json",
+    )
+    parser.add_argument(
+        "--relax-nullable-required",
+        action="store_true",
+        help="If set, remove nullable properties from 'required' to make them optional in Python.",
+    )
+    args = parser.parse_args()
+
+    path: Path = args.schema
     data = json.loads(path.read_text())
     t_changed, t_added = add_titles(data)
-    r_changed, r_count = relax_required_for_nullables(data)
+    r_changed = False
+    r_count = 0
+    if args.relax_nullable_required:
+        r_changed, r_count = relax_required_for_nullables(data)
     id_fixed = enforce_request_id_integer(data)
     exit_fixed = enforce_exec_exit_code_integer(data)
     coerced = enforce_integer_fields(data)
     if t_changed or r_changed or id_fixed or exit_fixed or coerced:
         path.write_text(json.dumps(data, indent=2, ensure_ascii=False) + "\n")
     print(
-        f"Schema postprocess: titles+hoist added={t_added}, relaxed_required={r_count}, requestId_fixed={'yes' if id_fixed else 'no'}, exit_code_fixed={'yes' if exit_fixed else 'no'}, integers_coerced={coerced} in {path.name}"
+        f"Schema postprocess: titles+hoist added={t_added}, relaxed_required={r_count if args.relax_nullable_required else 0}, "
+        f"requestId_fixed={'yes' if id_fixed else 'no'}, exit_code_fixed={'yes' if exit_fixed else 'no'}, integers_coerced={coerced} in {path.name}"
     )
     return 0
 

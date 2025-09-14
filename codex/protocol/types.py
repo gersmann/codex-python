@@ -58,7 +58,7 @@ class AuthMode(Enum):
 
 class AuthStatusChangeNotification(BaseModelWithExtras):
     authMethod: AuthMode | None = Field(
-        None, description="Current authentication method; omitted if signed out."
+        ..., description="Current authentication method; omitted if signed out."
     )
 
 
@@ -104,8 +104,7 @@ class ConversationSummary(BaseModelWithExtras):
     path: str
     preview: str
     timestamp: str | None = Field(
-        None,
-        description="RFC3339 timestamp string for the session start, if available.",
+        ..., description="RFC3339 timestamp string for the session start, if available."
     )
 
 
@@ -124,7 +123,7 @@ class ExecApprovalRequestEvent(BaseModelWithExtras):
     command: list[str] = Field(..., description="The command to be executed.")
     cwd: str = Field(..., description="The command's working directory.")
     reason: str | None = Field(
-        None,
+        ...,
         description="Optional human-readable reason for the approval (e.g. retry without sandbox).",
     )
 
@@ -193,11 +192,11 @@ class FunctionCallOutputPayload(BaseModelWithExtras):
 
 class GetAuthStatusParams(BaseModelWithExtras):
     includeToken: bool | None = Field(
-        None,
+        ...,
         description="If true, include the current auth token (if available) in the response.",
     )
     refreshToken: bool | None = Field(
-        None,
+        ...,
         description="If true, attempt to refresh the token before returning status.",
     )
 
@@ -242,10 +241,10 @@ class JsonValue(RootModel[float | str | bool | list["JsonValue"] | dict[str, "Js
 
 class ListConversationsParams(BaseModelWithExtras):
     cursor: str | None = Field(
-        None, description="Opaque pagination cursor returned by a previous call."
+        ..., description="Opaque pagination cursor returned by a previous call."
     )
     pageSize: float | None = Field(
-        None,
+        ...,
         description="Optional page size; defaults to a reasonable server-side value.",
     )
 
@@ -253,7 +252,7 @@ class ListConversationsParams(BaseModelWithExtras):
 class ListConversationsResponse(BaseModelWithExtras):
     items: list[ConversationSummary]
     nextCursor: str | None = Field(
-        None,
+        ...,
         description="Opaque cursor to pass to the next call to continue after the last item. if None, there are no more items to return.",
     )
 
@@ -300,7 +299,7 @@ class LoginChatGptResponse(BaseModelWithExtras):
 
 
 class McpInvocation(BaseModelWithExtras):
-    arguments: JsonValue | None = Field(None, description="Arguments to the tool call.")
+    arguments: JsonValue | None = Field(..., description="Arguments to the tool call.")
     server: str = Field(..., description="Name of the MCP server as defined in the config.")
     tool: str = Field(..., description="Name of the tool as given by the MCP server.")
 
@@ -780,7 +779,7 @@ class EventMsgExecApprovalRequest(BaseModelWithExtras):
     command: list[str] = Field(..., description="The command to be executed.")
     cwd: str = Field(..., description="The command's working directory.")
     reason: str | None = Field(
-        None,
+        ...,
         description="Optional human-readable reason for the approval (e.g. retry without sandbox).",
     )
     type: Literal["exec_approval_request"]
@@ -793,11 +792,11 @@ class EventMsgApplyPatchApprovalRequest(BaseModelWithExtras):
     )
     changes: dict[str, FileChange]
     grant_root: str | None = Field(
-        None,
+        ...,
         description="When set, the agent is asking the user to allow writes under this root for the remainder of the session.",
     )
     reason: str | None = Field(
-        None,
+        ...,
         description="Optional explanatory reason (e.g. request for extra write access).",
     )
     type: Literal["apply_patch_approval_request"]
@@ -841,7 +840,7 @@ class EventMsgTurnDiff(BaseModelWithExtras):
 
 class EventMsgGetHistoryEntryResponse(BaseModelWithExtras):
     entry: HistoryEntry | None = Field(
-        None,
+        ...,
         description="The entry at the requested offset, if available and parseable.",
     )
     log_id: int
@@ -988,11 +987,11 @@ class ApplyPatchApprovalParams(BaseModelWithExtras):
     conversation_id: ConversationId
     file_changes: dict[str, FileChange]
     grant_root: str | None = Field(
-        None,
+        ...,
         description="When set, the agent is asking the user to allow writes under this root for the remainder of the session (unclear if this is honored today).",
     )
     reason: str | None = Field(
-        None,
+        ...,
         description="Optional explanatory reason (e.g. request for extra write access).",
     )
 
@@ -1004,11 +1003,11 @@ class ApplyPatchApprovalRequestEvent(BaseModelWithExtras):
     )
     changes: dict[str, FileChange]
     grant_root: str | None = Field(
-        None,
+        ...,
         description="When set, the agent is asking the user to allow writes under this root for the remainder of the session.",
     )
     reason: str | None = Field(
-        None,
+        ...,
         description="Optional explanatory reason (e.g. request for extra write access).",
     )
 
@@ -1069,22 +1068,22 @@ class ExecCommandOutputDeltaEvent(BaseModelWithExtras):
 class ExecOneOffCommandParams(BaseModelWithExtras):
     command: list[str] = Field(..., description="Command argv to execute.")
     cwd: str | None = Field(
-        None,
+        ...,
         description="Optional working directory for the process. Defaults to server config cwd.",
     )
     sandboxPolicy: SandboxPolicy | None = Field(
-        None,
+        ...,
         description="Optional explicit sandbox policy overriding the server default.",
     )
     timeoutMs: float | None = Field(
-        None,
+        ...,
         description="Timeout of the command in milliseconds. If not specified, a sensible default is used server-side.",
     )
 
 
 class GetHistoryEntryResponseEvent(BaseModelWithExtras):
     entry: HistoryEntry | None = Field(
-        None,
+        ...,
         description="The entry at the requested offset, if available and parseable.",
     )
     log_id: int
@@ -1117,35 +1116,35 @@ class LogoutChatGptResponse(RootModel[EmptyObject]):
 
 class NewConversationParams(BaseModelWithExtras):
     approvalPolicy: AskForApproval | None = Field(
-        None,
+        ...,
         description="Approval policy for shell commands generated by the model: `untrusted`, `on-failure`, `on-request`, `never`.",
     )
     baseInstructions: str | None = Field(
-        None, description="The set of instructions to use instead of the default ones."
+        ..., description="The set of instructions to use instead of the default ones."
     )
     config: dict[str, JsonValue] | None = Field(
-        None,
+        ...,
         description="Individual config settings that will override what is in CODEX_HOME/config.toml.",
     )
     cwd: str | None = Field(
-        None,
+        ...,
         description="Working directory for the session. If relative, it is resolved against the server process's current working directory.",
     )
     includeApplyPatchTool: bool | None = Field(
-        None, description="Whether to include the apply patch tool in the conversation."
+        ..., description="Whether to include the apply patch tool in the conversation."
     )
     includePlanTool: bool | None = Field(
-        None, description="Whether to include the plan tool in the conversation."
+        ..., description="Whether to include the plan tool in the conversation."
     )
     model: str | None = Field(
-        None, description='Optional override for the model name (e.g. "o3", "o4-mini").'
+        ..., description='Optional override for the model name (e.g. "o3", "o4-mini").'
     )
     profile: str | None = Field(
-        None,
+        ...,
         description="Configuration profile from config.toml to specify default options.",
     )
     sandbox: SandboxMode | None = Field(
-        None,
+        ...,
         description="Sandbox mode: `read-only`, `workspace-write`, or `danger-full-access`.",
     )
 
@@ -1160,7 +1159,7 @@ class Profile(BaseModelWithExtras):
     chatgptBaseUrl: str | None = None
     model: str | None = None
     modelProvider: str | None = Field(
-        None,
+        ...,
         description="The key in the `model_providers` map identifying the [`ModelProviderInfo`] to use.",
     )
     modelReasoningEffort: ReasoningEffort | None = None
@@ -1218,7 +1217,7 @@ class ResponseItem(
 
 class ResumeConversationParams(BaseModelWithExtras):
     overrides: NewConversationParams | None = Field(
-        None,
+        ...,
         description="Optional overrides to apply when spawning the resumed session.",
     )
     path: str = Field(..., description="Absolute path to the rollout JSONL file.")
@@ -1286,16 +1285,16 @@ class UpdatePlanArgs(BaseModelWithExtras):
 
 
 class UserSavedConfig(BaseModelWithExtras):
-    approvalPolicy: AskForApproval | None = Field(None, description="Approvals")
-    model: str | None = Field(None, description="Model-specific configuration")
+    approvalPolicy: AskForApproval | None = Field(..., description="Approvals")
+    model: str | None = Field(..., description="Model-specific configuration")
     modelReasoningEffort: ReasoningEffort | None = None
     modelReasoningSummary: ReasoningSummary | None = None
     modelVerbosity: Verbosity | None = None
-    profile: str | None = Field(None, description="Profiles")
+    profile: str | None = Field(..., description="Profiles")
     profiles: dict[str, Profile]
     sandboxMode: SandboxMode | None = None
     sandboxSettings: SandboxSettings | None = None
-    tools: Tools | None = Field(None, description="Tools")
+    tools: Tools | None = Field(..., description="Tools")
 
 
 class EventMsgMcpListToolsResponse(BaseModelWithExtras):
@@ -1512,7 +1511,7 @@ class SessionConfiguredEvent(BaseModelWithExtras):
         description="Identifier of the history log file (inode on Unix, 0 otherwise).",
     )
     initial_messages: list[EventMsg] | None = Field(
-        None,
+        ...,
         description="Optional initial messages (as events) for resumed sessions. When present, UIs can use these to seed the history.",
     )
     model: str = Field(..., description="Tell the client what model is being queried.")
@@ -1532,7 +1531,7 @@ class EventMsgSessionConfigured(BaseModelWithExtras):
         description="Identifier of the history log file (inode on Unix, 0 otherwise).",
     )
     initial_messages: list[EventMsg] | None = Field(
-        None,
+        ...,
         description="Optional initial messages (as events) for resumed sessions. When present, UIs can use these to seed the history.",
     )
     model: str = Field(..., description="Tell the client what model is being queried.")
