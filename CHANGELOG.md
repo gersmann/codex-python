@@ -9,6 +9,7 @@ The format is based on Keep a Changelog and this project adheres to Semantic Ver
 - Unify protocol generation to TS → JSON Schema → Pydantic v2 using a native helper binary (`codex-protocol-schema`).
 - Generate readable union variants (e.g., `EventMsgError`, `ClientRequestNewConversation`) via schema post‑processing.
 - Allow extra fields on generated models via a shared `BaseModelWithExtras`.
+- Require `ts-json-schema-generator` v2.x (no legacy fallback) and use boolean `--additional-properties` flag accordingly.
 
 ### Removed
 - Old TS→Python converter script (`scripts/generate_protocol_py.py`) and legacy Makefile flow.
