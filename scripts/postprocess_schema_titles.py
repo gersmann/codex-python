@@ -20,8 +20,13 @@ def camelize(s: str) -> str:
 
 
 def add_titles(schema: dict) -> tuple[bool, int]:
-    defs = schema.get("definitions") or schema.get("$defs")
-    if not isinstance(defs, dict):
+    if isinstance(schema.get("definitions"), dict):
+        defs = schema["definitions"]
+        base_key = "definitions"
+    elif isinstance(schema.get("$defs"), dict):
+        defs = schema["$defs"]
+        base_key = "$defs"
+    else:
         return (False, 0)
     changed = False
     added = 0
@@ -57,7 +62,7 @@ def add_titles(schema: dict) -> tuple[bool, int]:
                 changed = True
                 added += 1
             # replace inline with $ref
-            ref = {"$ref": f"#/definitions/{title}"}
+            ref = {"$ref": f"#/{base_key}/{title}"}
             one_of[idx] = ref
     return changed, added
 
