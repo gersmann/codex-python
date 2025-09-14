@@ -62,3 +62,4 @@ crates/**/Cargo.lock
 .env.*
 /.idea/
 /wheelhouse/
+/codex-review-action/

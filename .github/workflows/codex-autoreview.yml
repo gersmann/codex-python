@@ -3,33 +3,51 @@ name: Codex Autonomous Code Review
 on:
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review]
+  issue_comment:
+    types: [created]
+  pull_request_review_comment:
+    types: [created]
 
 permissions:
-  contents: read
+  contents: write           # needed for act mode pushes; safe for review mode
   pull-requests: write
+
+concurrency:
+  group: codex-review-${{ github.event.pull_request.number || github.event.issue.number || github.ref }}
+  cancel-in-progress: false
 
 jobs:
   review:
-    name: Run Codex review
+    name: Review
+    if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout PR
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+      - name: Codex autonomous review
+        uses: gersmann/codex-review-action@v1
+        with:
+          mode: review
+          openai_api_key: ${{ secrets.OPENAI_API_KEY }}
+          model: gpt-5
+          reasoning_effort: medium
+          debug_level: 1
 
-      - name: Install codex from PyPI (system Python)
-        run: |
-          python3 -m pip install --upgrade pip
-          python3 -m pip install --upgrade codex-python
-
-      - name: Run Codex autonomous code review
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-          CODEX_MODEL: gpt-5
-          CODEX_REASONING_EFFORT: medium
-          DEBUG_CODEREVIEW: 5
-        run: |
-          python3 --version
-          python3 scripts/codex_autoreview.py
+  act:
+    name: Act on @codex comments
+    if: >-
+      (github.event_name == 'issue_comment' && contains(github.event.comment.body, '@codex')) ||
+      (github.event_name == 'pull_request_review_comment' && contains(github.event.comment.body, '@codex'))
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Codex autonomous edits
+        uses: gersmann/codex-review-action@v1
+        with:
+          mode: act
+          openai_api_key: ${{ secrets.OPENAI_API_KEY }}
+          model: gpt-5
+          debug_level: 1

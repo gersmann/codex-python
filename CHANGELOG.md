@@ -4,6 +4,21 @@ All notable changes to this project will be documented in this file.
 
 The format is based on Keep a Changelog and this project adheres to Semantic Versioning.
 
+## [0.2.12] - 2025-09-14
+### Changed
+- Unify protocol generation to TS → JSON Schema → Pydantic v2 using a native helper binary (`codex-protocol-schema`).
+- Generate readable union variants (e.g., `EventMsgError`, `ClientRequestNewConversation`) via schema post‑processing.
+- Allow extra fields on generated models via a shared `BaseModelWithExtras`.
+
+### Removed
+- Old TS→Python converter script (`scripts/generate_protocol_py.py`) and legacy Makefile flow.
+
+### Dev
+- Add `datamodel-code-generator` to dev deps; new Makefile `gen-protocol` target runs the full pipeline.
+- Keep generated unions lint‑clean and forward‑ref safe with small post‑processing scripts.
+
+[0.2.12]: https://github.com/gersmann/codex-python/releases/tag/v0.2.12
+
 ## [0.2.0] - 2025-09-10
 ### Added
 - Fully-typed Pydantic config `CodexConfig` mirroring Rust `ConfigOverrides`.

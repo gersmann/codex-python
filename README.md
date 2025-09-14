@@ -85,7 +85,7 @@ Common tasks
 - Generate protocol types from upstream: `make gen-protocol`
 
 Protocol types
-- `make gen-protocol` generates TS types (via Codex or cargo) into `.generated/ts` and then writes Pydantic models to `codex/protocol/types.py`.
+- `make gen-protocol` generates TS types and a JSON Schema, then writes Pydantic v2 models to `codex/protocol/types.py`. The process runs entirely from the native helper in this repo; no manual scripts needed.
 - Generated models use `model_config = ConfigDict(extra='allow')` and place it at the end of each class.
 
 Releasing
