@@ -1,0 +1,34 @@
+name: Codex Autonomous Code Review
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  review:
+    name: Run Codex review
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout PR
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install codex from PyPI (system Python)
+        run: |
+          python3 -m pip install --upgrade pip
+          python3 -m pip install --upgrade codex-python
+
+      - name: Run Codex autonomous code review
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          CODEX_MODEL: gpt-5
+          CODEX_REASONING_EFFORT: medium
+          DEBUG_CODEREVIEW: 5
+        run: |
+          python3 scripts/codex_autoreview.py
