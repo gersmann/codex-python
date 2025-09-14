@@ -1,4 +1,4 @@
-name: Codex Autonomous Code Review
+name: Codex Review
 
 on:
   pull_request:
@@ -13,23 +13,14 @@ jobs:
     name: Run Codex review
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout PR
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - name: Install codex from PyPI (system Python)
-        run: |
-          python3 -m pip install --upgrade pip
-          python3 -m pip install --upgrade codex-python
-
-      - name: Run Codex autonomous code review
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-          CODEX_MODEL: gpt-5
-          CODEX_REASONING_EFFORT: medium
-          DEBUG_CODEREVIEW: 5
-        run: |
-          python3 --version
-          python3 scripts/codex_autoreview.py
+      - name: Codex autonomous review
+        uses: gersmann/codex-review-action@latest
+        with:
+          openai_api_key: ${{ secrets.OPENAI_API_KEY }}
+          model: gpt-5
+          reasoning_effort: medium
+          debug_level: "1"
