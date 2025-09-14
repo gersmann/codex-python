@@ -48,6 +48,58 @@ def main() -> int:
         lines.insert(insert_at, "# ruff: noqa: F821")
         s = "\n".join(lines) + ("\n" if not s.endswith("\n") else "")
 
+    # Convert optional fields that were marked required via Field(...)
+    # Examples to fix:
+    #   foo: str | None = Field(..., description='x')  -> Field(None, ...)
+    #   foo: Optional[int] = Field(...)               -> Field(None)
+    def _fix_optional_field_required(text: str) -> str:
+        # With kwargs, union syntax
+        text = re.sub(
+            r"^(\s+[A-Za-z_][A-Za-z0-9_]*\s*:\s*[^\n=]*\|\s*None\s*=\s*)Field\(\s*\.\.\.(\s*,[^)]*)\)",
+            r"\1Field(None\2)",
+            text,
+            flags=re.M,
+        )
+        # Without kwargs, union syntax
+        text = re.sub(
+            r"^(\s+[A-Za-z_][A-Za-z0-9_]*\s*:\s*[^\n=]*\|\s*None\s*=\s*)Field\(\s*\.\.\.\s*\)",
+            r"\1Field(None)",
+            text,
+            flags=re.M,
+        )
+        # With kwargs, Optional[...] syntax
+        text = re.sub(
+            r"^(\s+[A-Za-z_][A-Za-z0-9_]*\s*:\s*Optional\[[^\]]+\]\s*=\s*)Field\(\s*\.\.\.(\s*,[^)]*)\)",
+            r"\1Field(None\2)",
+            text,
+            flags=re.M,
+        )
+        # Without kwargs, Optional[...] syntax
+        text = re.sub(
+            r"^(\s+[A-Za-z_][A-Za-z0-9_]*\s*:\s*Optional\[[^\]]+\]\s*=\s*)Field\(\s*\.\.\.\s*\)",
+            r"\1Field(None)",
+            text,
+            flags=re.M,
+        )
+        return text
+
+    s = _fix_optional_field_required(s)
+
+    # Append model_rebuild() calls for union RootModel wrappers to resolve forward refs
+    wrappers = [
+        "EventMsg",
+        "ClientRequest",
+        "ServerRequest",
+        "ServerNotification",
+        "InputItem",
+    ]
+    trailer = []
+    for name in wrappers:
+        if re.search(rf"^class\s+{name}\(\s*RootModel\s*\):", s, flags=re.M):
+            trailer.append(f"{name}.model_rebuild()")
+    if trailer:
+        s = s.rstrip() + "\n\n" + "\n".join(trailer) + "\n"
+
     p.write_text(s)
     return 0
 

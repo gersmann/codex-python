@@ -127,6 +127,8 @@ fn run_typescript_json_schema(tsconfig_path: &Path, schema_path: &Path) -> Resul
         .arg("ts-json-schema-generator@1.5.1")
         .arg("--path")
         .arg(glob)
+        .arg("--tsconfig")
+        .arg(tsconfig_path)
         .arg("--type")
         .arg("*")
         .arg("--expose")
