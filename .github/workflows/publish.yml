@@ -41,12 +41,18 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        platform: [linux-x86_64, linux-aarch64, macos-universal2, windows-amd64]
+        platform: [linux-x86_64, linux-aarch64, linux-musl-x86_64, linux-musl-aarch64, macos-universal2, windows-amd64]
         include:
           - platform: linux-x86_64
             os: ubuntu-latest
             python-interpreter: python3.12
           - platform: linux-aarch64
+            os: ubuntu-latest
+            python-interpreter: python3.12
+          - platform: linux-musl-x86_64
+            os: ubuntu-latest
+            python-interpreter: python3.12
+          - platform: linux-musl-aarch64
             os: ubuntu-latest
             python-interpreter: python3.12
           - platform: macos-universal2
@@ -76,7 +82,7 @@ jobs:
           pip install build maturin
 
       - name: Setup QEMU (for cross aarch64)
-        if: ${{ matrix.platform == 'linux-aarch64' }}
+        if: ${{ matrix.platform == 'linux-aarch64' || matrix.platform == 'linux-musl-aarch64' }}
         uses: docker/setup-qemu-action@v3
 
       - name: Build Linux x86_64 wheel (manylinux2014)
@@ -101,6 +107,30 @@ jobs:
           before-script-linux: |
             yum -y install curl perl-core >/dev/null 2>&1 || true
             (perl -MText::Template -e1 >/dev/null 2>&1 || (curl -sL https://cpanmin.us | perl - App::cpanminus Text::Template >/dev/null))
+          # Build via root pyproject so distribution name is 'codex-python'
+          args: --release -i ${{ matrix.python-interpreter }} -o dist
+
+      - name: Build Linux x86_64 wheel (musllinux_1_2)
+        if: ${{ matrix.platform == 'linux-musl-x86_64' }}
+        uses: PyO3/maturin-action@v1
+        with:
+          manylinux: 'musllinux_1_2'
+          target: x86_64-unknown-linux-musl
+          command: build
+          before-script-linux: |
+            apk add --no-cache curl perl perl-text-template >/dev/null 2>&1 || true
+          # Build via root pyproject so distribution name is 'codex-python'
+          args: --release -i ${{ matrix.python-interpreter }} -o dist
+
+      - name: Build Linux aarch64 wheel (musllinux_1_2)
+        if: ${{ matrix.platform == 'linux-musl-aarch64' }}
+        uses: PyO3/maturin-action@v1
+        with:
+          manylinux: 'musllinux_1_2'
+          target: aarch64-unknown-linux-musl
+          command: build
+          before-script-linux: |
+            apk add --no-cache curl perl perl-text-template >/dev/null 2>&1 || true
           # Build via root pyproject so distribution name is 'codex-python'
           args: --release -i ${{ matrix.python-interpreter }} -o dist
 
