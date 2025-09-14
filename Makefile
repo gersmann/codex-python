@@ -58,7 +58,7 @@ gen-protocol:
 	@echo "Generating JSON Schema for protocol types (via codex-native helper)..."
 	@cargo run -q --manifest-path crates/codex_native/Cargo.toml --bin codex-protocol-schema -- --ts-out .generated/ts --schema-out .generated/schema
 	@echo "Post-processing schema for readable union variant names..."
-	@python3 scripts/postprocess_schema_titles.py
+	@python3 scripts/postprocess_schema_titles.py --relax-nullable-required
 	@echo "Converting JSON Schema to Pydantic models (codex/protocol/types.py)..."
 	@uv run --group dev datamodel-codegen \
 		--input .generated/schema/protocol.schema.json \
