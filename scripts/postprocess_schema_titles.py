@@ -123,6 +123,126 @@ def enforce_request_id_integer(schema: dict) -> bool:
     return False
 
 
+def enforce_exec_exit_code_integer(schema: dict) -> bool:
+    # Force ExecCommandEndEvent.exit_code to integer
+    defs = schema.get("definitions") or schema.get("$defs")
+    if not isinstance(defs, dict):
+        return False
+    node = defs.get("ExecCommandEndEvent")
+    if not isinstance(node, dict):
+        return False
+    props = node.get("properties")
+    if not isinstance(props, dict):
+        return False
+    exit_node = props.get("exit_code")
+    if not isinstance(exit_node, dict):
+        return False
+    if exit_node.get("type") != "integer":
+        exit_node["type"] = "integer"
+        return True
+    return False
+
+
+def _replace_number_with_integer(node: dict) -> bool:
+    changed = False
+    t = node.get("type")
+    if t == "number":
+        node["type"] = "integer"
+        changed = True
+    elif isinstance(t, list) and "number" in t:
+        node["type"] = ["integer" if v == "number" else v for v in t]
+        # dedupe while preserving order without side-effects in comprehensions
+        node["type"] = _dedupe_preserve_order(node["type"])
+        changed = True
+    # Normalize anyOf/oneOf branches
+    for key in ("anyOf", "oneOf"):
+        arr = node.get(key)
+        if isinstance(arr, list):
+            for sub in arr:
+                if isinstance(sub, dict) and sub.get("type") == "number":
+                    sub["type"] = "integer"
+                    changed = True
+                elif isinstance(sub, dict) and isinstance(sub.get("type"), list):
+                    sub_t = sub["type"]
+                    if "number" in sub_t:
+                        sub["type"] = ["integer" if v == "number" else v for v in sub_t]
+                        # dedupe while preserving order
+                        sub["type"] = _dedupe_preserve_order(sub["type"])
+                        changed = True
+    return changed
+
+
+def _dedupe_preserve_order(items: list[str]) -> list[str]:
+    """Return a new list with duplicates removed, preserving order."""
+    seen: set[str] = set()
+    out: list[str] = []
+    for x in items:
+        if x not in seen:
+            seen.add(x)
+            out.append(x)
+    return out
+
+
+INTEGER_FIELDS = {
+    # Exec
+    "exit_code",
+    # Token usage counters
+    "input_tokens",
+    "cached_input_tokens",
+    "output_tokens",
+    "reasoning_output_tokens",
+    "total_tokens",
+    # Context window capacity
+    "model_context_window",
+    # History identifiers and counters
+    "log_id",
+    "history_log_id",
+    "history_entry_count",
+    "offset",
+}
+
+
+def enforce_integer_fields(schema: dict) -> int:
+    """Walk the JSON Schema and coerce selected numeric fields to integer.
+
+    Applies to both hoisted $defs and inline subschemas to avoid mismatches
+    between event structs and EventMsg wrappers.
+    """
+    changed = 0
+
+    def walk(node: object) -> None:
+        nonlocal changed
+        if isinstance(node, dict):
+            # Adjust matching properties
+            props = node.get("properties")
+            if isinstance(props, dict):
+                for name, sub in props.items():
+                    if name in INTEGER_FIELDS and isinstance(sub, dict):
+                        if _replace_number_with_integer(sub):
+                            changed += 1
+            # Recurse into common schema containers
+            for k in ("items", "additionalProperties", "not"):
+                if isinstance(node.get(k), dict):
+                    walk(node[k])
+            for k in ("anyOf", "oneOf", "allOf"):
+                arr = node.get(k)
+                if isinstance(arr, list):
+                    for sub in arr:
+                        walk(sub)
+            # Dive into nested definition maps
+            for k in ("definitions", "$defs", "patternProperties"):
+                m = node.get(k)
+                if isinstance(m, dict):
+                    for sub in m.values():
+                        walk(sub)
+        elif isinstance(node, list):
+            for sub in node:
+                walk(sub)
+
+    walk(schema)
+    return changed
+
+
 def main() -> int:
     path = (
         Path(sys.argv[1]) if len(sys.argv) > 1 else Path(".generated/schema/protocol.schema.json")
@@ -131,10 +251,12 @@ def main() -> int:
     t_changed, t_added = add_titles(data)
     r_changed, r_count = relax_required_for_nullables(data)
     id_fixed = enforce_request_id_integer(data)
-    if t_changed or r_changed or id_fixed:
+    exit_fixed = enforce_exec_exit_code_integer(data)
+    coerced = enforce_integer_fields(data)
+    if t_changed or r_changed or id_fixed or exit_fixed or coerced:
         path.write_text(json.dumps(data, indent=2, ensure_ascii=False) + "\n")
     print(
-        f"Schema postprocess: titles+hoist added={t_added}, relaxed_required={r_count}, requestId_fixed={'yes' if id_fixed else 'no'} in {path.name}"
+        f"Schema postprocess: titles+hoist added={t_added}, relaxed_required={r_count}, requestId_fixed={'yes' if id_fixed else 'no'}, exit_code_fixed={'yes' if exit_fixed else 'no'}, integers_coerced={coerced} in {path.name}"
     )
     return 0
 
