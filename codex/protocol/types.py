@@ -439,8 +439,8 @@ class ResponseItem2(BaseModelWithExtras):
 
 class ResponseItem3(BaseModelWithExtras):
     action: LocalShellAction
-    call_id: str | None = Field(..., description="Set when using the Responses API.")
-    id: str | None = Field(..., description="Set when using the chat completions API.")
+    call_id: str | None = Field(None, description="Set when using the Responses API.")
+    id: str | None = Field(None, description="Set when using the chat completions API.")
     status: LocalShellStatus
     type: Literal["local_shell_call"]
 

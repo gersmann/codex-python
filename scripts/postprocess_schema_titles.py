@@ -68,9 +68,11 @@ def add_titles(schema: dict) -> tuple[bool, int]:
 
 
 def relax_required_for_nullables(schema: dict) -> tuple[bool, int]:
-    defs = schema.get("definitions") or schema.get("$defs")
-    if not isinstance(defs, dict):
-        return (False, 0)
+    """Recursively remove nullable properties from 'required' arrays.
+
+    Applies to the whole schema tree, not just top-level $defs/definitions, to
+    capture inline object schemas generated within oneOf/anyOf branches.
+    """
     changed = False
     count = 0
 
@@ -80,6 +82,8 @@ def relax_required_for_nullables(schema: dict) -> tuple[bool, int]:
         t = prop_schema.get("type")
         if isinstance(t, list) and "null" in t:
             return True
+        if t == "null":
+            return True
         for key in ("anyOf", "oneOf"):
             arr = prop_schema.get(key)
             if isinstance(arr, list):
@@ -88,18 +92,36 @@ def relax_required_for_nullables(schema: dict) -> tuple[bool, int]:
                         return True
         return False
 
-    for defn in defs.values():
-        if not isinstance(defn, dict):
-            continue
-        props = defn.get("properties")
-        req = defn.get("required")
-        if not isinstance(props, dict) or not isinstance(req, list):
-            continue
-        new_req = [name for name in req if not prop_is_nullable(props.get(name, {}))]
-        if len(new_req) != len(req):
-            defn["required"] = new_req
-            changed = True
-            count += len(req) - len(new_req)
+    def walk(node: object) -> None:
+        nonlocal changed, count
+        if isinstance(node, dict):
+            props = node.get("properties")
+            req = node.get("required")
+            if isinstance(props, dict) and isinstance(req, list):
+                new_req = [name for name in req if not prop_is_nullable(props.get(name, {}))]
+                if len(new_req) != len(req):
+                    node["required"] = new_req
+                    changed = True
+                    count += len(req) - len(new_req)
+            # Recurse into common schema containers
+            for k in ("items", "additionalProperties", "not"):
+                if isinstance(node.get(k), dict):
+                    walk(node[k])
+            for k in ("anyOf", "oneOf", "allOf"):
+                arr = node.get(k)
+                if isinstance(arr, list):
+                    for sub in arr:
+                        walk(sub)
+            for k in ("definitions", "$defs", "patternProperties"):
+                m = node.get(k)
+                if isinstance(m, dict):
+                    for sub in m.values():
+                        walk(sub)
+        elif isinstance(node, list):
+            for sub in node:
+                walk(sub)
+
+    walk(schema)
     return changed, count
 
 
