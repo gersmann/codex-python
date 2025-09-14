@@ -19,11 +19,12 @@ def camelize(s: str) -> str:
     return "".join(p[:1].upper() + p[1:] for p in parts)
 
 
-def add_titles(schema: dict) -> bool:
+def add_titles(schema: dict) -> tuple[bool, int]:
     defs = schema.get("definitions") or schema.get("$defs")
     if not isinstance(defs, dict):
-        return False
+        return (False, 0)
     changed = False
+    added = 0
     for name, tag_key in TARGETS:
         node = defs.get(name)
         if not isinstance(node, dict):
@@ -54,10 +55,47 @@ def add_titles(schema: dict) -> bool:
             if title not in defs:
                 defs[title] = subs
                 changed = True
+                added += 1
             # replace inline with $ref
             ref = {"$ref": f"#/definitions/{title}"}
             one_of[idx] = ref
-    return changed
+    return changed, added
+
+
+def relax_required_for_nullables(schema: dict) -> tuple[bool, int]:
+    defs = schema.get("definitions") or schema.get("$defs")
+    if not isinstance(defs, dict):
+        return (False, 0)
+    changed = False
+    count = 0
+
+    def prop_is_nullable(prop_schema: dict) -> bool:
+        if not isinstance(prop_schema, dict):
+            return False
+        t = prop_schema.get("type")
+        if isinstance(t, list) and "null" in t:
+            return True
+        for key in ("anyOf", "oneOf"):
+            arr = prop_schema.get(key)
+            if isinstance(arr, list):
+                for sub in arr:
+                    if isinstance(sub, dict) and sub.get("type") == "null":
+                        return True
+        return False
+
+    for defn in defs.values():
+        if not isinstance(defn, dict):
+            continue
+        props = defn.get("properties")
+        req = defn.get("required")
+        if not isinstance(props, dict) or not isinstance(req, list):
+            continue
+        new_req = [name for name in req if not prop_is_nullable(props.get(name, {}))]
+        if len(new_req) != len(req):
+            defn["required"] = new_req
+            changed = True
+            count += len(req) - len(new_req)
+    return changed, count
 
 
 def main() -> int:
@@ -65,11 +103,13 @@ def main() -> int:
         Path(sys.argv[1]) if len(sys.argv) > 1 else Path(".generated/schema/protocol.schema.json")
     )
     data = json.loads(path.read_text())
-    if add_titles(data):
+    t_changed, t_added = add_titles(data)
+    r_changed, r_count = relax_required_for_nullables(data)
+    if t_changed or r_changed:
         path.write_text(json.dumps(data, indent=2, ensure_ascii=False) + "\n")
-        print(f"Updated titles in {path}")
-    else:
-        print("No title updates applied")
+    print(
+        f"Schema postprocess: titles+hoist added={t_added}, relaxed_required={r_count} in {path.name}"
+    )
     return 0
 
 

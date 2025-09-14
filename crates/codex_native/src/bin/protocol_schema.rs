@@ -120,13 +120,20 @@ fn run_typescript_json_schema(tsconfig_path: &Path, schema_path: &Path) -> Resul
     let ts_dir = tsconfig_path
         .parent()
         .ok_or_else(|| anyhow!("invalid tsconfig path"))?;
-    let glob = ts_dir.join("*.ts");
+    // Prefer a single entry file (index.ts) that re-exports everything.
+    let entry = ts_dir.join("index.ts");
+    if !entry.exists() {
+        return Err(anyhow!(
+            "index.ts not found in {} — ensure TS generation succeeded",
+            ts_dir.display()
+        ));
+    }
 
     let status = Command::new(npx)
         .arg("--yes")
         .arg("ts-json-schema-generator@1.5.1")
         .arg("--path")
-        .arg(glob)
+        .arg(&entry)
         .arg("--tsconfig")
         .arg(tsconfig_path)
         .arg("--type")

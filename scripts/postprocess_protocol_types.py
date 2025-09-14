@@ -100,7 +100,33 @@ def main() -> int:
     if trailer:
         s = s.rstrip() + "\n\n" + "\n".join(trailer) + "\n"
 
+    # Deduplicate any duplicate .model_rebuild() lines and optionally print a summary
+    import re as _re2
+
+    matches = list(_re2.finditer(r"^(\w+)\.model_rebuild\(\)\s*$", s, flags=_re2.M))
+    seen = set()
+    deduped_lines = []
+    removed = 0
+    if matches:
+        lines = s.splitlines()
+        for _i, ln in enumerate(lines):
+            m = _re2.match(r"^(\w+)\.model_rebuild\(\)\s*$", ln)
+            if not m:
+                deduped_lines.append(ln)
+                continue
+            name = m.group(1)
+            if name in seen:
+                removed += 1
+                continue
+            seen.add(name)
+            deduped_lines.append(ln)
+        s = "\n".join(deduped_lines) + ("\n" if s.endswith("\n") else "")
+
     p.write_text(s)
+    if removed:
+        print(f"Types postprocess: removed {removed} duplicate model_rebuild() lines")
+    else:
+        print("Types postprocess: no duplicate model_rebuild() lines found")
     return 0
 
 
