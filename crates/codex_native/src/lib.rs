@@ -1,11 +1,15 @@
 use anyhow::{Context, Result};
-use codex_core::config::{find_codex_home, Config, ConfigOverrides, ConfigToml};
+use codex_core::config::{
+    find_codex_home, load_config_as_toml_with_cli_overrides, Config, ConfigOverrides, ConfigToml,
+};
 use codex_core::protocol::{EventMsg, InputItem};
 use codex_core::{AuthManager, ConversationManager};
 // use of SandboxMode is handled within core::config; not needed here
 use pyo3::prelude::*;
 use pyo3::types::{PyDict, PyFloat, PyList, PyModule, PyString};
 use serde_json::Value as JsonValue;
+use toml::value::Value as TomlValue;
+use toml::value::Table as TomlTable;
 use std::path::PathBuf;
 use std::sync::{mpsc, Arc, Mutex};
 use std::thread;
@@ -173,7 +177,10 @@ fn build_config(
     load_default_config: bool,
 ) -> Result<Config> {
     let mut overrides_struct = ConfigOverrides::default();
+    let mut cli_overrides: Vec<(String, TomlValue)> = Vec::new();
+
     if let Some(dict) = overrides {
+        // Extract strongly-typed overrides first (these take precedence over CLI overrides).
         if let Some(model) = dict.get_item("model")? {
             overrides_struct.model = Some(model.extract()?);
         }
@@ -222,17 +229,124 @@ fn build_config(
         if let Some(v) = dict.get_item("tools_web_search_request")? {
             overrides_struct.tools_web_search_request = Some(v.extract()?);
         }
+
+        // Keys handled as strongly-typed above should not be duplicated in CLI overrides.
+        let typed_keys = [
+            "model",
+            "model_provider",
+            "config_profile",
+            "approval_policy",
+            "sandbox_mode",
+            "cwd",
+            "codex_linux_sandbox_exe",
+            "base_instructions",
+            "include_plan_tool",
+            "include_apply_patch_tool",
+            "include_view_image_tool",
+            "show_raw_agent_reasoning",
+            "tools_web_search_request",
+        ];
+
+        // Collect remaining extras and turn them into CLI-style dotted overrides.
+        for (key_obj, value_obj) in dict.iter() {
+            let key: String = match key_obj.extract() {
+                Ok(s) => s,
+                Err(_) => continue,
+            };
+            if typed_keys.contains(&key.as_str()) {
+                continue;
+            }
+
+            // Convert Python value -> TomlValue
+            let tv = match py_to_toml_value(value_obj)? {
+                Some(v) => v,
+                None => continue, // skip None/null values
+            };
+
+            if key.contains('.') {
+                // Already a dotted path: use as-is.
+                cli_overrides.push((key, tv));
+            } else {
+                // Flatten nested tables; otherwise add directly.
+                flatten_overrides(&mut cli_overrides, &key, tv);
+            }
+        }
     }
 
     if load_default_config {
-        Ok(Config::load_with_cli_overrides(vec![], overrides_struct)?)
+        Ok(Config::load_with_cli_overrides(cli_overrides, overrides_struct)?)
     } else {
         let codex_home = find_codex_home()?;
-        Ok(Config::load_from_base_config_with_overrides(
-            ConfigToml::default(),
-            overrides_struct,
-            codex_home,
-        )?)
+        let cfg = load_config_as_toml_with_cli_overrides(&codex_home, cli_overrides)?;
+        Ok(Config::load_from_base_config_with_overrides(cfg, overrides_struct, codex_home)?)
+    }
+}
+
+/// Convert a Python object into a TOML value. Returns Ok(None) for `None`.
+fn py_to_toml_value(obj: Bound<'_, PyAny>) -> Result<Option<TomlValue>> {
+    use pyo3::types::{PyBool, PyDict, PyFloat, PyInt, PyList, PyString};
+
+    if obj.is_none() {
+        return Ok(None);
+    }
+
+    if let Ok(b) = obj.downcast::<PyBool>() {
+        return Ok(Some(TomlValue::Boolean(b.is_true())));
+    }
+    if let Ok(i) = obj.downcast::<PyInt>() {
+        let v: i64 = i.extract()?;
+        return Ok(Some(TomlValue::Integer(v.into())));
+    }
+    if let Ok(f) = obj.downcast::<PyFloat>() {
+        let v: f64 = f.extract()?;
+        return Ok(Some(TomlValue::Float(v.into())));
+    }
+    if let Ok(s) = obj.downcast::<PyString>() {
+        let v: String = s.extract()?;
+        return Ok(Some(TomlValue::String(v.into())));
+    }
+    if let Ok(list) = obj.downcast::<PyList>() {
+        let mut arr = Vec::with_capacity(list.len());
+        for item in list.iter() {
+            if let Some(tv) = py_to_toml_value(item)? {
+                arr.push(tv);
+            }
+        }
+        return Ok(Some(TomlValue::Array(arr)));
+    }
+    if let Ok(map) = obj.downcast::<PyDict>() {
+        let mut tbl = TomlTable::new();
+        for (k_obj, v_obj) in map.iter() {
+            let key: String = match k_obj.extract() {
+                Ok(s) => s,
+                Err(_) => continue,
+            };
+            if let Some(tv) = py_to_toml_value(v_obj)? {
+                tbl.insert(key, tv);
+            }
+        }
+        return Ok(Some(TomlValue::Table(tbl)));
+    }
+
+    // Fallback: use `str(obj)`
+    let s = obj.str()?.to_string_lossy().to_string();
+    Ok(Some(TomlValue::String(s.into())))
+}
+
+/// Recursively flatten a TOML value into dotted overrides.
+fn flatten_overrides(out: &mut Vec<(String, TomlValue)>, prefix: &str, val: TomlValue) {
+    match val {
+        TomlValue::Table(tbl) => {
+            for (k, v) in tbl.into_iter() {
+                let key = if prefix.is_empty() {
+                    k
+                } else {
+                    format!("{prefix}.{k}")
+                };
+                flatten_overrides(out, &key, v);
+            }
+        }
+        other => out.push((prefix.to_string(), other)),
     }
 }
 

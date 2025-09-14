@@ -112,82 +112,90 @@ wheelhouse-linux: wheelhouse-clean
 	@mkdir -p $(WHEELHOUSE)
 	# manylinux x86_64 (quay.io/pypa) — ABI3: build once with Python 3.12
 	docker run --rm --platform linux/amd64 -v "$(PWD)":/io $(MANYLINUX_X86) \
-		bash -lc 'set -e; \
-		  yum -y install curl perl-core >/dev/null 2>&1 || true; \
-		  (perl -MText::Template -e1 >/dev/null 2>&1 || (curl -sL https://cpanmin.us | perl - App::cpanminus Text::Template >/dev/null)); \
-		  curl -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal && \
-		  . $$HOME/.cargo/env && \
-		  P=$$(ls -1 /opt/python/cp312*/bin/python | head -n1); \
-		  $$P -m pip install -U pip maturin && \
-		  PATH=$$HOME/.cargo/bin:$$PATH $$P -m maturin build --release -m /io/crates/codex_native/Cargo.toml -i $$P -o /io/$(WHEELHOUSE)'
+            bash -lc 'set -e; \
+              yum -y install curl perl-core >/dev/null 2>&1 || true; \
+              (perl -MText::Template -e1 >/dev/null 2>&1 || (curl -sL https://cpanmin.us | perl - App::cpanminus Text::Template >/dev/null)); \
+              curl -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal && \
+              . $$HOME/.cargo/env && \
+              P=$$(ls -1 /opt/python/cp312*/bin/python | head -n1); \
+              $$P -m pip install -U pip maturin && \
+              export CFLAGS="$$CFLAGS -D_DEFAULT_SOURCE -D_BSD_SOURCE"; \
+              PATH=$$HOME/.cargo/bin:$$PATH $$P -m maturin build --release -m /io/crates/codex_native/Cargo.toml -i $$P -o /io/$(WHEELHOUSE)'
 	# manylinux aarch64 (quay.io/pypa) — ABI3: build once with Python 3.12
 	docker run --rm --platform linux/arm64 -v "$(PWD)":/io $(MANYLINUX_ARM) \
-		bash -lc 'set -e; \
-		  yum -y install curl perl-core >/dev/null 2>&1 || true; \
-		  (perl -MText::Template -e1 >/dev/null 2>&1 || (curl -sL https://cpanmin.us | perl - App::cpanminus Text::Template >/dev/null)); \
-		  curl -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal && \
-		  . $$HOME/.cargo/env && \
-		  P=$$(ls -1 /opt/python/cp312*/bin/python | head -n1); \
-		  $$P -m pip install -U pip maturin && \
-		  PATH=$$HOME/.cargo/bin:$$PATH $$P -m maturin build --release -m /io/crates/codex_native/Cargo.toml -i $$P -o /io/$(WHEELHOUSE)'
+            bash -lc 'set -e; \
+              yum -y install curl perl-core >/dev/null 2>&1 || true; \
+              (perl -MText::Template -e1 >/dev/null 2>&1 || (curl -sL https://cpanmin.us | perl - App::cpanminus Text::Template >/dev/null)); \
+              curl -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal && \
+              . $$HOME/.cargo/env && \
+              P=$$(ls -1 /opt/python/cp312*/bin/python | head -n1); \
+              $$P -m pip install -U pip maturin && \
+              export CFLAGS="$$CFLAGS -D_DEFAULT_SOURCE -D_BSD_SOURCE"; \
+              PATH=$$HOME/.cargo/bin:$$PATH $$P -m maturin build --release -m /io/crates/codex_native/Cargo.toml -i $$P -o /io/$(WHEELHOUSE)'
 	# musllinux (Alpine) x86_64 (quay.io/pypa) — ABI3
 	docker run --rm --platform linux/amd64 -v "$(PWD)":/io $(MUSLLINUX_X86) \
-		bash -lc 'set -e; \
-		  apk add --no-cache curl perl perl-text-template >/dev/null 2>&1 || true; \
-		  curl -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal && \
-		  . $$HOME/.cargo/env && \
-		  P=$$(ls -1 /opt/python/cp312*/bin/python | head -n1); \
-		  $$P -m pip install -U pip maturin && \
-		  PATH=$$HOME/.cargo/bin:$$PATH $$P -m maturin build --release -m /io/crates/codex_native/Cargo.toml -i $$P --compatibility musllinux_1_2 -o /io/$(WHEELHOUSE)'
+            bash -lc 'set -e; \
+              apk add --no-cache curl perl perl-text-template >/dev/null 2>&1 || true; \
+              curl -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal && \
+              . $$HOME/.cargo/env && \
+              P=$$(ls -1 /opt/python/cp312*/bin/python | head -n1); \
+              $$P -m pip install -U pip maturin && \
+              export CFLAGS="$$CFLAGS -D_DEFAULT_SOURCE -D_BSD_SOURCE"; \
+              PATH=$$HOME/.cargo/bin:$$PATH $$P -m maturin build --release -m /io/crates/codex_native/Cargo.toml -i $$P --compatibility musllinux_1_2 -o /io/$(WHEELHOUSE)'
 	# musllinux (Alpine) aarch64 (quay.io/pypa) — ABI3
 	docker run --rm --platform linux/arm64 -v "$(PWD)":/io $(MUSLLINUX_ARM) \
-		bash -lc 'set -e; \
-		  apk add --no-cache curl perl perl-text-template >/dev/null 2>&1 || true; \
-		  curl -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal && \
-		  . $$HOME/.cargo/env && \
-		  P=$$(ls -1 /opt/python/cp312*/bin/python | head -n1); \
-		  $$P -m pip install -U pip maturin && \
-		  PATH=$$HOME/.cargo/bin:$$PATH $$P -m maturin build --release -m /io/crates/codex_native/Cargo.toml -i $$P --compatibility musllinux_1_2 -o /io/$(WHEELHOUSE)'
+            bash -lc 'set -e; \
+              apk add --no-cache curl perl perl-text-template >/dev/null 2>&1 || true; \
+              curl -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal && \
+              . $$HOME/.cargo/env && \
+              P=$$(ls -1 /opt/python/cp312*/bin/python | head -n1); \
+              $$P -m pip install -U pip maturin && \
+              export CFLAGS="$$CFLAGS -D_DEFAULT_SOURCE -D_BSD_SOURCE"; \
+              PATH=$$HOME/.cargo/bin:$$PATH $$P -m maturin build --release -m /io/crates/codex_native/Cargo.toml -i $$P --compatibility musllinux_1_2 -o /io/$(WHEELHOUSE)'
 	@echo "Wheelhouse contents:" && ls -al $(WHEELHOUSE)
 
 # Build only manylinux x86_64 (useful to avoid cross-arch emulation)
-wheelhouse-linux-amd64: wheelhouse-clean
-	@mkdir -p $(WHEELHOUSE)
+	wheelhouse-linux-amd64: wheelhouse-clean
+		@mkdir -p $(WHEELHOUSE)
 	docker run --rm --platform linux/amd64 -v "$(PWD)":/io $(MANYLINUX_X86) \
-		bash -lc 'set -e; yum -y install curl perl-core >/dev/null 2>&1 || true; \
-		  (perl -MText::Template -e1 >/dev/null 2>&1 || (curl -sL https://cpanmin.us | perl - App::cpanminus Text::Template >/dev/null)); \
-		  curl -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal; \
-		  . $$HOME/.cargo/env; P=$$(ls -1 /opt/python/cp312*/bin/python | head -n1); \
-		  $$P -m pip install -U pip maturin; \
-		  PATH=$$HOME/.cargo/bin:$$PATH $$P -m maturin build --release -j $$(( $$(nproc) )) -m /io/crates/codex_native/Cargo.toml -i $$P -o /io/$(WHEELHOUSE)'
+            bash -lc 'set -e; yum -y install curl perl-core >/dev/null 2>&1 || true; \
+              (perl -MText::Template -e1 >/dev/null 2>&1 || (curl -sL https://cpanmin.us | perl - App::cpanminus Text::Template >/dev/null)); \
+              curl -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal; \
+              . $$HOME/.cargo/env; P=$$(ls -1 /opt/python/cp312*/bin/python | head -n1); \
+              $$P -m pip install -U pip maturin; \
+              export CFLAGS="$$CFLAGS -D_DEFAULT_SOURCE -D_BSD_SOURCE"; \
+              PATH=$$HOME/.cargo/bin:$$PATH $$P -m maturin build --release -j $$(( $$(nproc) )) -m /io/crates/codex_native/Cargo.toml -i $$P -o /io/$(WHEELHOUSE)'
 
 # Build only manylinux aarch64 (fast on Apple Silicon; slow on x86_64)
-wheelhouse-linux-arm64: wheelhouse-clean
-	@mkdir -p $(WHEELHOUSE)
+	wheelhouse-linux-arm64: wheelhouse-clean
+		@mkdir -p $(WHEELHOUSE)
 	docker run --rm --platform linux/arm64 -v "$(PWD)":/io $(MANYLINUX_ARM) \
-		bash -lc 'set -e; yum -y install curl perl-core >/dev/null 2>&1 || true; \
-		  (perl -MText::Template -e1 >/dev/null 2>&1 || (curl -sL https://cpanmin.us | perl - App::cpanminus Text::Template >/dev/null)); \
-		  curl -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal; \
-		  . $$HOME/.cargo/env; P=$$(ls -1 /opt/python/cp312*/bin/python | head -n1); \
-		  $$P -m pip install -U pip maturin; \
-		  PATH=$$HOME/.cargo/bin:$$PATH $$P -m maturin build --release -j $$(( $$(nproc) )) -m /io/crates/codex_native/Cargo.toml -i $$P -o /io/$(WHEELHOUSE)'
+            bash -lc 'set -e; yum -y install curl perl-core >/dev/null 2>&1 || true; \
+              (perl -MText::Template -e1 >/dev/null 2>&1 || (curl -sL https://cpanmin.us | perl - App::cpanminus Text::Template >/dev/null)); \
+              curl -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal; \
+              . $$HOME/.cargo/env; P=$$(ls -1 /opt/python/cp312*/bin/python | head -n1); \
+              $$P -m pip install -U pip maturin; \
+              export CFLAGS="$$CFLAGS -D_DEFAULT_SOURCE -D_BSD_SOURCE"; \
+              PATH=$$HOME/.cargo/bin:$$PATH $$P -m maturin build --release -j $$(( $$(nproc) )) -m /io/crates/codex_native/Cargo.toml -i $$P -o /io/$(WHEELHOUSE)'
 
 # Build only musllinux x86_64 (Alpine)
-wheelhouse-musl-amd64: wheelhouse-clean
-	@mkdir -p $(WHEELHOUSE)
+	wheelhouse-musl-amd64: wheelhouse-clean
+		@mkdir -p $(WHEELHOUSE)
 	docker run --rm --platform linux/amd64 -v "$(PWD)":/io $(MUSLLINUX_X86) \
-		bash -lc 'set -e; apk add --no-cache curl perl perl-text-template >/dev/null 2>&1 || true; \
-		  curl -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal; \
-		  . $$HOME/.cargo/env; P=$$(ls -1 /opt/python/cp312*/bin/python | head -n1); \
-		  $$P -m pip install -U pip maturin; \
-		  PATH=$$HOME/.cargo/bin:$$PATH $$P -m maturin build --release --compatibility musllinux_1_2 -j $$(( $$(nproc) )) -m /io/crates/codex_native/Cargo.toml -i $$P -o /io/$(WHEELHOUSE)'
+            bash -lc 'set -e; apk add --no-cache curl perl perl-text-template >/dev/null 2>&1 || true; \
+              curl -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal; \
+              . $$HOME/.cargo/env; P=$$(ls -1 /opt/python/cp312*/bin/python | head -n1); \
+              $$P -m pip install -U pip maturin; \
+              export CFLAGS="$$CFLAGS -D_DEFAULT_SOURCE -D_BSD_SOURCE"; \
+              PATH=$$HOME/.cargo/bin:$$PATH $$P -m maturin build --release --compatibility musllinux_1_2 -j $$(( $$(nproc) )) -m /io/crates/codex_native/Cargo.toml -i $$P -o /io/$(WHEELHOUSE)'
 
 # Build only musllinux aarch64 (Alpine)
-wheelhouse-musl-arm64: wheelhouse-clean
-	@mkdir -p $(WHEELHOUSE)
+	wheelhouse-musl-arm64: wheelhouse-clean
+		@mkdir -p $(WHEELHOUSE)
 	docker run --rm --platform linux/arm64 -v "$(PWD)":/io $(MUSLLINUX_ARM) \
-		bash -lc 'set -e; apk add --no-cache curl perl perl-text-template >/dev/null 2>&1 || true; \
-		  curl -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal; \
-		  . $$HOME/.cargo/env; P=$$(ls -1 /opt/python/cp312*/bin/python | head -n1); \
-		  $$P -m pip install -U pip maturin; \
-		  PATH=$$HOME/.cargo/bin:$$PATH $$P -m maturin build --release --compatibility musllinux_1_2 -j $$(( $$(nproc) )) -m /io/crates/codex_native/Cargo.toml -i $$P -o /io/$(WHEELHOUSE)'
+            bash -lc 'set -e; apk add --no-cache curl perl perl-text-template >/dev/null 2>&1 || true; \
+              curl -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal; \
+              . $$HOME/.cargo/env; P=$$(ls -1 /opt/python/cp312*/bin/python | head -n1); \
+              $$P -m pip install -U pip maturin; \
+              export CFLAGS="$$CFLAGS -D_DEFAULT_SOURCE -D_BSD_SOURCE"; \
+              PATH=$$HOME/.cargo/bin:$$PATH $$P -m maturin build --release --compatibility musllinux_1_2 -j $$(( $$(nproc) )) -m /io/crates/codex_native/Cargo.toml -i $$P -o /io/$(WHEELHOUSE)'
