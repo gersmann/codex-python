@@ -68,6 +68,7 @@ gen-protocol:
 		--use-union-operator \
 		--use-standard-collections \
 		--use-title-as-name \
+		--disable-timestamp \
 		--target-python-version 3.12 \
 		--output codex/protocol/types.py
 	@python3 scripts/postprocess_protocol_types.py
