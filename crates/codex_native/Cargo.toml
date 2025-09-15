@@ -1,6 +1,6 @@
 [package]
 name = "codex_native"
-version = "0.2.14"
+version = "0.2.15"
 edition = "2021"
 
 [lib]
@@ -22,6 +22,7 @@ tracing = "0.1"
 clap = { version = "4", features = ["derive"] }
 which = "6"
 pathdiff = "0.2"
+dotenvy = "0.15.7"
 
 # Upstream Codex crates from the monorepo (use git deps; pin to main for now)
 # Pin to a specific commit of the upstream Codex monorepo to avoid breaking API changes

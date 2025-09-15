@@ -1,7 +1,7 @@
 use anyhow::{Context, Result};
 use codex_core::config::{find_codex_home, Config, ConfigOverrides, ConfigToml};
 use codex_core::protocol::{EventMsg, InputItem};
-use codex_core::{AuthManager, ConversationManager};
+use codex_core::{AuthManager, CodexAuth, ConversationManager};
 // use of SandboxMode is handled within core::config; not needed here
 use pyo3::prelude::*;
 use pyo3::types::{PyDict, PyFloat, PyList, PyModule, PyString};
@@ -38,9 +38,14 @@ fn run_exec_collect(
 }
 
 async fn run_exec_impl(prompt: String, config: Config) -> Result<Vec<JsonValue>> {
-    let conversation_manager = ConversationManager::new(AuthManager::shared(
-        config.codex_home.clone(),
-    ));
+    let conversation_manager = match std::env::var("OPENAI_API_KEY") {
+        Ok(val) if !val.trim().is_empty() => {
+            ConversationManager::with_auth(CodexAuth::from_api_key(&val))
+        }
+        _ => ConversationManager::new(AuthManager::shared(
+            config.codex_home.clone(),
+        )),
+    };
     let new_conv = conversation_manager.new_conversation(config).await?;
     let conversation = new_conv.conversation.clone();
 
@@ -173,6 +178,10 @@ fn build_config(
     overrides: Option<Bound<'_, PyDict>>,
     load_default_config: bool,
 ) -> Result<Config> {
+    // Match CLI behavior: import env vars from ~/.codex/.env (if present)
+    // before reading config/auth so OPENAI_API_KEY and friends are visible.
+    // Security: filter out CODEX_* variables just like the CLI does.
+    load_dotenv();
     let mut overrides_struct = ConfigOverrides::default();
     let mut cli_overrides: Vec<(String, TomlValue)> = Vec::new();
 
@@ -291,6 +300,33 @@ fn build_config(
     }
 }
 
+const ILLEGAL_ENV_VAR_PREFIX: &str = "CODEX_";
+
+/// Load env vars from ~/.codex/.env, filtering out any keys that start with
+/// CODEX_ (reserved for internal use). This mirrors the behavior in the
+/// `codex-arg0` crate used by the CLI so python users get the same DX.
+fn load_dotenv() {
+    if let Ok(codex_home) = find_codex_home() {
+        let env_path = codex_home.join(".env");
+        if let Ok(iter) = dotenvy::from_path_iter(env_path) {
+            set_filtered(iter);
+        }
+    }
+}
+
+/// Helper to set vars from a dotenvy iterator while filtering out `CODEX_` keys.
+fn set_filtered<I>(iter: I)
+where
+    I: IntoIterator<Item = Result<(String, String), dotenvy::Error>>,
+{
+    for (key, value) in iter.into_iter().flatten() {
+        if !key.to_ascii_uppercase().starts_with(ILLEGAL_ENV_VAR_PREFIX) {
+            // Safe to modify env here – we do it up front before we spawn runtimes/threads.
+            unsafe { std::env::set_var(&key, &value) };
+        }
+    }
+}
+
 /// Convert a Python object into a TOML value. Returns Ok(None) for `None`.
 fn py_to_toml_value(obj: Bound<'_, PyAny>) -> Result<Option<TomlValue>> {
     use pyo3::types::{PyBool, PyDict, PyFloat, PyInt, PyList, PyString};
@@ -397,9 +433,14 @@ fn insert_parts(current: &mut TomlTable, parts: &[&str], val: TomlValue) {
 fn run_exec_stream_impl(prompt: String, config: Config, tx: mpsc::Sender<JsonValue>) -> Result<()> {
     let rt = tokio::runtime::Runtime::new()?;
     rt.block_on(async move {
-        let conversation_manager = ConversationManager::new(AuthManager::shared(
-            config.codex_home.clone(),
-        ));
+        let conversation_manager = match std::env::var("OPENAI_API_KEY") {
+            Ok(val) if !val.trim().is_empty() => {
+                ConversationManager::with_auth(CodexAuth::from_api_key(&val))
+            }
+            _ => ConversationManager::new(AuthManager::shared(
+                config.codex_home.clone(),
+            )),
+        };
         let new_conv = conversation_manager.new_conversation(config).await?;
         let conversation = new_conv.conversation.clone();
 

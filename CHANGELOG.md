@@ -1,8 +1,12 @@
-% Changelog
+# Changelog
 
 All notable changes to this project will be documented in this file.
 
 The format is based on Keep a Changelog and this project adheres to Semantic Versioning.
+
+## [0.2.15] - 2025-09-15
+### Fixed
+- Native Python path now reads `OPENAI_API_KEY` from the environment (and loads `~/.codex/.env` like the CLI), restoring parity with CLI behavior when `load_default_config` is used.
 
 ## [0.2.12] - 2025-09-14
 ### Changed
