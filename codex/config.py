@@ -218,7 +218,8 @@ class CodexConfig(BaseModel):
     project_doc_max_bytes: int | None = None
     profile: str | None = None
     profiles: dict[str, ProfileConfig] | None = None
-    tools: ToolsConfig | None = None
+    # Accept either a structured ToolsConfig or a plain mapping (common in tests/CLI overrides)
+    tools: ToolsConfig | dict[str, Any] | None = None
     projects: dict[str, ProjectConfig] | None = None
 
     # Experimental / internal

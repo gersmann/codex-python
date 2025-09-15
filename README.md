@@ -108,3 +108,14 @@ Links
 - Codex repo: https://github.com/openai/codex
 - uv: https://docs.astral.sh/uv/
 - maturin: https://www.maturin.rs/
+
+## GitHub Workflow: Autonomous Review
+
+This repo includes a workflow that runs autonomous code review on pull requests and can
+apply edits on demand via a slash command.
+
+- Automatic review runs on PR open, synchronize, reopen, and when marked ready for review.
+- To request autonomous edits on a PR, comment `/codex` in either a PR thread or a
+  review comment. The workflow listens for `/codex` and triggers the "act" job.
+
+See `.github/workflows/codex-autoreview.yml` for configuration.
