@@ -15,7 +15,11 @@ struct Args {
     ts_out: PathBuf,
 
     /// Output directory for the generated JSON Schema (.generated/schema by default)
-    #[arg(long = "schema-out", value_name = "DIR", default_value = ".generated/schema")]
+    #[arg(
+        long = "schema-out",
+        value_name = "DIR",
+        default_value = ".generated/schema"
+    )]
     schema_out: PathBuf,
 
     /// Optional path to the Prettier binary to format emitted TS (forwarded to upstream generator)
@@ -63,9 +67,12 @@ fn ensure_ts_generated(ts_out: &Path, prettier: Option<&Path>) -> Result<()> {
             .arg(relative_path_from(&monorepo, ts_out)?)
             .current_dir(&monorepo);
         if let Some(bin) = prettier {
-            cmd.arg("--prettier").arg(relative_path_from(&monorepo, bin)?);
+            cmd.arg("--prettier")
+                .arg(relative_path_from(&monorepo, bin)?);
         }
-        let status = cmd.status().context("Failed to run codex-protocol-ts generator")?;
+        let status = cmd
+            .status()
+            .context("Failed to run codex-protocol-ts generator")?;
         if status.success() {
             return Ok(());
         }

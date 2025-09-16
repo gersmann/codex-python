@@ -6,11 +6,11 @@ use codex_core::{AuthManager, CodexAuth, ConversationManager};
 use pyo3::prelude::*;
 use pyo3::types::{PyDict, PyFloat, PyList, PyModule, PyString};
 use serde_json::Value as JsonValue;
-use toml::value::Value as TomlValue;
-use toml::value::Table as TomlTable;
 use std::path::PathBuf;
 use std::sync::{mpsc, Arc, Mutex};
 use std::thread;
+use toml::value::Table as TomlTable;
+use toml::value::Value as TomlValue;
 
 #[pyfunction]
 fn run_exec_collect(
@@ -42,9 +42,7 @@ async fn run_exec_impl(prompt: String, config: Config) -> Result<Vec<JsonValue>>
         Ok(val) if !val.trim().is_empty() => {
             ConversationManager::with_auth(CodexAuth::from_api_key(&val))
         }
-        _ => ConversationManager::new(AuthManager::shared(
-            config.codex_home.clone(),
-        )),
+        _ => ConversationManager::new(AuthManager::shared(config.codex_home.clone())),
     };
     let new_conv = conversation_manager.new_conversation(config).await?;
     let conversation = new_conv.conversation.clone();
@@ -66,13 +64,15 @@ async fn run_exec_impl(prompt: String, config: Config) -> Result<Vec<JsonValue>>
                 out.push(serde_json::to_value(&ev)?);
                 if is_complete {
                     // Ask the agent to shutdown; collect remaining events
-                    let _ = conversation.submit(codex_core::protocol::Op::Shutdown).await;
+                    let _ = conversation
+                        .submit(codex_core::protocol::Op::Shutdown)
+                        .await;
                 }
                 if is_shutdown {
                     break;
                 }
             }
-            Err(_) => break,
+            Err(err) => return Err(err.into()),
         }
     }
     Ok(out)
@@ -84,7 +84,7 @@ fn to_py<E: std::fmt::Display>(e: E) -> PyErr {
 
 #[pyclass]
 struct CodexEventStream {
-    rx: Arc<Mutex<mpsc::Receiver<JsonValue>>>,
+    rx: Arc<Mutex<mpsc::Receiver<Result<JsonValue, String>>>>,
 }
 
 #[pymethods]
@@ -93,12 +93,13 @@ impl CodexEventStream {
         slf
     }
 
-    fn __next__(&mut self, py: Python<'_>) -> Option<Py<PyAny>> {
+    fn __next__(&mut self, py: Python<'_>) -> PyResult<Option<Py<PyAny>>> {
         // Run the blocking recv without holding the GIL
-        let res = py.detach(|| self.rx.lock().ok()?.recv().ok());
+        let res = py.detach(|| self.rx.lock().ok().and_then(|rx| rx.recv().ok()));
         match res {
-            Some(v) => json_to_py(py, &v).ok(),
-            None => None,
+            Some(Ok(v)) => Ok(Some(json_to_py(py, &v)?)),
+            Some(Err(msg)) => Err(pyo3::exceptions::PyRuntimeError::new_err(msg)),
+            None => Ok(None),
         }
     }
 }
@@ -109,15 +110,18 @@ fn start_exec_stream(
     config_overrides: Option<Bound<'_, PyDict>>,
     load_default_config: bool,
 ) -> PyResult<CodexEventStream> {
-    let (tx, rx) = mpsc::channel::<JsonValue>();
+    let (tx, rx) = mpsc::channel::<Result<JsonValue, String>>();
 
     // Build a pure-Rust Config on the Python thread
     let config = build_config(config_overrides, load_default_config).map_err(to_py)?;
     let prompt_clone = prompt.clone();
 
     thread::spawn(move || {
-        if let Err(e) = run_exec_stream_impl(prompt_clone, config, tx) {
-            eprintln!("codex_native stream error: {e}");
+        let tx_for_impl = tx.clone();
+        if let Err(e) = run_exec_stream_impl(prompt_clone, config, tx_for_impl) {
+            let msg = e.to_string();
+            let _ = tx.send(Err(msg.clone()));
+            eprintln!("codex_native stream error: {msg}");
         }
     });
     Ok(CodexEventStream {
@@ -174,10 +178,7 @@ fn json_to_py(py: Python<'_>, v: &JsonValue) -> PyResult<Py<PyAny>> {
     Ok(obj)
 }
 
-fn build_config(
-    overrides: Option<Bound<'_, PyDict>>,
-    load_default_config: bool,
-) -> Result<Config> {
+fn build_config(overrides: Option<Bound<'_, PyDict>>, load_default_config: bool) -> Result<Config> {
     // Match CLI behavior: import env vars from ~/.codex/.env (if present)
     // before reading config/auth so OPENAI_API_KEY and friends are visible.
     // Security: filter out CODEX_* variables just like the CLI does.
@@ -281,7 +282,10 @@ fn build_config(
 
     if load_default_config {
         // Start from built-in defaults and apply CLI + typed overrides.
-        Ok(Config::load_with_cli_overrides(cli_overrides, overrides_struct)?)
+        Ok(Config::load_with_cli_overrides(
+            cli_overrides,
+            overrides_struct,
+        )?)
     } else {
         // Do NOT read any on-disk config. Build a TOML value purely from CLI-style overrides
         // and then apply the strongly-typed overrides on top. We still resolve CODEX_HOME to
@@ -296,7 +300,11 @@ fn build_config(
 
         let root_value = TomlValue::Table(base_tbl);
         let cfg: ConfigToml = root_value.try_into().map_err(|e| anyhow::anyhow!(e))?;
-        Ok(Config::load_from_base_config_with_overrides(cfg, overrides_struct, codex_home)?)
+        Ok(Config::load_from_base_config_with_overrides(
+            cfg,
+            overrides_struct,
+            codex_home,
+        )?)
     }
 }
 
@@ -430,16 +438,18 @@ fn insert_parts(current: &mut TomlTable, parts: &[&str], val: TomlValue) {
     }
 }
 
-fn run_exec_stream_impl(prompt: String, config: Config, tx: mpsc::Sender<JsonValue>) -> Result<()> {
+fn run_exec_stream_impl(
+    prompt: String,
+    config: Config,
+    tx: mpsc::Sender<Result<JsonValue, String>>,
+) -> Result<()> {
     let rt = tokio::runtime::Runtime::new()?;
     rt.block_on(async move {
         let conversation_manager = match std::env::var("OPENAI_API_KEY") {
             Ok(val) if !val.trim().is_empty() => {
                 ConversationManager::with_auth(CodexAuth::from_api_key(&val))
             }
-            _ => ConversationManager::new(AuthManager::shared(
-                config.codex_home.clone(),
-            )),
+            _ => ConversationManager::new(AuthManager::shared(config.codex_home.clone())),
         };
         let new_conv = conversation_manager.new_conversation(config).await?;
         let conversation = new_conv.conversation.clone();
@@ -456,15 +466,20 @@ fn run_exec_stream_impl(prompt: String, config: Config, tx: mpsc::Sender<JsonVal
                 Ok(ev) => {
                     let is_shutdown = matches!(ev.msg, EventMsg::ShutdownComplete);
                     let is_complete = matches!(ev.msg, EventMsg::TaskComplete(_));
-                    let _ = tx.send(serde_json::to_value(&ev)?);
+                    let event_json = serde_json::to_value(&ev)?;
+                    if tx.send(Ok(event_json)).is_err() {
+                        break;
+                    }
                     if is_complete {
-                        let _ = conversation.submit(codex_core::protocol::Op::Shutdown).await;
+                        let _ = conversation
+                            .submit(codex_core::protocol::Op::Shutdown)
+                            .await;
                     }
                     if is_shutdown {
                         break;
                     }
                 }
-                Err(_) => break,
+                Err(err) => return Err(err.into()),
             }
         }
         Ok::<(), anyhow::Error>(())

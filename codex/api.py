@@ -16,10 +16,13 @@ class CodexError(Exception):
 class CodexNativeError(CodexError):
     """Raised when the native extension is not available or fails."""
 
-    def __init__(self) -> None:
+    def __init__(self, message: str | None = None) -> None:
         super().__init__(
-            "codex_native extension not installed or failed to run. "
-            "Run `make dev-native` or ensure native wheels are installed."
+            message
+            or (
+                "codex_native extension not installed or failed to run. "
+                "Run `make dev-native` or ensure native wheels are installed."
+            )
         )
 
 
@@ -31,7 +34,14 @@ class Conversation:
 
     def __iter__(self) -> Iterator[Event]:
         """Yield `Event` objects from the native stream."""
-        for item in self._stream:
+        iterator = iter(self._stream)
+        while True:
+            try:
+                item = next(iterator)
+            except StopIteration:
+                return
+            except RuntimeError as exc:  # surfaced from native iterator
+                raise CodexNativeError(str(exc)) from exc
             try:
                 yield Event.model_validate(item)
             except Exception:
@@ -76,7 +86,7 @@ class CodexClient:
             )
             return Conversation(_stream=stream)
         except RuntimeError as e:
-            raise CodexNativeError() from e
+            raise CodexNativeError(str(e)) from e
 
 
 def run_exec(
@@ -97,7 +107,7 @@ def run_exec(
             load_default_config=load_default_config,
         )
     except RuntimeError as e:
-        raise CodexNativeError() from e
+        raise CodexNativeError(str(e)) from e
 
     out: list[Event] = []
     for item in events:
