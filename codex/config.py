@@ -49,10 +49,53 @@ class HistoryConfig(BaseModel):
 
 
 class SandboxWorkspaceWrite(BaseModel):
+    """Fine‑grained settings for WorkspaceWrite sandbox mode.
+
+    Mirrors `core::config_types::SandboxWorkspaceWrite`.
+    - writable_roots: extra directories the agent may write to in addition to CWD.
+    - network_access: whether outbound network is allowed when in WorkspaceWrite.
+    - exclude_tmpdir_env_var: if true, do NOT auto‑include $TMPDIR as writable.
+    - exclude_slash_tmp: if true, do NOT auto‑include /tmp as writable.
+    """
+
     writable_roots: list[str] | None = None
     network_access: bool | None = None
     exclude_tmpdir_env_var: bool | None = None
     exclude_slash_tmp: bool | None = None
+
+    model_config = ConfigDict(extra="allow")
+
+
+class ShellEnvironmentPolicyInherit(str, Enum):
+    """Baseline environment to inherit for shell/local_shell tool processes."""
+
+    CORE = "core"
+    ALL = "all"
+    NONE = "none"
+
+
+class ShellEnvironmentPolicy(BaseModel):
+    """Policy for constructing env vars for spawned commands.
+
+    Matches `core::config_types::ShellEnvironmentPolicyToml`.
+    The build algorithm is: start from `inherit`, optionally filter by default
+    excludes, apply `exclude`, insert `set`, then filter by `include_only`.
+
+    - inherit: one of core/all/none; starting env for the child process.
+    - ignore_default_excludes: if true, do NOT auto‑filter *KEY*/*TOKEN* names.
+    - exclude: regex/wildmatch patterns to drop from the env.
+    - set: explicit key/value pairs to add to the env.
+    - include_only: allow‑list patterns; if set, drop everything else.
+    - experimental_use_profile: if true, run via the user's shell profile.
+    """
+
+    inherit: ShellEnvironmentPolicyInherit | None = None
+    ignore_default_excludes: bool | None = None
+    exclude: list[str] | None = None
+    # Key is `set` in TOML; Python attribute name is allowed.
+    set: dict[str, str] | None = None
+    include_only: list[str] | None = None
+    experimental_use_profile: bool | None = None
 
     model_config = ConfigDict(extra="allow")
 
@@ -72,9 +115,19 @@ class WireApi(str, Enum):
 
 
 class ModelProviderConfig(BaseModel):
+    """Defines an OpenAI‑compatible provider entry.
+
+    - wire_api: `responses` for /v1/responses, `chat` for /v1/chat/completions.
+    - env_key: environment variable containing an API key (if required).
+    - env_key_instructions: hint shown when the key is missing.
+    - request/stream_*: retry and idle timeout tuning.
+    - requires_openai_auth: if true, prefer ChatGPT/OAuth auth instead of API key.
+    """
+
     name: str | None = None
     base_url: str | None = None
     env_key: str | None = None
+    env_key_instructions: str | None = None
     wire_api: WireApi | None = None
     query_params: dict[str, str] | None = None
     http_headers: dict[str, str] | None = None
@@ -82,6 +135,7 @@ class ModelProviderConfig(BaseModel):
     request_max_retries: int | None = None
     stream_max_retries: int | None = None
     stream_idle_timeout_ms: int | None = None
+    requires_openai_auth: bool | None = None
 
     model_config = ConfigDict(extra="allow")
 
@@ -122,10 +176,14 @@ class Verbosity(str, Enum):
 class ToolsConfig(BaseModel):
     # Accept either "web_search" or legacy alias "web_search_request" on input
     web_search: bool | None = Field(
-        default=None, validation_alias=AliasChoices("web_search", "web_search_request")
+        default=None,
+        validation_alias=AliasChoices("web_search", "web_search_request"),
+        description="Enable builtin web search tool (alias: web_search_request)",
     )
     # Also expose view_image knob (defaults handled in Rust)
-    view_image: bool | None = None
+    view_image: bool | None = Field(
+        default=None, description="Enable tool to attach local images to context"
+    )
 
     model_config = ConfigDict(extra="allow")
 
@@ -165,6 +223,10 @@ class CodexConfig(BaseModel):
 
     # Model selection
     model: str | None = Field(default=None, description="Model slug, e.g. 'gpt-5' or 'o3'.")
+    review_model: str | None = Field(
+        default=None,
+        description="Preferred model when running /review features (if supported).",
+    )
     model_provider: str | None = Field(
         default=None, description="Provider key from config, e.g. 'openai'."
     )
@@ -182,6 +244,9 @@ class CodexConfig(BaseModel):
     codex_linux_sandbox_exe: str | None = Field(
         default=None, description="Absolute path to codex-linux-sandbox (Linux only)."
     )
+    shell_environment_policy: ShellEnvironmentPolicy | None = Field(
+        default=None, description="How child process env vars are constructed for shell tools."
+    )
 
     # UX / features
     base_instructions: str | None = Field(default=None, description="Override base instructions.")
@@ -193,6 +258,10 @@ class CodexConfig(BaseModel):
     # Model/runtime tuning
     model_context_window: int | None = None
     model_max_output_tokens: int | None = None
+    model_auto_compact_token_limit: int | None = Field(
+        default=None,
+        description="Token threshold to auto‑compact history; if unset, model default applies.",
+    )
     model_reasoning_effort: ReasoningEffort | None = None
     model_reasoning_summary: ReasoningSummary | None = None
     model_verbosity: Verbosity | None = None
@@ -204,6 +273,10 @@ class CodexConfig(BaseModel):
     chatgpt_base_url: str | None = None
     preferred_auth_method: PreferredAuthMethod | None = None
     file_opener: FileOpener | None = None
+    disable_paste_burst: bool | None = Field(
+        default=None,
+        description="If true, disables paste burst buffering in interactive UIs.",
+    )
 
     # Config file composed sections
     history: HistoryConfig | None = None
@@ -225,10 +298,20 @@ class CodexConfig(BaseModel):
     # Experimental / internal
     experimental_resume: str | None = None
     experimental_instructions_file: str | None = None
-    experimental_use_exec_command_tool: bool | None = None
+    experimental_use_exec_command_tool: bool | None = Field(
+        default=None,
+        description="Use experimental streamable exec tool in place of legacy shell tool.",
+    )
+    experimental_use_unified_exec_tool: bool | None = Field(
+        default=None, description="Use unified exec tool for all command invocations."
+    )
     responses_originator_header_internal_override: str | None = None
     disable_response_storage: bool | None = Field(
         default=None, description="Accepted in some clients; ignored by core."
+    )
+    # Typed override (maps to core ConfigOverrides.tools_web_search_request)
+    tools_web_search_request: bool | None = Field(
+        default=None, description="Force‑enable web_search tool without reading config file."
     )
 
     def to_dict(self) -> dict[str, Any]:
