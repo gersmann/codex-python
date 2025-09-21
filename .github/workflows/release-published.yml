@@ -1,47 +1,167 @@
-name: Publish to PyPI
+name: Release Published Pipeline
 
 on:
-  push:
-    tags:
-      - 'v*'
+  release:
+    types: [published]
 
 permissions:
-  contents: read
+  contents: write
   id-token: write
 
+concurrency:
+  group: release-published
+  cancel-in-progress: false
+
 jobs:
-  guard:
-    name: Guard (tag points to main?)
+  prepare:
+    name: Bump versions and align tag
     runs-on: ubuntu-latest
     outputs:
-      publish: ${{ steps.check.outputs.publish }}
+      tag: ${{ steps.ctx.outputs.tag }}
+      version: ${{ steps.bump.outputs.version }}
+      sha: ${{ steps.ctx.outputs.sha }}
     steps:
-      - name: Checkout (shallow)
+      - name: Checkout
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - name: Check if tag commit is on main
-        id: check
-        env:
-          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+
+      - name: Read context
+        id: ctx
+        shell: bash
         run: |
-          git fetch origin $DEFAULT_BRANCH --depth=1
-          if git merge-base --is-ancestor "$GITHUB_SHA" "origin/$DEFAULT_BRANCH"; then
-            echo "publish=true" >> "$GITHUB_OUTPUT"
-            echo "Tag commit is on $DEFAULT_BRANCH; will publish."
+          TAG="${{ github.event.release.tag_name }}"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          # Resolve current tag SHA (lightweight or annotated)
+          if git rev-parse -q --verify "refs/tags/$TAG^{commit}" >/dev/null; then
+            SHA=$(git rev-parse "refs/tags/$TAG^{commit}")
           else
-            echo "publish=false" >> "$GITHUB_OUTPUT"
-            echo "Tag commit is NOT on $DEFAULT_BRANCH; skipping publish."
+            echo "Cannot resolve commit for tag $TAG" >&2
+            exit 1
           fi
+          echo "sha=$SHA" >> "$GITHUB_OUTPUT"
+          echo "Tag=$TAG TagSHA=$SHA"
+
+      - name: Compute next version (Conventional Commits)
+        id: bump
+        shell: bash
+        run: |
+          set -euo pipefail
+          DEFAULT_BRANCH="${{ github.event.repository.default_branch }}"
+          git fetch origin "$DEFAULT_BRANCH" --depth=1000
+          # Find last semver tag
+          LAST_TAG=$(git describe --tags --match 'v[0-9]*' --abbrev=0 2>/dev/null || true)
+          RANGE=""
+          if [ -n "$LAST_TAG" ]; then
+            RANGE="$LAST_TAG..origin/$DEFAULT_BRANCH"
+          else
+            RANGE="origin/$DEFAULT_BRANCH"
+          fi
+          log=$(git log --pretty=%B $RANGE)
+          bump="patch"
+          if echo "$log" | grep -E '(^|\n)(feat|feat\(.+\))(!)?:' -q; then
+            bump="minor"
+          fi
+          if echo "$log" | grep -E 'BREAKING CHANGE|(^|\n)([^\n!]+)!:' -q; then
+            bump="major"
+          fi
+          # Derive current version
+          if [ -n "$LAST_TAG" ]; then
+            cur=${LAST_TAG#v}
+          else
+            cur="0.0.0"
+          fi
+          IFS='.' read -r MA MI PA <<< "$cur"
+          case "$bump" in
+            major) MA=$((MA+1)); MI=0; PA=0 ;;
+            minor) MI=$((MI+1)); PA=0 ;;
+            patch) PA=$((PA+1)) ;;
+          esac
+          NEXT="$MA.$MI.$PA"
+          echo "version=$NEXT" >> "$GITHUB_OUTPUT"
+          echo "Computed bump: $bump from $cur -> $NEXT"
+
+      - name: Configure bot user
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      - name: Update versions in sources
+        shell: bash
+        run: |
+          set -euo pipefail
+          VER="${{ steps.bump.outputs.version }}"
+          # Update Cargo.toml version
+          sed -i.bak -E "s/^version = \"[0-9]+\.[0-9]+\.[0-9]+\"/version = \"${VER}\"/" crates/codex_native/Cargo.toml
+          rm -f crates/codex_native/Cargo.toml.bak
+          # Update Python __version__
+          perl -0777 -pe 's/(\n__version__\s*=\s*\")[^"]*(\")/\1'"${VER}"'\2/s' -i codex/__init__.py
+          echo "Updated versions to ${VER}"
+
+      - name: Commit version bump
+        shell: bash
+        run: |
+          VER="${{ steps.ctx.outputs.version }}"
+          if git diff --quiet; then
+            echo "No changes to commit (versions already ${VER})."
+          else
+            git add crates/codex_native/Cargo.toml codex/__init__.py
+            git commit -m "chore(release): v${VER} [skip ci]"
+            DEFAULT_BRANCH="${{ github.event.repository.default_branch }}"
+            git push origin HEAD:"${DEFAULT_BRANCH}"
+          fi
+
+      - name: Create new semver tag and repoint release
+        shell: bash
+        env:
+          PLACEHOLDER_TAG: ${{ steps.ctx.outputs.tag }}
+          VERSION: ${{ steps.bump.outputs.version }}
+        run: |
+          DEFAULT_BRANCH="${{ github.event.repository.default_branch }}"
+          git fetch origin "$DEFAULT_BRANCH" --depth=1
+          NEW_SHA=$(git rev-parse "origin/${DEFAULT_BRANCH}")
+          REAL_TAG="v${VERSION}"
+          git tag -fa "$REAL_TAG" "$NEW_SHA" -m "Release $REAL_TAG"
+          git push origin "refs/tags/${REAL_TAG}" --force
+          # Delete placeholder tag if it exists
+          if git rev-parse -q --verify "refs/tags/${PLACEHOLDER_TAG}" >/dev/null; then
+            git push origin :"refs/tags/${PLACEHOLDER_TAG}" || true
+          fi
+          echo "real_tag=$REAL_TAG" >> "$GITHUB_ENV"
+
+      - name: Update GitHub Release to new tag
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const releaseId = context.payload.release.id;
+            const realTag = process.env.real_tag || process.env.REAL_TAG || process.env.real_tag;
+            const version = process.env.VERSION || '';
+            if (!realTag) core.setFailed('real_tag env missing');
+            const { data: rel } = await github.rest.repos.updateRelease({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              release_id: releaseId,
+              tag_name: realTag,
+              name: realTag,
+              target_commitish: context.payload.repository.default_branch,
+            });
+            core.info(`Updated release ${rel.id} to tag ${realTag}`);
 
   build-wheels:
     name: Build native wheels
-    needs: guard
-    if: needs.guard.outputs.publish == 'true'
+    needs: prepare
     strategy:
       fail-fast: false
       matrix:
-        platform: [linux-x86_64, linux-aarch64, linux-musl-x86_64, linux-musl-aarch64, macos-universal2, windows-amd64]
+        platform:
+          [
+            linux-x86_64,
+            linux-aarch64,
+            linux-musl-x86_64,
+            linux-musl-aarch64,
+            macos-universal2,
+            windows-amd64,
+          ]
         include:
           - platform: linux-x86_64
             os: ubuntu-latest
@@ -65,6 +185,8 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Set up Rust
         uses: dtolnay/rust-toolchain@stable
@@ -89,16 +211,13 @@ jobs:
         if: ${{ matrix.platform == 'linux-x86_64' }}
         uses: PyO3/maturin-action@v1
         env:
-          # Ensure glibc exposes htobe*/be*toh macros in <endian.h>
           CFLAGS: -D_DEFAULT_SOURCE -D_BSD_SOURCE
         with:
-          manylinux: '2014'
+          manylinux: "2014"
           command: build
           before-script-linux: |
             yum -y install curl perl-core >/dev/null 2>&1 || true
             (perl -MText::Template -e1 >/dev/null 2>&1 || (curl -sL https://cpanmin.us | perl - App::cpanminus Text::Template >/dev/null))
-          # Build via root pyproject so distribution name is 'codex-python'
-          # Use the default container python since we build abi3 once.
           args: --release -i python3.12 -o dist
 
       - name: Build Linux aarch64 wheel (manylinux2014)
@@ -107,14 +226,12 @@ jobs:
         env:
           CFLAGS: -D_DEFAULT_SOURCE -D_BSD_SOURCE
         with:
-          manylinux: '2014'
+          manylinux: "2014"
           target: aarch64-unknown-linux-gnu
           command: build
           before-script-linux: |
             yum -y install curl perl-core >/dev/null 2>&1 || true
             (perl -MText::Template -e1 >/dev/null 2>&1 || (curl -sL https://cpanmin.us | perl - App::cpanminus Text::Template >/dev/null))
-          # Build via root pyproject so distribution name is 'codex-python'
-          # Use the default container python since we build abi3 once.
           args: --release -i python3.12 -o dist
 
       - name: Build Linux x86_64 wheel (musllinux_1_2)
@@ -123,13 +240,11 @@ jobs:
         env:
           CFLAGS: -D_DEFAULT_SOURCE -D_BSD_SOURCE
         with:
-          manylinux: 'musllinux_1_2'
+          manylinux: "musllinux_1_2"
           target: x86_64-unknown-linux-musl
           command: build
           before-script-linux: |
             apk add --no-cache curl perl perl-text-template >/dev/null 2>&1 || true
-          # Build via root pyproject so distribution name is 'codex-python'
-          # Use the default container python since we build abi3 once.
           args: --release -i python3.12 -o dist
 
       - name: Build Linux aarch64 wheel (musllinux_1_2)
@@ -138,13 +253,11 @@ jobs:
         env:
           CFLAGS: -D_DEFAULT_SOURCE -D_BSD_SOURCE
         with:
-          manylinux: 'musllinux_1_2'
+          manylinux: "musllinux_1_2"
           target: aarch64-unknown-linux-musl
           command: build
           before-script-linux: |
             apk add --no-cache curl perl perl-text-template >/dev/null 2>&1 || true
-          # Build via root pyproject so distribution name is 'codex-python'
-          # Use the default container python since we build abi3 once.
           args: --release -i python3.12 -o dist
 
       - name: Build macOS universal2 wheel
@@ -153,8 +266,6 @@ jobs:
           python -m pip install --upgrade pip
           pip install maturin
           rustup target add x86_64-apple-darwin aarch64-apple-darwin
-          # maturin >=1.0 removed --universal2; use --target universal2-apple-darwin
-          # Build via root pyproject so distribution name is 'codex-python'
           maturin build --release -i python -o dist --target universal2-apple-darwin
 
       - name: Build Windows wheel
@@ -162,7 +273,6 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install maturin
-          # Build via root pyproject so distribution name is 'codex-python'
           maturin build --release -i python -o dist
 
       - name: Upload wheels
@@ -173,8 +283,7 @@ jobs:
 
   build-sdist:
     name: Build sdist
-    needs: guard
-    if: needs.guard.outputs.publish == 'true'
+    needs: prepare
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
@@ -186,7 +295,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.13'
+          python-version: "3.13"
 
       - name: Install build tool
         run: |
@@ -205,15 +314,13 @@ jobs:
 
   publish:
     name: Publish to PyPI (Trusted Publishing)
-    needs: [guard, build-wheels, build-sdist]
-    if: needs.guard.outputs.publish == 'true'
+    needs: [prepare, build-wheels, build-sdist]
     runs-on: ubuntu-latest
     steps:
       - name: Download all artifacts
         uses: actions/download-artifact@v4
         with:
           path: dist
-          # Merge all artifacts directly into dist/ so Twine finds files
           merge-multiple: true
 
       - name: Flatten artifacts into dist/

@@ -9,7 +9,7 @@ on:
     types: [created]
 
 permissions:
-  contents: write           # needed for act mode pushes; safe for review mode
+  contents: write # needed for act mode pushes; safe for review mode
   pull-requests: write
 
 concurrency:
