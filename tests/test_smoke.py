@@ -11,12 +11,15 @@ def test_basic_import_and_api() -> None:
     # Version string exposed and public API imports
     assert isinstance(codex.__version__, str) and len(codex.__version__) > 0
 
-    from codex import CodexClient, CodexConfig, run_exec
+    from codex import CodexClient, CodexConfig, run_exec, run_prompt
 
     # Instantiate config and client to ensure constructors work
     cfg = CodexConfig()
-    _ = CodexClient(config=cfg)
+    client = CodexClient(config=cfg)
+    assert isinstance(cfg.model_dump(), dict)
+    assert isinstance(client, CodexClient)
     assert callable(run_exec)
+    assert callable(run_prompt)
 
 
 def test_run_exec_behavior_without_native() -> None:

@@ -31,7 +31,7 @@ If there’s no prebuilt wheel for your platform/Python, pip will build from sou
 Run a prompt and collect structured events (typed):
 
 ```python
-from codex.api import run_exec, CodexClient, CodexNativeError
+from codex import run_exec, CodexClient, CodexNativeError
 from codex.config import CodexConfig, ApprovalPolicy, SandboxMode
 
 cfg = CodexConfig(
@@ -51,8 +51,10 @@ except CodexNativeError as e:
 
 # Conversation (streaming)
 client = CodexClient(config=cfg)
-for ev in client.start_conversation("Add a smoke test"):
-    print(ev.id, ev.msg.type)
+conv = client.start_conversation()
+conv.submit_user_turn("Add a smoke test")
+for ev in conv:
+    print(ev.id, getattr(getattr(ev.msg, "root", ev.msg), "type", "unknown"))
 ```
 
 Notes
@@ -60,17 +62,31 @@ Notes
 
 ## 3) API Overview
 
-- `codex.api.run_exec(prompt, config, load_default_config=True) -> list[Event]`
-  Synchronous one‑shot execution; returns all events.
+- `codex.run_exec(prompt, *, config=None, load_default_config=True, output_schema=None) -> list[Event]`
+  Synchronous one‑shot; returns all events.
 
-- `codex.api.CodexClient(config).start_conversation(prompt, load_default_config=None) -> Iterable[Event]`
-  Streaming conversation iterator.
+- `codex.run_review(prompt, *, user_facing_hint=None, config=None, load_default_config=True) -> list[Event]`
+  Synchronous review flow; returns all events.
+
+- `codex.run_prompt(prompt, *, config=None, load_default_config=True, output_schema=None) -> str | Any`
+  Convenience: returns the final assistant message (or parsed JSON when `output_schema` is set).
+
+- `codex.CodexClient(config).start_conversation(... ) -> Conversation`
+  Creates a stateful session. Iterate over `Conversation` to stream events.
+  - `Conversation.submit_user_turn(prompt, *, cwd=None, approval_policy=..., sandbox_mode=..., model=None, effort=..., summary=..., output_schema=None)`
+  - `Conversation.submit_review(prompt, user_facing_hint=None)`
+  - `Conversation.approve_exec(id, decision)` / `approve_patch(id, decision)`
+  - `Conversation.interrupt()`, `Conversation.shutdown()`
+  - Utility: `user_input_text`, `override_turn_context`, `add_to_history`, `get_history_entry`, `get_path`, `list_mcp_tools`, `list_custom_prompts`, `compact`
+
+- `await codex.CodexClient(...).astart_conversation() -> AsyncConversation`
+  Async iterator with the same methods as `Conversation` (async variants).
 
 - Exceptions
-  - `CodexError` base class; `CodexNativeError` wraps native failures and missing extension.
+  - `CodexError` base; `CodexNativeError` wraps native failures / missing extension.
 
-- Native helpers
-  - `codex.native.preview_config(config_overrides, load_default_config)` returns a compact snapshot of the effective configuration (useful in tests).
+- Native helper
+  - `codex.native.preview_config(config_overrides, load_default_config)` → compact effective config snapshot (testing aid).
 
 ## 4) Configuration
 

@@ -7,15 +7,10 @@ Usage:
     events = run_exec("explain this codebase to me")
 """
 
-from .api import (
-    CodexClient,
-    CodexError,
-    CodexNativeError,
-    Conversation,
-    run_exec,
-)
+from .client import AsyncConversation, CodexClient, CodexError, CodexNativeError, Conversation
 from .config import CodexConfig
 from .event import Event
+from .exec import run_exec, run_prompt, run_review
 from .protocol.types import EventMsg
 
 __all__ = [
@@ -24,7 +19,10 @@ __all__ = [
     "CodexNativeError",
     "CodexClient",
     "Conversation",
+    "AsyncConversation",
+    "run_prompt",
     "run_exec",
+    "run_review",
     "Event",
     "EventMsg",
     "CodexConfig",
