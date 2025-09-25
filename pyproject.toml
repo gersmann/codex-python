@@ -35,9 +35,9 @@ python-packages = ["codex"]
 # Development dependency groups (used by uv)
 [dependency-groups]
 dev = [
-  "ruff>=0.5",
+  "ruff>=0.13.1",
   "pytest>=8",
-  "mypy>=1.10",
+  "mypy>=1.18.2",
   "pre-commit>=4.3.0",
   "datamodel-code-generator>=0.26",
 ]

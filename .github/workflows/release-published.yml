@@ -18,7 +18,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       tag: ${{ steps.ctx.outputs.tag }}
-      version: ${{ steps.bump.outputs.version }}
+      version: ${{ steps.resolve.outputs.version }}
       sha: ${{ steps.ctx.outputs.sha }}
     steps:
       - name: Checkout
@@ -42,16 +42,28 @@ jobs:
           echo "sha=$SHA" >> "$GITHUB_OUTPUT"
           echo "Tag=$TAG TagSHA=$SHA"
 
-      - name: Compute next version (Conventional Commits)
-        id: bump
+      - name: Resolve version (tag or next)
+        id: resolve
         shell: bash
         run: |
           set -euo pipefail
+          TAG="${{ steps.ctx.outputs.tag }}"
+          if [ "$TAG" != "next" ]; then
+            # Use the tag's version directly (strip optional leading v)
+            VER="${TAG#v}"
+            if [[ ! "$VER" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+              echo "Release tag '$TAG' is not a valid semver (x.y.z or vX.Y.Z)." >&2
+              exit 1
+            fi
+            echo "mode=explicit" >> "$GITHUB_OUTPUT"
+            echo "version=$VER" >> "$GITHUB_OUTPUT"
+            echo "Using explicit release version: $VER"
+            exit 0
+          fi
+          # Compute next version from conventional commits when tag == 'next'
           DEFAULT_BRANCH="${{ github.event.repository.default_branch }}"
           git fetch origin "$DEFAULT_BRANCH" --depth=1000
-          # Find last semver tag
           LAST_TAG=$(git describe --tags --match 'v[0-9]*' --abbrev=0 2>/dev/null || true)
-          RANGE=""
           if [ -n "$LAST_TAG" ]; then
             RANGE="$LAST_TAG..origin/$DEFAULT_BRANCH"
           else
@@ -59,18 +71,9 @@ jobs:
           fi
           log=$(git log --pretty=%B $RANGE)
           bump="patch"
-          if echo "$log" | grep -E '(^|\n)(feat|feat\(.+\))(!)?:' -q; then
-            bump="minor"
-          fi
-          if echo "$log" | grep -E 'BREAKING CHANGE|(^|\n)([^\n!]+)!:' -q; then
-            bump="major"
-          fi
-          # Derive current version
-          if [ -n "$LAST_TAG" ]; then
-            cur=${LAST_TAG#v}
-          else
-            cur="0.0.0"
-          fi
+          if echo "$log" | grep -E '(^|\n)(feat|feat\(.+\))(!)?:' -q; then bump="minor"; fi
+          if echo "$log" | grep -E 'BREAKING CHANGE|(^|\n)([^\n!]+)!:' -q; then bump="major"; fi
+          if [ -n "$LAST_TAG" ]; then cur=${LAST_TAG#v}; else cur="0.0.0"; fi
           IFS='.' read -r MA MI PA <<< "$cur"
           case "$bump" in
             major) MA=$((MA+1)); MI=0; PA=0 ;;
@@ -78,6 +81,7 @@ jobs:
             patch) PA=$((PA+1)) ;;
           esac
           NEXT="$MA.$MI.$PA"
+          echo "mode=bump" >> "$GITHUB_OUTPUT"
           echo "version=$NEXT" >> "$GITHUB_OUTPUT"
           echo "Computed bump: $bump from $cur -> $NEXT"
 
@@ -90,7 +94,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          VER="${{ steps.bump.outputs.version }}"
+          VER="${{ steps.resolve.outputs.version }}"
           # Update Cargo.toml version
           sed -i.bak -E "s/^version = \"[0-9]+\.[0-9]+\.[0-9]+\"/version = \"${VER}\"/" crates/codex_native/Cargo.toml
           rm -f crates/codex_native/Cargo.toml.bak
@@ -101,7 +105,7 @@ jobs:
       - name: Commit version bump
         shell: bash
         run: |
-          VER="${{ steps.ctx.outputs.version }}"
+          VER="${{ steps.resolve.outputs.version }}"
           if git diff --quiet; then
             echo "No changes to commit (versions already ${VER})."
           else
@@ -112,10 +116,11 @@ jobs:
           fi
 
       - name: Create new semver tag and repoint release
+        if: ${{ steps.resolve.outputs.mode == 'bump' }}
         shell: bash
         env:
           PLACEHOLDER_TAG: ${{ steps.ctx.outputs.tag }}
-          VERSION: ${{ steps.bump.outputs.version }}
+          VERSION: ${{ steps.resolve.outputs.version }}
         run: |
           DEFAULT_BRANCH="${{ github.event.repository.default_branch }}"
           git fetch origin "$DEFAULT_BRANCH" --depth=1
@@ -130,6 +135,7 @@ jobs:
           echo "real_tag=$REAL_TAG" >> "$GITHUB_ENV"
 
       - name: Update GitHub Release to new tag
+        if: ${{ steps.resolve.outputs.mode == 'bump' }}
         uses: actions/github-script@v7
         with:
           script: |

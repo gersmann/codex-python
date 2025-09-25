@@ -39,6 +39,7 @@ cfg = CodexConfig(
     model_provider="openai",
     approval_policy=ApprovalPolicy.ON_REQUEST,
     sandbox_mode=SandboxMode.WORKSPACE_WRITE,
+    include_apply_patch_tool=False,  # disable apply patch tool by default
 )
 
 # One‑shot
@@ -59,6 +60,19 @@ for ev in conv:
 
 Notes
 - `Event.msg` is a typed union (`EventMsg`). For raw dicts from the native layer, use `codex.native.start_exec_stream`.
+
+### Example: basic_conversation.py
+
+Run the interactive example that streams events and prompts for approvals:
+
+```
+python examples/basic_conversation.py "ask me a question"
+```
+
+Flags you may find useful:
+- `--approval on-request` (default) to be asked before running tools
+- `--sandbox workspace-write` to allow writes within the repo
+- `--allow-apply-patch` to include the apply‑patch tool in the session
 
 ## 3) API Overview
 
