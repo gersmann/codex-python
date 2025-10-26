@@ -28,4 +28,5 @@ __all__ = [
     "CodexConfig",
 ]
 
-# Package version. Kept in sync with Cargo.toml via CI before builds..3.0"
+# Package version. Kept in sync with Cargo.toml via CI before builds.
+__version__ = "0.3.0"
