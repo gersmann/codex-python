@@ -37,7 +37,6 @@ def test_preview_config_feature_flags(tmp_path: Path, monkeypatch: pytest.Monkey
 
     cfg = CodexConfig(
         include_apply_patch_tool=True,
-        include_plan_tool=False,
         include_view_image_tool=False,
         show_raw_agent_reasoning=True,
         tools=ToolsConfig(web_search=True),
@@ -45,7 +44,6 @@ def test_preview_config_feature_flags(tmp_path: Path, monkeypatch: pytest.Monkey
     out = preview_config(config_overrides=cfg.to_dict(), load_default_config=False)
 
     assert out["include_apply_patch_tool"] is True
-    assert out["include_plan_tool"] is False
     assert out["include_view_image_tool"] is False
     assert out["show_raw_agent_reasoning"] is True
     assert out["tools_web_search_request"] is True

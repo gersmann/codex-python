@@ -250,7 +250,6 @@ class CodexConfig(BaseModel):
 
     # UX / features
     base_instructions: str | None = Field(default=None, description="Override base instructions.")
-    include_plan_tool: bool | None = Field(default=None)
     include_apply_patch_tool: bool | None = Field(default=None)
     include_view_image_tool: bool | None = Field(default=None)
     show_raw_agent_reasoning: bool | None = Field(default=None)

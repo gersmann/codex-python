@@ -1,7 +1,8 @@
 use anyhow::{Context, Result};
 use codex_core::config::{find_codex_home, Config, ConfigOverrides, ConfigToml};
-use codex_core::protocol::{Event, EventMsg, InputItem, Op, ReviewRequest};
+use codex_core::protocol::{Event, EventMsg, Op, ReviewRequest, SessionSource};
 use codex_core::{AuthManager, CodexAuth, ConversationManager};
+use codex_protocol::user_input::UserInput;
 // use of SandboxMode is handled within core::config; not needed here
 use pyo3::prelude::*;
 use pyo3::types::{PyAny, PyBool, PyDict, PyFloat, PyInt, PyList, PyModule, PyString};
@@ -58,7 +59,10 @@ async fn run_exec_impl(
         Ok(val) if !val.trim().is_empty() => {
             ConversationManager::with_auth(CodexAuth::from_api_key(&val))
         }
-        _ => ConversationManager::new(AuthManager::shared(config.codex_home.clone())),
+        _ => ConversationManager::new(
+            AuthManager::shared(config.codex_home.clone(), true),
+            SessionSource::Exec,
+        ),
     };
     let new_conv = conversation_manager.new_conversation(config).await?;
     let conversation = new_conv.conversation.clone();
@@ -71,7 +75,7 @@ async fn run_exec_impl(
 
     conversation
         .submit(Op::UserTurn {
-            items: vec![InputItem::Text { text: prompt }],
+            items: vec![UserInput::Text { text: prompt }],
             cwd: config_clone.cwd.clone(),
             approval_policy: config_clone.approval_policy,
             sandbox_policy: config_clone.sandbox_policy.clone(),
@@ -322,9 +326,6 @@ fn build_config(overrides: Option<Bound<'_, PyDict>>, load_default_config: bool)
                 "base_instructions" => {
                     overrides_struct.base_instructions = Some(value_obj.extract()?);
                 }
-                "include_plan_tool" => {
-                    overrides_struct.include_plan_tool = Some(value_obj.extract()?);
-                }
                 "include_apply_patch_tool" => {
                     overrides_struct.include_apply_patch_tool = Some(value_obj.extract()?);
                 }
@@ -355,10 +356,12 @@ fn build_config(overrides: Option<Bound<'_, PyDict>>, load_default_config: bool)
 
     if load_default_config {
         // Start from built-in defaults and apply CLI + typed overrides.
-        Ok(Config::load_with_cli_overrides(
+        let rt = tokio::runtime::Runtime::new().context("creating runtime for config load")?;
+        let config = rt.block_on(Config::load_with_cli_overrides(
             cli_overrides,
             overrides_struct,
-        )?)
+        ))?;
+        Ok(config)
     } else {
         // Do NOT read any on-disk config. Build a TOML value purely from CLI-style overrides
         // and then apply the strongly-typed overrides on top. We still resolve CODEX_HOME to
@@ -524,7 +527,10 @@ fn run_exec_stream_impl(
             Ok(val) if !val.trim().is_empty() => {
                 ConversationManager::with_auth(CodexAuth::from_api_key(&val))
             }
-            _ => ConversationManager::new(AuthManager::shared(config.codex_home.clone())),
+            _ => ConversationManager::new(
+                AuthManager::shared(config.codex_home.clone(), true),
+                SessionSource::Exec,
+            ),
         };
         let new_conv = conversation_manager.new_conversation(config).await?;
         let conversation = new_conv.conversation.clone();
@@ -539,7 +545,7 @@ fn run_exec_stream_impl(
 
         conversation
             .submit(Op::UserTurn {
-                items: vec![InputItem::Text { text: prompt }],
+                items: vec![UserInput::Text { text: prompt }],
                 cwd: config_clone.cwd.clone(),
                 approval_policy: config_clone.approval_policy,
                 sandbox_policy: config_clone.sandbox_policy.clone(),
@@ -611,7 +617,10 @@ async fn run_review_impl(
         Ok(val) if !val.trim().is_empty() => {
             ConversationManager::with_auth(CodexAuth::from_api_key(&val))
         }
-        _ => ConversationManager::new(AuthManager::shared(config.codex_home.clone())),
+        _ => ConversationManager::new(
+            AuthManager::shared(config.codex_home.clone(), true),
+            SessionSource::Exec,
+        ),
     };
     let new_conv = conversation_manager.new_conversation(config).await?;
     let conversation = new_conv.conversation.clone();
@@ -689,7 +698,10 @@ fn run_review_stream_impl(
             Ok(val) if !val.trim().is_empty() => {
                 ConversationManager::with_auth(CodexAuth::from_api_key(&val))
             }
-            _ => ConversationManager::new(AuthManager::shared(config.codex_home.clone())),
+            _ => ConversationManager::new(
+                AuthManager::shared(config.codex_home.clone(), true),
+                SessionSource::Exec,
+            ),
         };
         let new_conv = conversation_manager.new_conversation(config).await?;
         let conversation = new_conv.conversation.clone();
@@ -771,10 +783,6 @@ fn preview_config(
     m.insert(
         "cwd".to_string(),
         JsonValue::String(config.cwd.display().to_string()),
-    );
-    m.insert(
-        "include_plan_tool".to_string(),
-        JsonValue::Bool(config.include_plan_tool),
     );
     m.insert(
         "include_apply_patch_tool".to_string(),
@@ -901,7 +909,7 @@ impl NativeConversation {
             .block_on(async {
                 self.conversation
                     .submit(Op::UserTurn {
-                        items: vec![InputItem::Text { text: prompt }],
+                        items: vec![UserInput::Text { text: prompt }],
                         cwd: cwd_path.clone(),
                         approval_policy: approval_eff,
                         sandbox_policy: sandbox_eff.clone(),
@@ -933,7 +941,11 @@ impl NativeConversation {
             user_facing_hint: user_facing_hint.unwrap_or_default(),
         };
         self.rt
-            .block_on(async { self.conversation.submit(Op::Review { review_request }).await })
+            .block_on(async {
+                self.conversation
+                    .submit(Op::Review { review_request })
+                    .await
+            })
             .map_err(to_py)?;
         Ok(())
     }
@@ -942,7 +954,11 @@ impl NativeConversation {
     fn approve_exec(&self, id: String, decision: String) -> PyResult<()> {
         let d = parse_review_decision(&decision)?;
         self.rt
-            .block_on(async { self.conversation.submit(Op::ExecApproval { id, decision: d }).await })
+            .block_on(async {
+                self.conversation
+                    .submit(Op::ExecApproval { id, decision: d })
+                    .await
+            })
             .map_err(to_py)?;
         Ok(())
     }
@@ -951,7 +967,11 @@ impl NativeConversation {
     fn approve_patch(&self, id: String, decision: String) -> PyResult<()> {
         let d = parse_review_decision(&decision)?;
         self.rt
-            .block_on(async { self.conversation.submit(Op::PatchApproval { id, decision: d }).await })
+            .block_on(async {
+                self.conversation
+                    .submit(Op::PatchApproval { id, decision: d })
+                    .await
+            })
             .map_err(to_py)?;
         Ok(())
     }
@@ -978,7 +998,7 @@ impl NativeConversation {
             .block_on(async {
                 self.conversation
                     .submit(Op::UserInput {
-                        items: vec![InputItem::Text { text }],
+                        items: vec![UserInput::Text { text }],
                     })
                     .await
             })
@@ -1100,8 +1120,13 @@ fn start_conversation(
 
     let rt = tokio::runtime::Runtime::new().map_err(to_py)?;
     let conversation_manager = match std::env::var("OPENAI_API_KEY") {
-        Ok(val) if !val.trim().is_empty() => ConversationManager::with_auth(CodexAuth::from_api_key(&val)),
-        _ => ConversationManager::new(AuthManager::shared(config.codex_home.clone())),
+        Ok(val) if !val.trim().is_empty() => {
+            ConversationManager::with_auth(CodexAuth::from_api_key(&val))
+        }
+        _ => ConversationManager::new(
+            AuthManager::shared(config.codex_home.clone(), true),
+            SessionSource::Exec,
+        ),
     };
     let new_conv = rt
         .block_on(async { conversation_manager.new_conversation(config).await })
@@ -1143,12 +1168,15 @@ fn parse_review_decision(s: &str) -> PyResult<ReviewDecision> {
         "approved_for_session" | "approved-for-session" => Ok(ReviewDecision::ApprovedForSession),
         "denied" => Ok(ReviewDecision::Denied),
         "abort" => Ok(ReviewDecision::Abort),
-        _ => Err(to_py("invalid decision; expected approved|approved_for_session|denied|abort")),
+        _ => Err(to_py(
+            "invalid decision; expected approved|approved_for_session|denied|abort",
+        )),
     }
 }
 
 fn parse_approval(s: &str) -> PyResult<AskForApproval> {
-    serde_json::from_value(JsonValue::String(s.to_string())).map_err(|_| to_py("invalid approval_policy"))
+    serde_json::from_value(JsonValue::String(s.to_string()))
+        .map_err(|_| to_py("invalid approval_policy"))
 }
 
 fn parse_sandbox(s: &str) -> PyResult<SandboxPolicy> {
@@ -1166,11 +1194,13 @@ fn parse_sandbox(s: &str) -> PyResult<SandboxPolicy> {
 }
 
 fn parse_effort(s: &str) -> PyResult<ReasoningEffort> {
-    serde_json::from_value(JsonValue::String(s.to_string())).map_err(|_| to_py("invalid reasoning effort"))
+    serde_json::from_value(JsonValue::String(s.to_string()))
+        .map_err(|_| to_py("invalid reasoning effort"))
 }
 
 fn parse_summary(s: &str) -> PyResult<ReasoningSummary> {
-    serde_json::from_value(JsonValue::String(s.to_string())).map_err(|_| to_py("invalid reasoning summary"))
+    serde_json::from_value(JsonValue::String(s.to_string()))
+        .map_err(|_| to_py("invalid reasoning summary"))
 }
 
 // (Removed unused default helpers; protocol and config already provide sensible defaults.)
