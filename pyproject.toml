@@ -4,10 +4,10 @@ build-backend = "maturin"
 
 [project]
 name = "codex-python"
-description = "A minimal Python library scaffold for codex-python"
+description = "Python SDK for Codex CLI with bundled platform binaries"
 readme = "README.md"
 requires-python = ">=3.12"
-keywords = ["codex", "library", "scaffold"]
+keywords = ["codex", "sdk", "cli", "automation"]
 classifiers = [
   "Programming Language :: Python :: 3",
   "Programming Language :: Python :: 3 :: Only",
@@ -18,9 +18,7 @@ classifiers = [
 ]
 dynamic = ["version"]
 license = { file = "LICENSE" }
-dependencies = [
-    "pydantic>=2.11.7",
-]
+dependencies = []
 
 [project.urls]
 Homepage = "https://github.com/gersmann/codex-python"
@@ -31,6 +29,7 @@ Issues = "https://github.com/gersmann/codex-python/issues"
 # Point maturin to the Rust crate and include this repository's Python sources.
 manifest-path = "crates/codex_native/Cargo.toml"
 python-packages = ["codex"]
+include = [{ path = "codex/vendor/**/*", format = ["sdist", "wheel"] }]
 
 # Development dependency groups (used by uv)
 [dependency-groups]
@@ -39,7 +38,6 @@ dev = [
   "pytest>=8",
   "mypy>=1.18.2",
   "pre-commit>=4.3.0",
-  "datamodel-code-generator>=0.26",
 ]
 
 [tool.ruff]

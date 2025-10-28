@@ -7,7 +7,7 @@ help:
 	@echo "  make build    - Build sdist and wheel with uv"
 	@echo "  make publish  - Publish to PyPI via uv (uses PYPI_API_TOKEN)"
 	@echo "  make clean    - Remove build artifacts"
-	@echo "  make gen-protocol - Generate Python protocol bindings (TS -> JSON Schema -> Pydantic)"
+	@echo "  make gen-stubs    - Generate .pyi stubs for the wheel-tag shim module"
 	@echo "  make wheelhouse-linux    - Prebuild manylinux & musllinux wheels (x86_64, aarch64)"
 	@echo "  make wheelhouse-clean    - Remove wheelhouse/"
 
@@ -28,6 +28,7 @@ test:
 
 build:
 	uv build
+	$(MAKE) gen-stubs
 
 publish: build
 	@# Load local environment if present
@@ -53,44 +54,34 @@ publish: build
 clean:
 	rm -rf build dist *.egg-info .pytest_cache .mypy_cache .ruff_cache
 
-.PHONY: gen-protocol
-gen-protocol:
-	@echo "Generating JSON Schema for protocol types (via codex-native helper)..."
-	@cargo run -q --manifest-path crates/codex_native/Cargo.toml --bin codex-protocol-schema -- --ts-out .generated/ts --schema-out .generated/schema
-	@echo "Post-processing schema for readable union variant names..."
-	@python3 scripts/postprocess_schema_titles.py --relax-nullable-required
-	@echo "Converting JSON Schema to Pydantic models (codex/protocol/types.py)..."
-	@uv run --group dev datamodel-codegen \
-		--input .generated/schema/protocol.schema.json \
-		--input-file-type jsonschema \
-		--output-model-type pydantic_v2.BaseModel \
-		--base-class codex.protocol._base_model.BaseModelWithExtras \
-		--use-union-operator \
-		--use-standard-collections \
-		--use-title-as-name \
-		--disable-timestamp \
-		--target-python-version 3.12 \
-		--output codex/protocol/types.py
-	@python3 scripts/postprocess_protocol_types.py
-	@$(MAKE) fmt
-
 .PHONY: build-native dev-native
 
 build-native:
 	@echo "Building native extension with maturin..."
-	@maturin build -m crates/codex_native/Cargo.toml --release
+	@$(MATURIN) build -m crates/codex_native/Cargo.toml --release
 
 dev-native:
 	@echo "Installing native extension in dev mode..."
 	@# Use a virtualenv when present; otherwise, fall back to build+pip install.
 	@if [ -n "$$VIRTUAL_ENV" ] || [ -n "$$CONDA_PREFIX" ] || [ -d .venv ]; then \
 		echo "Detected virtual environment; using maturin develop"; \
-		maturin develop -m crates/codex_native/Cargo.toml; \
+		$(MATURIN) develop -m crates/codex_native/Cargo.toml; \
 	else \
 		echo "No virtualenv detected; building wheel and installing via pip"; \
-		maturin build -m crates/codex_native/Cargo.toml --release; \
+		$(MATURIN) build -m crates/codex_native/Cargo.toml --release; \
 		python -m pip install --force-reinstall --no-deps crates/codex_native/target/wheels/*.whl; \
 	fi
+	$(MAKE) gen-stubs
+
+.PHONY: gen-stubs
+gen-stubs:
+	@echo "Generating type stubs (.pyi) for codex_native..."
+	@# Prefer the pyo3-stubgen CLI if available; fall back to the Python script; otherwise skip.
+	@{ \
+		uvx -q pyo3-stubgen codex_native -o . >/dev/null 2>&1 && echo "stubs: wrote codex_native.pyi"; \
+	} || { \
+		uv run --group dev python scripts/gen_stubs.py >/dev/null 2>&1 && echo "stubs: generated via pyo3_introspection" || echo "stubs: skipped (tools not available)"; \
+	}
 
 # -----------------------------------------------------------------------------
 # Prebuild portable Linux wheels (manylinux and musllinux) via Docker maturin
@@ -201,3 +192,7 @@ wheelhouse-linux: wheelhouse-clean
               $$P -m pip install -U pip maturin; \
               export CFLAGS="$$CFLAGS -D_DEFAULT_SOURCE -D_BSD_SOURCE"; \
               PATH=$$HOME/.cargo/bin:$$PATH $$P -m maturin build --release --compatibility musllinux_1_2 -j $$(( $$(nproc) )) -m /io/crates/codex_native/Cargo.toml -i $$P -o /io/$(WHEELHOUSE)'
+.PHONY: help venv fmt lint test build publish clean gen-stubs build-native dev-native
+
+# Prefer uvx-managed maturin; fall back to system if present
+MATURIN ?= uvx maturin

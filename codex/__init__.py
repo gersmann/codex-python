@@ -1,31 +1,70 @@
-"""codex
+"""Python SDK for embedding Codex via the bundled CLI binary."""
 
-Python interface for the Codex CLI.
+from codex.codex import Codex
+from codex.errors import CodexError, CodexExecError, CodexParseError, ThreadRunError
+from codex.events import (
+    ItemCompletedEvent,
+    ItemStartedEvent,
+    ItemUpdatedEvent,
+    ThreadError,
+    ThreadErrorEvent,
+    ThreadEvent,
+    ThreadStartedEvent,
+    TurnCompletedEvent,
+    TurnFailedEvent,
+    TurnStartedEvent,
+    Usage,
+)
+from codex.items import (
+    AgentMessageItem,
+    CommandExecutionItem,
+    ErrorItem,
+    FileChangeItem,
+    McpToolCallItem,
+    ReasoningItem,
+    ThreadItem,
+    TodoListItem,
+    WebSearchItem,
+)
+from codex.options import ApprovalMode, CodexOptions, SandboxMode, ThreadOptions, TurnOptions
+from codex.thread import Input, RunResult, RunStreamedResult, Thread, UserInput
 
-Usage:
-    from codex import run_exec
-    events = run_exec("explain this codebase to me")
-"""
-
-from .client import AsyncConversation, CodexClient, CodexError, CodexNativeError, Conversation
-from .config import CodexConfig
-from .event import Event
-from .exec import run_exec, run_prompt, run_review
-from .protocol.types import EventMsg
+__version__ = "1.0.0"
 
 __all__ = [
-    "__version__",
+    "Codex",
     "CodexError",
-    "CodexNativeError",
-    "CodexClient",
-    "Conversation",
-    "AsyncConversation",
-    "run_prompt",
-    "run_exec",
-    "run_review",
-    "Event",
-    "EventMsg",
-    "CodexConfig",
+    "CodexExecError",
+    "CodexParseError",
+    "ThreadRunError",
+    "Thread",
+    "RunResult",
+    "RunStreamedResult",
+    "Input",
+    "UserInput",
+    "CodexOptions",
+    "ThreadOptions",
+    "TurnOptions",
+    "ApprovalMode",
+    "SandboxMode",
+    "ThreadEvent",
+    "ThreadStartedEvent",
+    "TurnStartedEvent",
+    "TurnCompletedEvent",
+    "TurnFailedEvent",
+    "ItemStartedEvent",
+    "ItemUpdatedEvent",
+    "ItemCompletedEvent",
+    "ThreadError",
+    "ThreadErrorEvent",
+    "Usage",
+    "ThreadItem",
+    "AgentMessageItem",
+    "ReasoningItem",
+    "CommandExecutionItem",
+    "FileChangeItem",
+    "McpToolCallItem",
+    "WebSearchItem",
+    "TodoListItem",
+    "ErrorItem",
 ]
-
-# Package version. Kept in sync with Cargo.toml via CI before builds..3.0"

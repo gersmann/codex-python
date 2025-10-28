@@ -51,8 +51,9 @@ jobs:
           if [ "$TAG" != "next" ]; then
             # Use the tag's version directly (strip optional leading v)
             VER="${TAG#v}"
-            if [[ ! "$VER" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-              echo "Release tag '$TAG' is not a valid semver (x.y.z or vX.Y.Z)." >&2
+            # Accept release and prerelease semver, e.g. 1.2.3 or 1.2.3-beta.1
+            if [[ ! "$VER" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
+              echo "Release tag '$TAG' is not valid semver (x.y.z or x.y.z-prerelease)." >&2
               exit 1
             fi
             echo "mode=explicit" >> "$GITHUB_OUTPUT"
@@ -96,7 +97,7 @@ jobs:
           set -euo pipefail
           VER="${{ steps.resolve.outputs.version }}"
           # Update Cargo.toml version
-          sed -i.bak -E "s/^version = \"[0-9]+\.[0-9]+\.[0-9]+\"/version = \"${VER}\"/" crates/codex_native/Cargo.toml
+          sed -i.bak -E "s/^version = \"[^\"]+\"/version = \"${VER}\"/" crates/codex_native/Cargo.toml
           rm -f crates/codex_native/Cargo.toml.bak
           # Update Python __version__
           perl -0777 -pe 's/(\n__version__\s*=\s*\")[^"]*(\")/\1'"${VER}"'\2/s' -i codex/__init__.py
@@ -167,26 +168,37 @@ jobs:
             linux-musl-aarch64,
             macos-universal2,
             windows-amd64,
+            windows-arm64,
           ]
         include:
           - platform: linux-x86_64
             os: ubuntu-latest
-            python-interpreter: python3.12
+            python-interpreter: "3.12"
+            codex-targets: x86_64-unknown-linux-musl
           - platform: linux-aarch64
             os: ubuntu-latest
-            python-interpreter: python3.12
+            python-interpreter: "3.12"
+            codex-targets: aarch64-unknown-linux-musl
           - platform: linux-musl-x86_64
             os: ubuntu-latest
-            python-interpreter: python3.12
+            python-interpreter: "3.12"
+            codex-targets: x86_64-unknown-linux-musl
           - platform: linux-musl-aarch64
             os: ubuntu-latest
-            python-interpreter: python3.12
+            python-interpreter: "3.12"
+            codex-targets: aarch64-unknown-linux-musl
           - platform: macos-universal2
             os: macos-14
             python-interpreter: 3.12
+            codex-targets: x86_64-apple-darwin,aarch64-apple-darwin
           - platform: windows-amd64
             os: windows-latest
             python-interpreter: 3.12
+            codex-targets: x86_64-pc-windows-msvc
+          - platform: windows-arm64
+            os: windows-latest
+            python-interpreter: 3.12
+            codex-targets: aarch64-pc-windows-msvc
     runs-on: ${{ matrix.os }}
     steps:
       - name: Checkout repository
@@ -198,20 +210,51 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
 
       - name: Set up Python (host)
-        if: ${{ matrix.platform == 'macos-universal2' || matrix.platform == 'windows-amd64' }}
         uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-interpreter }}
 
-      - name: Install build backend (host)
-        if: ${{ matrix.platform == 'macos-universal2' || matrix.platform == 'windows-amd64' }}
+      - name: Install binary fetch dependencies
         run: |
           python -m pip install --upgrade pip
+          pip install zstandard
+
+      - name: Install build backend (host)
+        if: ${{ matrix.platform == 'macos-universal2' || matrix.platform == 'windows-amd64' || matrix.platform == 'windows-arm64' }}
+        run: |
           pip install build maturin
 
       - name: Setup QEMU (for cross aarch64)
         if: ${{ matrix.platform == 'linux-aarch64' || matrix.platform == 'linux-musl-aarch64' }}
         uses: docker/setup-qemu-action@v3
+
+      - name: Fetch bundled codex binaries
+        shell: bash
+        env:
+          CODEX_BINARY_RELEASE_TAG: ${{ vars.CODEX_BINARY_RELEASE_TAG || 'latest' }}
+        run: |
+          set -euo pipefail
+          IFS=',' read -r -a targets <<< "${{ matrix.codex-targets }}"
+          args=()
+          for target in "${targets[@]}"; do
+            args+=(--target-triple "$target")
+          done
+          python scripts/fetch_codex_binary.py --release-tag "$CODEX_BINARY_RELEASE_TAG" "${args[@]}"
+
+      - name: Verify bundled binaries
+        shell: bash
+        run: |
+          set -euo pipefail
+          IFS=',' read -r -a targets <<< "${{ matrix.codex-targets }}"
+          for target in "${targets[@]}"; do
+            if [[ "$target" == *windows* ]]; then
+              bin="codex/vendor/$target/codex/codex.exe"
+            else
+              bin="codex/vendor/$target/codex/codex"
+            fi
+            test -f "$bin"
+            echo "Found $bin"
+          done
 
       - name: Build Linux x86_64 wheel (manylinux2014)
         if: ${{ matrix.platform == 'linux-x86_64' }}
@@ -280,6 +323,14 @@ jobs:
           python -m pip install --upgrade pip
           pip install maturin
           maturin build --release -i python -o dist
+
+      - name: Build Windows ARM64 wheel
+        if: ${{ matrix.platform == 'windows-arm64' }}
+        run: |
+          python -m pip install --upgrade pip
+          pip install maturin
+          rustup target add aarch64-pc-windows-msvc
+          maturin build --release -o dist --target aarch64-pc-windows-msvc
 
       - name: Upload wheels
         uses: actions/upload-artifact@v4

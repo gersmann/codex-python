@@ -4,6 +4,21 @@ All notable changes to this project will be documented in this file.
 
 The format is based on Keep a Changelog and this project adheres to Semantic Versioning.
 
+## [1.0.0] - 2026-02-10
+### Changed
+- Replaced the legacy pre-app-server Python binding API with a TypeScript-SDK-equivalent thread API:
+  - `Codex`, `Thread`, `run`, `run_streamed`
+  - typed thread events and items
+  - thread/turn/codex options aligned with the TypeScript SDK surface
+
+### Added
+- Bundled `codex` CLI binary lookup from wheel data under `codex/vendor/<target-triple>/codex`.
+- `scripts/fetch_codex_binary.py` to fetch release assets for wheel builds.
+- Release workflow steps to stage bundled binaries per target before building wheels.
+
+### Removed
+- Legacy native wrapper exports from the public Python API (`codex.native` / config-first interfaces).
+
 ## [0.2.15] - 2025-09-15
 ### Fixed
 - Native Python path now reads `OPENAI_API_KEY` from the environment (and loads `~/.codex/.env` like the CLI), restoring parity with CLI behavior when `load_default_config` is used.

@@ -1,48 +1,17 @@
 [package]
 name = "codex_native"
-version = "0.3.0"
+version = "1.0.0"
 edition = "2021"
 
 [lib]
 name = "codex_native"
 crate-type = ["cdylib"]
 
-[[bin]]
-name = "codex-protocol-schema"
-path = "src/bin/protocol_schema.rs"
 
 [dependencies]
-pyo3 = { version = "0.26", features = ["extension-module", "abi3-py312"] }
-anyhow = "1"
-serde = { version = "1", features = ["derive"] }
-serde_json = "1"
-toml = "0.9"
-tokio = { version = "1", features = ["rt-multi-thread", "macros", "signal", "process", "time"] }
-tracing = "0.1"
-clap = { version = "4", features = ["derive"] }
-which = "6"
-pathdiff = "0.2"
-dotenvy = "0.15.7"
-
-# Upstream Codex crates from the monorepo (use git deps; pin to main for now)
-# Pin to a specific commit of the upstream Codex monorepo to avoid breaking API changes
-codex-core = { git = "https://github.com/openai/codex", package = "codex-core", branch = "main" }
-codex-protocol = { git = "https://github.com/openai/codex", package = "codex-protocol", branch = "main" }
+pyo3 = { version = "0.27.1", features = ["extension-module", "abi3-py312", "experimental-inspect", "generate-import-lib"] }
 
 # Tell maturin to include the Python sources from the repo root (mixed project)
 [package.metadata.maturin]
 python-source = "../../"
 name = "codex-python"
-
-# Ensure OpenSSL is available during manylinux (glibc) builds by vendoring it.
-# Upstream codex-core vendors OpenSSL for musl targets; extend that to glibc
-# so Docker images don't need system openssl-devel. This avoids the
-# "Could not find directory of OpenSSL installation" error from openssl-sys.
-[target.x86_64-unknown-linux-gnu.dependencies]
-openssl-sys = { version = "*", features = ["vendored"] }
-
-[target.aarch64-unknown-linux-gnu.dependencies]
-openssl-sys = { version = "*", features = ["vendored"] }
-
-# Prefer rustls over native-tls/openssl across the dependency graph
-# to avoid OpenSSL toolchain requirements inside manylinux containers.

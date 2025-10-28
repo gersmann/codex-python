@@ -63,3 +63,6 @@ crates/**/Cargo.lock
 /.idea/
 /wheelhouse/
 /codex-review-action/
+.beads/
+codex/vendor/**
+!codex/vendor/.gitkeep
