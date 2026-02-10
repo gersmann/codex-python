@@ -101,7 +101,8 @@ jobs:
           sed -i.bak -E "s/^version = \"[^\"]+\"/version = \"${VER}\"/" crates/codex_native/Cargo.toml
           rm -f crates/codex_native/Cargo.toml.bak
           # Update Python __version__
-          perl -0777 -pe 's/(\n__version__\s*=\s*\")[^"]*(\")/\1'"${VER}"'\2/s' -i codex/__init__.py
+          # Use ${1}/${2} style backrefs to avoid `\11` ambiguity when VER starts with digits.
+          perl -0777 -pe 's/(\n__version__\s*=\s*\")[^"]*(\")/${1}'"${VER}"'${2}/s' -i codex/__init__.py
           echo "Updated versions to ${VER}"
 
       - name: Commit version bump

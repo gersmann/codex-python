@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+import re
+
 import codex
 from codex import Codex, CodexOptions
 
 
 def test_basic_import_and_api() -> None:
-    assert codex.__version__ == "1.0.0"
+    assert re.fullmatch(r"\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?", codex.__version__) is not None
     assert Codex is codex.Codex
 
 
