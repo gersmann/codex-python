@@ -28,8 +28,7 @@ from codex.items import (
 )
 from codex.options import ApprovalMode, CodexOptions, SandboxMode, ThreadOptions, TurnOptions
 from codex.thread import Input, RunResult, RunStreamedResult, Thread, UserInput
-
-__version__ = "1.0.0"
+.4.0"
 
 __all__ = [
     "Codex",
