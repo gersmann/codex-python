@@ -40,7 +40,7 @@ from codex.options import (
 )
 from codex.thread import Input, RunResult, RunStreamedResult, Thread, UserInput
 
-__version__ = "1.0.0-beta.2"
+__version__ = "1.0.0-beta.3"
 
 __all__ = [
     "Codex",
