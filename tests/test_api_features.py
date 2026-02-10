@@ -99,6 +99,12 @@ def test_run_forwards_thread_options() -> None:
         sandbox_mode="workspace-write",
         working_directory="/tmp/project",
         skip_git_repo_check=True,
+        model_reasoning_effort="high",
+        network_access_enabled=True,
+        web_search_mode="cached",
+        web_search_enabled=False,
+        approval_policy="on-request",
+        additional_directories=["../backend", "/tmp/shared"],
     )
     thread = Thread(fake_exec, CodexOptions(base_url="http://example.test", api_key="key"), options)
 
@@ -111,6 +117,26 @@ def test_run_forwards_thread_options() -> None:
     assert call.skip_git_repo_check is True
     assert call.base_url == "http://example.test"
     assert call.api_key == "key"
+    assert call.model_reasoning_effort == "high"
+    assert call.network_access_enabled is True
+    assert call.web_search_mode == "cached"
+    assert call.web_search_enabled is False
+    assert call.approval_policy == "on-request"
+    assert call.additional_directories == ["../backend", "/tmp/shared"]
+
+
+def test_run_forwards_turn_signal() -> None:
+    class AbortFlag:
+        def __init__(self) -> None:
+            self.aborted = False
+
+    fake_exec = FakeExec([_success_events("thread-1", "Hi!")])
+    thread = Thread(fake_exec, CodexOptions(), ThreadOptions())
+    signal = AbortFlag()
+
+    thread.run("hello", TurnOptions(signal=signal))
+
+    assert fake_exec.calls[0].signal is signal
 
 
 def test_run_writes_and_cleans_output_schema_file() -> None:
@@ -146,7 +172,7 @@ def test_run_writes_and_cleans_output_schema_file() -> None:
 
     fake_exec = SchemaExec()
     thread = Thread(fake_exec, CodexOptions(), ThreadOptions())
-    schema = {"type": "object", "properties": {"answer": {"type": "string"}}}
+    schema: dict[str, object] = {"type": "object", "properties": {"answer": {"type": "string"}}}
     thread.run("hello", TurnOptions(output_schema=schema))
 
     assert len(schema_paths) == 1
@@ -187,7 +213,7 @@ def test_run_raises_thread_run_error_on_turn_failure() -> None:
         thread.run("hello")
 
 
-def test_run_raises_when_stream_disconnects_before_completion() -> None:
+def test_run_returns_partial_result_when_stream_disconnects_before_completion() -> None:
     fake_exec = FakeExec(
         [
             [
@@ -202,8 +228,9 @@ def test_run_raises_when_stream_disconnects_before_completion() -> None:
     )
     thread = Thread(fake_exec, CodexOptions(), ThreadOptions())
 
-    with pytest.raises(ThreadRunError, match="stream disconnected before completion"):
-        thread.run("hello")
+    result = thread.run("hello")
+    assert result.final_response == "partial"
+    assert result.usage is None
 
 
 def test_run_raises_parse_error_for_invalid_json_event() -> None:

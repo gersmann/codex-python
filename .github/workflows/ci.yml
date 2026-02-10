@@ -42,3 +42,38 @@ jobs:
 
       - name: Test
         run: make test
+
+      - name: Detect integration test availability
+        id: integration
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        run: |
+          if [ -n "${OPENAI_API_KEY:-}" ]; then
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Install integration test dependencies
+        if: ${{ steps.integration.outputs.enabled == 'true' }}
+        run: pip install zstandard
+
+      - name: Fetch bundled codex binary for integration test
+        if: ${{ steps.integration.outputs.enabled == 'true' }}
+        env:
+          CODEX_BINARY_RELEASE_TAG: ${{ vars.CODEX_BINARY_RELEASE_TAG || 'latest' }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          python scripts/fetch_codex_binary.py \
+            --release-tag "$CODEX_BINARY_RELEASE_TAG" \
+            --target-triple x86_64-unknown-linux-musl
+          test -f codex/vendor/x86_64-unknown-linux-musl/codex/codex
+
+      - name: Integration test (real codex binary)
+        if: ${{ steps.integration.outputs.enabled == 'true' }}
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          CODEX_BINARY_PATH: codex/vendor/x86_64-unknown-linux-musl/codex/codex
+          CODEX_INTEGRATION_TEST: "1"
+        run: uv run --group dev pytest -q tests/test_integration_real_binary.py

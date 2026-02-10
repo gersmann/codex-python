@@ -88,9 +88,27 @@ thread.run("Continue from previous context")
 
 ## Options
 
-- `CodexOptions`: `codex_path_override`, `base_url`, `api_key`
-- `ThreadOptions`: `model`, `sandbox_mode`, `working_directory`, `skip_git_repo_check`
-- `TurnOptions`: `output_schema`
+- `CodexOptions`: `codex_path_override`, `base_url`, `api_key`, `config`, `env`
+- `ThreadOptions`: `model`, `sandbox_mode`, `working_directory`, `skip_git_repo_check`, `model_reasoning_effort`, `network_access_enabled`, `web_search_mode`, `web_search_enabled`, `approval_policy`, `additional_directories`
+- `TurnOptions`: `output_schema`, `signal`
+
+## Cancellation
+
+```python
+import threading
+
+from codex import Codex, TurnOptions
+
+cancel = threading.Event()
+
+client = Codex()
+thread = client.start_thread()
+stream = thread.run_streamed("Long running task", TurnOptions(signal=cancel))
+
+cancel.set()
+for event in stream.events:
+    print(event)
+```
 
 ## Bundled binary behavior
 

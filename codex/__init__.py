@@ -26,7 +26,18 @@ from codex.items import (
     TodoListItem,
     WebSearchItem,
 )
-from codex.options import ApprovalMode, CodexOptions, SandboxMode, ThreadOptions, TurnOptions
+from codex.options import (
+    ApprovalMode,
+    CancelSignal,
+    CodexConfigObject,
+    CodexConfigValue,
+    CodexOptions,
+    ModelReasoningEffort,
+    SandboxMode,
+    ThreadOptions,
+    TurnOptions,
+    WebSearchMode,
+)
 from codex.thread import Input, RunResult, RunStreamedResult, Thread, UserInput
 
 __version__ = "1.0.0"
@@ -47,6 +58,11 @@ __all__ = [
     "TurnOptions",
     "ApprovalMode",
     "SandboxMode",
+    "ModelReasoningEffort",
+    "WebSearchMode",
+    "CodexConfigValue",
+    "CodexConfigObject",
+    "CancelSignal",
     "ThreadEvent",
     "ThreadStartedEvent",
     "TurnStartedEvent",

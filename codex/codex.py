@@ -10,7 +10,11 @@ class Codex:
 
     def __init__(self, options: CodexOptions | None = None) -> None:
         resolved = options or CodexOptions()
-        self._exec = CodexExec(resolved.codex_path_override)
+        self._exec = CodexExec(
+            resolved.codex_path_override,
+            env_override=resolved.env,
+            config_overrides=resolved.config,
+        )
         self._options = resolved
 
     def start_thread(self, options: ThreadOptions | None = None) -> Thread:

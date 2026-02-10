@@ -3,14 +3,18 @@ from __future__ import annotations
 import json
 from collections.abc import Iterator, Mapping, Sequence
 from dataclasses import dataclass
-from typing import Any, Literal, TypedDict, cast
+from typing import Any, Literal, Protocol, TypedDict, cast
 
 from codex.errors import CodexParseError, ThreadRunError
 from codex.events import ThreadEvent, Usage
-from codex.exec import CodexExec, CodexExecArgs
+from codex.exec import CodexExecArgs
 from codex.items import ThreadItem
 from codex.options import CodexOptions, ThreadOptions, TurnOptions
 from codex.output_schema_file import create_output_schema_file
+
+
+class ExecRunner(Protocol):
+    def run(self, args: CodexExecArgs) -> Iterator[str]: ...
 
 
 class TextInput(TypedDict):
@@ -42,7 +46,7 @@ class RunStreamedResult:
 class Thread:
     def __init__(
         self,
-        exec_runner: CodexExec,
+        exec_runner: ExecRunner,
         options: CodexOptions,
         thread_options: ThreadOptions,
         thread_id: str | None = None,
@@ -77,8 +81,15 @@ class Thread:
             model=options.model,
             sandbox_mode=options.sandbox_mode,
             working_directory=options.working_directory,
+            additional_directories=options.additional_directories,
             skip_git_repo_check=options.skip_git_repo_check,
             output_schema_file=schema_file.schema_path,
+            model_reasoning_effort=options.model_reasoning_effort,
+            signal=effective_turn_options.signal,
+            network_access_enabled=options.network_access_enabled,
+            web_search_mode=options.web_search_mode,
+            web_search_enabled=options.web_search_enabled,
+            approval_policy=options.approval_policy,
         )
         try:
             for item in self._exec.run(exec_args):
@@ -95,7 +106,6 @@ class Thread:
         final_response = ""
         usage: Usage | None = None
         turn_failure: str | None = None
-        saw_turn_complete = False
         for event in generator:
             event_dict = cast(dict[str, Any], event)
             event_type = event_dict.get("type")
@@ -111,7 +121,6 @@ class Thread:
                 usage_value = event_dict.get("usage")
                 if isinstance(usage_value, dict):
                     usage = cast(Usage, usage_value)
-                    saw_turn_complete = True
             elif event_type == "turn.failed":
                 error_value = event_dict.get("error")
                 if isinstance(error_value, dict):
@@ -119,17 +128,8 @@ class Thread:
                     if isinstance(message, str):
                         turn_failure = message
                         break
-            elif event_type == "error":
-                message_value = event_dict.get("message")
-                if isinstance(message_value, str):
-                    turn_failure = message_value
-                    break
         if turn_failure is not None:
             raise ThreadRunError(turn_failure)
-        if not saw_turn_complete:
-            raise ThreadRunError(
-                "stream disconnected before completion: missing turn.completed event"
-            )
         return RunResult(items=items, final_response=final_response, usage=usage)
 
 
