@@ -39,8 +39,7 @@ from codex.options import (
     WebSearchMode,
 )
 from codex.thread import Input, RunResult, RunStreamedResult, Thread, UserInput
-
-__version__ = "1.0.0"
+	.0.0-beta.2"
 
 __all__ = [
     "Codex",
