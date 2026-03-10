@@ -3,7 +3,7 @@
 help:
 	@echo "Common targets:"
 	@echo "  make lint     - Run ruff and mypy"
-	@echo "  make test     - Run pytest"
+	@echo "  make test     - Run pytest with coverage reporting and a 75% gate"
 	@echo "  make build    - Build sdist and wheel with uv"
 	@echo "  make publish  - Publish to PyPI via uv (uses PYPI_API_TOKEN)"
 	@echo "  make clean    - Remove build artifacts"
@@ -25,7 +25,7 @@ lint:
 	uv run --group dev mypy codex
 
 test:
-	@bash -lc 'uv run --group dev pytest -q; ec=$$?; if [ $$ec -eq 5 ]; then echo "No tests collected"; exit 0; else exit $$ec; fi'
+	@bash -lc 'uv run --group dev pytest --cov=codex --cov-report=term-missing --cov-report=xml; ec=$$?; if [ $$ec -eq 5 ]; then echo "No tests collected"; exit 0; else exit $$ec; fi'
 
 build:
 	uv build

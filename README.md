@@ -184,6 +184,9 @@ make lint
 make test
 ```
 
+`make test` emits a terminal coverage report, writes `coverage.xml`, and enforces the repository
+coverage gate.
+
 If you want to test vendored-binary behavior locally, fetch binaries into `codex/vendor`:
 
 ```bash

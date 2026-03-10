@@ -40,6 +40,7 @@ include = [{ path = "codex/vendor/**/*", format = ["sdist", "wheel"] }]
 dev = [
   "ruff>=0.13.1",
   "pytest>=8",
+  "pytest-cov>=6.0.0",
   "mypy>=1.18.2",
   "pre-commit>=4.3.0",
 ]
@@ -57,6 +58,17 @@ ignore = ["E501"]
 addopts = "-q"
 testpaths = ["tests"]
 python_files = ["test_*.py"]
+
+[tool.coverage.run]
+source = ["codex"]
+omit = ["codex/protocol/types.py", "codex/events.py", "codex/items.py"]
+
+[tool.coverage.report]
+fail_under = 75
+show_missing = true
+
+[tool.coverage.xml]
+output = "coverage.xml"
 
 [tool.mypy]
 python_version = "3.12"
