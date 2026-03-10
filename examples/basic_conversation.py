@@ -6,8 +6,8 @@ from codex import Codex
 def main() -> None:
     client = Codex()
     thread = client.start_thread()
-    result = thread.run("Briefly summarize this repository's purpose.")
-    print(result.final_response)
+    summary = thread.run_text("Briefly summarize this repository's purpose.")
+    print(summary)
 
 
 if __name__ == "__main__":

@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 import os
 from pathlib import Path
 
@@ -41,12 +40,10 @@ def test_run_with_real_codex_binary_and_api_key() -> None:
             skip_git_repo_check=True,
         )
     )
-    result = thread.run(
+    result = thread.run_json(
         'Respond with JSON containing {"answer":"OK"}.',
         TurnOptions(output_schema=schema),
     )
 
     assert thread.id is not None
-    parsed = json.loads(result.final_response)
-    assert parsed == {"answer": "OK"}
-    assert result.usage is not None
+    assert result == {"answer": "OK"}

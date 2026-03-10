@@ -42,8 +42,8 @@ from codex import Codex
 client = Codex()
 thread = client.start_thread()
 
-result = thread.run("Diagnose the failing tests and propose a fix")
-print(result.final_response)
+summary = thread.run_text("Diagnose the failing tests and propose a fix")
+print(summary)
 ```
 
 More exec-based examples: [docs/exec_api.md](docs/exec_api.md)
@@ -85,8 +85,8 @@ schema = {
 
 client = Codex()
 thread = client.start_thread()
-result = thread.run("Summarize repository status", TurnOptions(output_schema=schema))
-print(result.final_response)
+payload = thread.run_json("Summarize repository status", TurnOptions(output_schema=schema))
+print(payload["summary"])
 ```
 
 ### `AppServerClient`
@@ -124,14 +124,17 @@ with AppServerClient.connect_stdio() as client:
 
 ```python
 from codex import Codex
+from codex.protocol import types as protocol
 
 client = Codex()
 thread = client.start_thread()
 
-stream = thread.run_streamed("Investigate this bug")
-for event in stream.events:
-    if event["type"] == "item.completed":
-        print(event["item"])
+stream = thread.run("Investigate this bug")
+for event in stream:
+    if isinstance(event, protocol.AgentMessageDeltaEventMsg):
+        print(event.delta, end="", flush=True)
+
+print()
 ```
 
 ### App-server stream

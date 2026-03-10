@@ -10,25 +10,28 @@ from codex import Codex
 client = Codex()
 thread = client.start_thread()
 
-result = thread.run("Diagnose the failing tests and propose a fix")
-print(result.final_response)
-print(result.items)
-print(result.usage)
+stream = thread.run("Diagnose the failing tests and propose a fix")
+stream.wait()
+print(stream.final_text)
+print(stream.items)
+print(stream.usage)
 ```
 
 ## Streaming
 
-Use `run_streamed()` when you want access to the raw exec event stream:
+Use `run()` when you want access to the typed exec event stream:
 
 ```python
 from codex import Codex
+from codex.protocol import types as protocol
 
 client = Codex()
 thread = client.start_thread()
 
-stream = thread.run_streamed("Investigate the flaky test")
-for event in stream.events:
-    print(event["type"])
+stream = thread.run("Investigate the flaky test")
+for event in stream:
+    if isinstance(event, protocol.AgentMessageDeltaEventMsg):
+        print(event.delta, end="", flush=True)
 ```
 
 ## Structured output
@@ -45,11 +48,11 @@ schema = {
 
 client = Codex()
 thread = client.start_thread()
-result = thread.run("Return JSON matching the schema", TurnOptions(output_schema=schema))
-print(result.final_response)
+payload = thread.run_json("Return JSON matching the schema", TurnOptions(output_schema=schema))
+print(payload["answer"])
 ```
 
-`RunResult.final_response` is still a string. If you need model validation or richer streaming, use the app-server client instead.
+If you want typed validation directly, use `thread.run_model(...)`.
 
 ## Inputs
 
@@ -96,10 +99,10 @@ cancel = threading.Event()
 
 client = Codex()
 thread = client.start_thread()
-stream = thread.run_streamed("Long running task", TurnOptions(signal=cancel))
+stream = thread.run("Long running task", TurnOptions(signal=cancel))
 
 cancel.set()
-for event in stream.events:
+for event in stream:
     print(event)
 ```
 

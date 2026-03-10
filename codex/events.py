@@ -1,66 +1,35 @@
+"""Typed exec-event re-exports backed by generated protocol models."""
+
 from __future__ import annotations
 
-from typing import Literal, TypedDict
+from pydantic import BaseModel
 
-from codex.items import ThreadItem
+from codex.protocol import types as protocol
 
+ExecEvent = BaseModel
+SessionConfiguredEvent = protocol.SessionConfiguredEventMsg
+TaskStartedEvent = protocol.TaskStartedEventMsg
+TaskCompletedEvent = protocol.TaskCompleteEventMsg
+AgentMessageEvent = protocol.AgentMessageEventMsg
+AgentMessageDeltaEvent = protocol.AgentMessageDeltaEventMsg
+TokenCountEvent = protocol.TokenCountEventMsg
+ItemStartedEvent = protocol.ItemStartedEventMsg
+ItemCompletedEvent = protocol.ItemCompletedEventMsg
+ErrorEvent = protocol.ErrorEventMsg
+StreamErrorEvent = protocol.StreamErrorEventMsg
+TurnAbortedEvent = protocol.TurnAbortedEventMsg
 
-class ThreadStartedEvent(TypedDict):
-    type: Literal["thread.started"]
-    thread_id: str
-
-
-class TurnStartedEvent(TypedDict):
-    type: Literal["turn.started"]
-
-
-class Usage(TypedDict):
-    input_tokens: int
-    cached_input_tokens: int
-    output_tokens: int
-
-
-class TurnCompletedEvent(TypedDict):
-    type: Literal["turn.completed"]
-    usage: Usage
-
-
-class ThreadError(TypedDict):
-    message: str
-
-
-class TurnFailedEvent(TypedDict):
-    type: Literal["turn.failed"]
-    error: ThreadError
-
-
-class ItemStartedEvent(TypedDict):
-    type: Literal["item.started"]
-    item: ThreadItem
-
-
-class ItemUpdatedEvent(TypedDict):
-    type: Literal["item.updated"]
-    item: ThreadItem
-
-
-class ItemCompletedEvent(TypedDict):
-    type: Literal["item.completed"]
-    item: ThreadItem
-
-
-class ThreadErrorEvent(TypedDict):
-    type: Literal["error"]
-    message: str
-
-
-ThreadEvent = (
-    ThreadStartedEvent
-    | TurnStartedEvent
-    | TurnCompletedEvent
-    | TurnFailedEvent
-    | ItemStartedEvent
-    | ItemUpdatedEvent
-    | ItemCompletedEvent
-    | ThreadErrorEvent
-)
+__all__ = [
+    "ExecEvent",
+    "SessionConfiguredEvent",
+    "TaskStartedEvent",
+    "TaskCompletedEvent",
+    "AgentMessageEvent",
+    "AgentMessageDeltaEvent",
+    "TokenCountEvent",
+    "ItemStartedEvent",
+    "ItemCompletedEvent",
+    "ErrorEvent",
+    "StreamErrorEvent",
+    "TurnAbortedEvent",
+]
