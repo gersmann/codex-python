@@ -1,5 +1,23 @@
 """Python SDK for embedding Codex via the bundled CLI binary."""
 
+from codex.app_server import (
+    AppServerClient,
+    AppServerClientInfo,
+    AppServerClosedError,
+    AppServerConnectionError,
+    AppServerError,
+    AppServerInitializeOptions,
+    AppServerProcessOptions,
+    AppServerProtocolError,
+    AppServerRpcError,
+    AppServerThread,
+    AsyncAppServerClient,
+    AsyncAppServerThread,
+    AsyncRpcClient,
+    AsyncTurnStream,
+    RpcClient,
+    TurnStream,
+)
 from codex.codex import Codex
 from codex.errors import CodexError, CodexExecError, CodexParseError, ThreadRunError
 from codex.events import (
@@ -44,6 +62,22 @@ __version__ = "1.0.1"
 
 __all__ = [
     "Codex",
+    "AppServerClient",
+    "AppServerThread",
+    "AsyncAppServerClient",
+    "AsyncAppServerThread",
+    "RpcClient",
+    "AsyncRpcClient",
+    "TurnStream",
+    "AsyncTurnStream",
+    "AppServerError",
+    "AppServerConnectionError",
+    "AppServerClosedError",
+    "AppServerProtocolError",
+    "AppServerRpcError",
+    "AppServerClientInfo",
+    "AppServerInitializeOptions",
+    "AppServerProcessOptions",
     "CodexError",
     "CodexExecError",
     "CodexParseError",

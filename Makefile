@@ -1,4 +1,4 @@
-.PHONY: help venv fmt lint test build publish clean
+.PHONY: help venv fmt lint test build publish clean gen-protocol
 
 help:
 	@echo "Common targets:"
@@ -7,6 +7,7 @@ help:
 	@echo "  make build    - Build sdist and wheel with uv"
 	@echo "  make publish  - Publish to PyPI via uv (uses PYPI_API_TOKEN)"
 	@echo "  make clean    - Remove build artifacts"
+	@echo "  make gen-protocol - Regenerate app-server protocol types from codex"
 	@echo "  make gen-stubs    - Generate .pyi stubs for the wheel-tag shim module"
 	@echo "  make wheelhouse-linux    - Prebuild manylinux & musllinux wheels (x86_64, aarch64)"
 	@echo "  make wheelhouse-clean    - Remove wheelhouse/"
@@ -53,6 +54,9 @@ publish: build
 
 clean:
 	rm -rf build dist *.egg-info .pytest_cache .mypy_cache .ruff_cache
+
+gen-protocol:
+	uv run --group dev python scripts/generate_protocol_types.py --experimental
 
 .PHONY: build-native dev-native
 
