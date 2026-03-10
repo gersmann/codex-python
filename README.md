@@ -2,10 +2,10 @@
 
 Python SDK for Codex with bundled `codex` binaries inside platform wheels.
 
-The SDK mirrors the TypeScript SDK behavior:
-- Spawns `codex exec --experimental-json`
-- Streams JSONL events
-- Supports thread resume, structured output schemas, images, sandbox/model options
+This package exposes two supported APIs:
+
+- `Codex`: a simple, local, CLI-backed interface built on `codex exec`
+- `AppServerClient`: a richer app-server client for thread management, streaming events, approvals, and typed protocol access
 
 ## Install
 
@@ -13,7 +13,28 @@ The SDK mirrors the TypeScript SDK behavior:
 pip install codex-python
 ```
 
-## Quickstart
+## Which API should I use?
+
+### `Codex`
+
+Use `Codex` when you want the smallest surface area for local automation:
+
+- one process per run
+- simple request/response usage
+- optional streaming over the exec event stream
+- structured output via `TurnOptions(output_schema=...)`
+
+### `AppServerClient`
+
+Use `AppServerClient` when you want a deeper integration:
+
+- persistent app-server connection
+- thread objects and turn streams
+- protocol-native notifications
+- server-driven requests such as tool callbacks and approvals
+- typed protocol models and raw JSON-RPC access when needed
+
+## Quickstart: `Codex`
 
 ```python
 from codex import Codex
@@ -23,26 +44,34 @@ thread = client.start_thread()
 
 result = thread.run("Diagnose the failing tests and propose a fix")
 print(result.final_response)
-print(result.items)
 ```
 
-## Streaming
+More exec-based examples: [docs/exec_api.md](docs/exec_api.md)
+
+## Quickstart: `AppServerClient`
 
 ```python
-from codex import Codex
+from codex import AppServerClient, AppServerClientInfo, AppServerInitializeOptions
 
-client = Codex()
-thread = client.start_thread()
+initialize_options = AppServerInitializeOptions(
+    client_info=AppServerClientInfo(
+        name="my_integration",
+        title="My Integration",
+        version="0.1.0",
+    )
+)
 
-stream = thread.run_streamed("Investigate this bug")
-for event in stream.events:
-    if event["type"] == "item.completed":
-        print(event["item"])
-    elif event["type"] == "turn.completed":
-        print(event["usage"])
+with AppServerClient.connect_stdio(initialize_options=initialize_options) as client:
+    thread = client.start_thread()
+    summary = thread.run_text("Briefly summarize this repository's purpose.")
+    print(summary)
 ```
 
+More app-server examples: [docs/app_server.md](docs/app_server.md)
+
 ## Structured output
+
+### `Codex`
 
 ```python
 from codex import Codex, TurnOptions
@@ -60,55 +89,76 @@ result = thread.run("Summarize repository status", TurnOptions(output_schema=sch
 print(result.final_response)
 ```
 
-## Input with local images
+### `AppServerClient`
+
+```python
+from pydantic import BaseModel
+
+from codex import AppServerClient
+
+
+class Summary(BaseModel):
+    summary: str
+
+
+schema = {
+    "type": "object",
+    "properties": {"summary": {"type": "string"}},
+    "required": ["summary"],
+    "additionalProperties": False,
+}
+
+with AppServerClient.connect_stdio() as client:
+    thread = client.start_thread()
+    result = thread.run_model(
+        "Summarize repository status",
+        Summary,
+        outputSchema=schema,
+    )
+    print(result.summary)
+```
+
+## Streaming
+
+### Exec stream
 
 ```python
 from codex import Codex
 
 client = Codex()
 thread = client.start_thread()
-result = thread.run(
-    [
-        {"type": "text", "text": "Describe these screenshots"},
-        {"type": "local_image", "path": "./ui.png"},
-        {"type": "local_image", "path": "./diagram.jpg"},
-    ]
-)
-```
 
-## Resume a thread
-
-```python
-from codex import Codex
-
-client = Codex()
-thread = client.resume_thread("thread_123")
-thread.run("Continue from previous context")
-```
-
-## Options
-
-- `CodexOptions`: `codex_path_override`, `base_url`, `api_key`, `config`, `env`
-- `ThreadOptions`: `model`, `sandbox_mode`, `working_directory`, `skip_git_repo_check`, `model_reasoning_effort`, `network_access_enabled`, `web_search_mode`, `web_search_enabled`, `approval_policy`, `additional_directories`
-- `TurnOptions`: `output_schema`, `signal`
-
-## Cancellation
-
-```python
-import threading
-
-from codex import Codex, TurnOptions
-
-cancel = threading.Event()
-
-client = Codex()
-thread = client.start_thread()
-stream = thread.run_streamed("Long running task", TurnOptions(signal=cancel))
-
-cancel.set()
+stream = thread.run_streamed("Investigate this bug")
 for event in stream.events:
-    print(event)
+    if event["type"] == "item.completed":
+        print(event["item"])
 ```
+
+### App-server stream
+
+```python
+from codex import AppServerClient
+from codex.protocol import types as protocol
+
+with AppServerClient.connect_stdio() as client:
+    thread = client.start_thread()
+    stream = thread.run("Investigate this bug")
+
+    for event in stream:
+        if isinstance(event, protocol.ItemAgentMessageDeltaNotification):
+            print(event.params.delta, end="", flush=True)
+
+    print()
+```
+
+Advanced app-server usage: [docs/app_server_advanced.md](docs/app_server_advanced.md)
+
+## Examples
+
+- [examples/basic_conversation.py](examples/basic_conversation.py): minimal `Codex` flow
+- [examples/app_server_conversation.py](examples/app_server_conversation.py): minimal app-server flow
+- [examples/app_server_stream_events.py](examples/app_server_stream_events.py): protocol-native app-server streaming
+- [examples/app_server_tool_handler.py](examples/app_server_tool_handler.py): typed app-server request handling
 
 ## Bundled binary behavior
 
@@ -116,10 +166,13 @@ By default, the SDK resolves the bundled binary at:
 
 `codex/vendor/<target-triple>/codex/{codex|codex.exe}`
 
-If the bundled binary is not present (for example in a source checkout), the SDK falls back to
+If the bundled binary is not present, for example in a source checkout, the SDK falls back to
 `codex` on `PATH`.
 
-You can always override with `CodexOptions(codex_path_override=...)`.
+You can override the executable path with:
+
+- `CodexOptions(codex_path_override=...)`
+- `AppServerProcessOptions(codex_path_override=...)`
 
 ## Development
 

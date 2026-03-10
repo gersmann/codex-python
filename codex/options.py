@@ -1,3 +1,5 @@
+"""Options shared by the exec-based Codex client."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -30,6 +32,8 @@ type CancelSignal = SupportsIsSet | SupportsAborted
 
 @dataclass(slots=True, frozen=True)
 class CodexOptions:
+    """Process-level configuration for the `Codex` client."""
+
     codex_path_override: str | None = None
     base_url: str | None = None
     api_key: str | None = None
@@ -39,6 +43,8 @@ class CodexOptions:
 
 @dataclass(slots=True, frozen=True)
 class ThreadOptions:
+    """Default execution settings applied to runs on a thread."""
+
     model: str | None = None
     sandbox_mode: SandboxMode | None = None
     working_directory: str | None = None
@@ -53,5 +59,7 @@ class ThreadOptions:
 
 @dataclass(slots=True, frozen=True)
 class TurnOptions:
+    """Per-run options for the exec-based `Thread.run()` APIs."""
+
     output_schema: dict[str, object] | None = None
     signal: CancelSignal | None = None

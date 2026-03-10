@@ -1,3 +1,5 @@
+"""Async public client surface for `codex app-server`."""
+
 from __future__ import annotations
 
 import json
@@ -42,6 +44,8 @@ _ModelT = TypeVar("_ModelT", bound=BaseModel)
 
 
 class AsyncRpcClient:
+    """Low-level async JSON-RPC access to app-server methods."""
+
     def __init__(self, session: _AsyncSession) -> None:
         self._session = session
 
@@ -50,6 +54,7 @@ class AsyncRpcClient:
         method: str,
         params: BaseModel | Mapping[str, object] | None = None,
     ) -> object:
+        """Send a raw JSON-RPC request and return the decoded result."""
         return await self._session.request(method, params)
 
     async def request_typed(
@@ -58,6 +63,7 @@ class AsyncRpcClient:
         params: BaseModel | Mapping[str, object] | None,
         result_model: type[_ModelT],
     ) -> _ModelT:
+        """Send a request and validate the response with a Pydantic model."""
         return await self._session.request_typed(method, params, result_model)
 
     async def notify(
@@ -65,6 +71,7 @@ class AsyncRpcClient:
         method: str,
         params: BaseModel | Mapping[str, object] | None = None,
     ) -> None:
+        """Send a JSON-RPC notification."""
         await self._session.notify(method, params)
 
     def on_request(
@@ -74,10 +81,13 @@ class AsyncRpcClient:
         *,
         request_model: type[BaseModel] | None = None,
     ) -> None:
+        """Register a handler for server-initiated JSON-RPC requests."""
         self._session.on_request(method, handler, request_model=request_model)
 
 
 class AsyncServiceNamespace:
+    """Helper for calling app-server methods with a shared prefix."""
+
     def __init__(self, rpc: AsyncRpcClient, prefix: str) -> None:
         self._rpc = rpc
         self._prefix = prefix
@@ -87,19 +97,25 @@ class AsyncServiceNamespace:
         suffix: str,
         params: BaseModel | Mapping[str, object] | None = None,
     ) -> object:
+        """Call a method under the namespace prefix."""
         method = f"{self._prefix}/{suffix}" if suffix else self._prefix
         return await self._rpc.request(method, params)
 
 
 class AsyncEventsClient:
+    """Advanced subscription access to connection-wide notifications."""
+
     def __init__(self, session: _AsyncSession) -> None:
         self._session = session
 
     def subscribe(self, methods: Collection[str] | None = None) -> _AsyncNotificationSubscription:
+        """Subscribe to raw notifications across the connection."""
         return self._session.subscribe_notifications(methods)
 
 
 class AsyncTurnStream:
+    """Async iterator over protocol-native notifications for a single turn."""
+
     def __init__(
         self,
         thread: AsyncAppServerThread,
@@ -130,6 +146,7 @@ class AsyncTurnStream:
         thread: AsyncAppServerThread,
         params: BaseModel | Mapping[str, object],
     ) -> AsyncTurnStream:
+        """Start a turn and return its notification stream."""
         subscription = thread._client._session.subscribe_notifications()
         try:
             result = await thread._client.rpc.request_typed("turn/start", params, TurnResult)
@@ -144,6 +161,7 @@ class AsyncTurnStream:
         thread: AsyncAppServerThread,
         params: BaseModel | Mapping[str, object],
     ) -> AsyncTurnStream:
+        """Start a review turn and return its notification stream."""
         subscription = thread._client._session.subscribe_notifications()
         try:
             result = await thread._client.rpc.request_typed("review/start", params, ReviewResult)
@@ -169,6 +187,7 @@ class AsyncTurnStream:
             return notification
 
     async def wait(self) -> AsyncTurnStream:
+        """Consume the stream to completion and return `self`."""
         if self._done:
             return self
         async for _ in self:
@@ -176,15 +195,18 @@ class AsyncTurnStream:
         return self
 
     async def collect(self) -> AsyncTurnStream:
+        """Alias for `wait()`."""
         return await self.wait()
 
     async def close(self) -> None:
+        """Close the underlying notification subscription early."""
         if self._closed:
             return
         self._closed = True
         await self._subscription.close()
 
     async def steer(self, input: TurnInput, **overrides: object) -> TurnIdResult:
+        """Append additional user input to the in-flight turn."""
         params = merge_params(
             None,
             threadId=self.thread_id,
@@ -195,17 +217,21 @@ class AsyncTurnStream:
         return await self._thread._client.rpc.request_typed("turn/steer", params, TurnIdResult)
 
     async def interrupt(self) -> EmptyResult:
+        """Interrupt the active turn."""
         params = merge_params(threadId=self.thread_id, turnId=self.turn_id)
         return await self._thread._client.rpc.request_typed("turn/interrupt", params, EmptyResult)
 
     def final_json(self) -> object:
+        """Parse the final assistant message text as JSON."""
         return json.loads(self._require_final_message_text())
 
     def final_model(self, model_type: type[_ModelT]) -> _ModelT:
+        """Validate the final assistant message text with a Pydantic model."""
         return model_type.model_validate_json(self._require_final_message_text())
 
     @property
     def text_deltas(self) -> tuple[str, ...]:
+        """Return the streamed agent text deltas received so far."""
         return tuple(self._text_deltas)
 
     def _matches(self, notification: BaseModel) -> bool:
@@ -249,15 +275,19 @@ class AsyncTurnStream:
 
 
 class AsyncAppServerThread:
+    """Async OO wrapper around a single app-server thread."""
+
     def __init__(self, client: AsyncAppServerClient, snapshot: protocol.Thread) -> None:
         self._client = client
         self.snapshot = snapshot
 
     @property
     def id(self) -> str:
+        """Return the thread identifier."""
         return self.snapshot.id
 
     async def refresh(self, *, include_turns: bool = False) -> protocol.Thread:
+        """Reload the stored thread snapshot from app-server."""
         result = await self._client.rpc.request_typed(
             "thread/read",
             merge_params(threadId=self.id, includeTurns=include_turns),
@@ -272,6 +302,7 @@ class AsyncAppServerThread:
         params: protocol.TurnStartParams | Mapping[str, object] | None = None,
         **overrides: object,
     ) -> AsyncTurnStream:
+        """Start a turn and return the protocol-native notification stream."""
         payload = merge_params(
             params,
             threadId=self.id,
@@ -286,6 +317,7 @@ class AsyncAppServerThread:
         params: protocol.TurnStartParams | Mapping[str, object] | None = None,
         **overrides: object,
     ) -> str:
+        """Run a turn and return only the final assistant text."""
         stream = await self.run(input, params, **overrides)
         await stream.wait()
         return stream.final_text
@@ -296,6 +328,7 @@ class AsyncAppServerThread:
         params: protocol.TurnStartParams | Mapping[str, object] | None = None,
         **overrides: object,
     ) -> object:
+        """Run a turn and parse the final assistant text as JSON."""
         stream = await self.run(input, params, **overrides)
         await stream.wait()
         return stream.final_json()
@@ -307,6 +340,7 @@ class AsyncAppServerThread:
         params: protocol.TurnStartParams | Mapping[str, object] | None = None,
         **overrides: object,
     ) -> _ModelT:
+        """Run a turn and validate the final assistant text with `model_type`."""
         stream = await self.run(input, params, **overrides)
         await stream.wait()
         return stream.final_model(model_type)
@@ -319,6 +353,7 @@ class AsyncAppServerThread:
         params: Mapping[str, object] | None = None,
         **overrides: object,
     ) -> AsyncTurnStream:
+        """Start a review turn on this thread."""
         payload = merge_params(
             params,
             threadId=self.id,
@@ -331,11 +366,13 @@ class AsyncAppServerThread:
     async def fork(
         self, params: protocol.ThreadForkParams | Mapping[str, object] | None = None
     ) -> AsyncAppServerThread:
+        """Fork this thread and return the new thread object."""
         payload = merge_params(params, threadId=self.id)
         result = await self._client.rpc.request_typed("thread/fork", payload, ThreadResult)
         return AsyncAppServerThread(self._client, result.thread)
 
     async def archive(self) -> EmptyResult:
+        """Archive the thread."""
         return await self._client.rpc.request_typed(
             "thread/archive",
             merge_params(threadId=self.id),
@@ -343,6 +380,7 @@ class AsyncAppServerThread:
         )
 
     async def unarchive(self) -> protocol.Thread:
+        """Restore an archived thread and refresh the local snapshot."""
         result = await self._client.rpc.request_typed(
             "thread/unarchive",
             merge_params(threadId=self.id),
@@ -352,6 +390,7 @@ class AsyncAppServerThread:
         return self.snapshot
 
     async def rollback(self, num_turns: int) -> protocol.Thread:
+        """Roll back the last `num_turns` turns."""
         result = await self._client.rpc.request_typed(
             "thread/rollback",
             merge_params(threadId=self.id, numTurns=num_turns),
@@ -361,6 +400,7 @@ class AsyncAppServerThread:
         return self.snapshot
 
     async def compact(self) -> EmptyResult:
+        """Trigger thread compaction."""
         return await self._client.rpc.request_typed(
             "thread/compact/start",
             merge_params(threadId=self.id),
@@ -368,6 +408,7 @@ class AsyncAppServerThread:
         )
 
     async def set_name(self, name: str) -> EmptyResult:
+        """Set the user-facing thread name."""
         return await self._client.rpc.request_typed(
             "thread/name/set",
             merge_params(threadId=self.id, name=name),
@@ -375,10 +416,13 @@ class AsyncAppServerThread:
         )
 
     async def unsubscribe(self) -> object:
+        """Unsubscribe this connection from the loaded thread."""
         return await self._client.rpc.request("thread/unsubscribe", merge_params(threadId=self.id))
 
 
 class AsyncAppServerClient:
+    """Async client for `codex app-server`."""
+
     def __init__(
         self,
         transport: AsyncMessageTransport,
@@ -404,6 +448,7 @@ class AsyncAppServerClient:
         process_options: AppServerProcessOptions | None = None,
         initialize_options: AppServerInitializeOptions | None = None,
     ) -> AsyncAppServerClient:
+        """Start `codex app-server` over stdio and initialize the session."""
         client = cls(AsyncStdioTransport(process_options), initialize_options)
         await client.start()
         return client
@@ -414,6 +459,7 @@ class AsyncAppServerClient:
         url: str,
         initialize_options: AppServerInitializeOptions | None = None,
     ) -> AsyncAppServerClient:
+        """Connect to an app-server websocket endpoint and initialize the session."""
         client = cls(AsyncWebSocketTransport(url), initialize_options)
         await client.start()
         return client
@@ -427,9 +473,11 @@ class AsyncAppServerClient:
         await self.close()
 
     async def start(self) -> InitializeResult:
+        """Start the transport and complete the initialize handshake."""
         return await self._session.start()
 
     async def close(self) -> None:
+        """Close the app-server session and transport."""
         await self._session.close()
 
     async def start_thread(
@@ -437,6 +485,7 @@ class AsyncAppServerClient:
         params: protocol.ThreadStartParams | Mapping[str, object] | None = None,
         **overrides: object,
     ) -> AsyncAppServerThread:
+        """Create a new thread and return its OO wrapper."""
         result = await self.rpc.request_typed(
             "thread/start",
             merge_params(params, **overrides),
@@ -450,6 +499,7 @@ class AsyncAppServerClient:
         params: protocol.ThreadResumeParams | Mapping[str, object] | None = None,
         **overrides: object,
     ) -> AsyncAppServerThread:
+        """Resume an existing thread and return its OO wrapper."""
         payload = merge_params(params, threadId=thread_id, **overrides)
         result = await self.rpc.request_typed("thread/resume", payload, ThreadResult)
         return AsyncAppServerThread(self, result.thread)
@@ -460,6 +510,7 @@ class AsyncAppServerClient:
         *,
         include_turns: bool = False,
     ) -> protocol.Thread:
+        """Read a stored thread snapshot without resuming it."""
         result = await self.rpc.request_typed(
             "thread/read",
             merge_params(threadId=thread_id, includeTurns=include_turns),
@@ -472,6 +523,7 @@ class AsyncAppServerClient:
         params: protocol.ThreadListParams | Mapping[str, object] | None = None,
         **overrides: object,
     ) -> list[protocol.Thread]:
+        """List stored threads and return only the thread data."""
         result = await self.rpc.request_typed(
             "thread/list",
             merge_params(params, **overrides),
@@ -484,6 +536,7 @@ class AsyncAppServerClient:
         params: protocol.ThreadListParams | Mapping[str, object] | None = None,
         **overrides: object,
     ) -> ThreadListResult:
+        """List stored threads and return the full paginated response."""
         return await self.rpc.request_typed(
             "thread/list",
             merge_params(params, **overrides),
@@ -491,6 +544,7 @@ class AsyncAppServerClient:
         )
 
     async def loaded_thread_ids(self) -> list[str]:
+        """Return the ids of threads currently loaded in app-server memory."""
         result = await self.rpc.request_typed("thread/loaded/list", {}, LoadedThreadsResult)
         return result.data
 
@@ -501,4 +555,5 @@ class AsyncAppServerClient:
         *,
         request_model: type[BaseModel] | None = None,
     ) -> None:
+        """Register a handler for server-initiated JSON-RPC requests."""
         self.rpc.on_request(method, handler, request_model=request_model)

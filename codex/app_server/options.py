@@ -1,3 +1,5 @@
+"""Options for connecting to and initializing `codex app-server`."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -7,11 +9,14 @@ from codex.options import CodexConfigObject
 
 @dataclass(slots=True, frozen=True)
 class AppServerClientInfo:
+    """Identity metadata sent during the app-server `initialize` handshake."""
+
     name: str
     version: str
     title: str | None = None
 
     def to_payload(self) -> dict[str, str]:
+        """Convert the client identity into the wire payload shape."""
         payload = {
             "name": self.name,
             "version": self.version,
@@ -23,6 +28,8 @@ class AppServerClientInfo:
 
 @dataclass(slots=True, frozen=True)
 class AppServerInitializeOptions:
+    """Handshake options for a single app-server connection."""
+
     client_info: AppServerClientInfo = field(
         default_factory=lambda: AppServerClientInfo(
             name="codex_python",
@@ -34,6 +41,7 @@ class AppServerInitializeOptions:
     opt_out_notification_methods: tuple[str, ...] = ()
 
     def to_params(self) -> dict[str, object]:
+        """Build the JSON-RPC `initialize` params object."""
         params: dict[str, object] = {
             "clientInfo": self.client_info.to_payload(),
         }
@@ -49,6 +57,8 @@ class AppServerInitializeOptions:
 
 @dataclass(slots=True, frozen=True)
 class AppServerProcessOptions:
+    """Process launch options for stdio-based app-server connections."""
+
     codex_path_override: str | None = None
     base_url: str | None = None
     api_key: str | None = None

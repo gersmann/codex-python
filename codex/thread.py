@@ -1,3 +1,5 @@
+"""Thread abstractions for the exec-based Codex client."""
+
 from __future__ import annotations
 
 import json
@@ -33,6 +35,8 @@ Input = str | Sequence[UserInput]
 
 @dataclass(slots=True, frozen=True)
 class RunResult:
+    """Final aggregated result of a non-streaming exec-based turn."""
+
     items: list[ThreadItem]
     final_response: str
     usage: Usage | None
@@ -40,10 +44,14 @@ class RunResult:
 
 @dataclass(slots=True, frozen=True)
 class RunStreamedResult:
+    """Streaming wrapper around the raw exec event iterator."""
+
     events: Iterator[ThreadEvent]
 
 
 class Thread:
+    """A CLI-backed conversation thread for the `Codex` client."""
+
     def __init__(
         self,
         exec_runner: ExecRunner,
@@ -58,11 +66,13 @@ class Thread:
 
     @property
     def id(self) -> str | None:
+        """Return the current thread id if the thread has been started."""
         return self._id
 
     def run_streamed(
         self, input: Input, turn_options: TurnOptions | None = None
     ) -> RunStreamedResult:
+        """Run a turn and expose the raw exec event stream."""
         return RunStreamedResult(events=self._run_streamed_internal(input, turn_options))
 
     def _run_streamed_internal(
@@ -101,6 +111,7 @@ class Thread:
             schema_file.cleanup()
 
     def run(self, input: Input, turn_options: TurnOptions | None = None) -> RunResult:
+        """Run a turn and collect the final response, items, and usage."""
         generator = self._run_streamed_internal(input, turn_options)
         items: list[ThreadItem] = []
         final_response = ""
@@ -134,6 +145,7 @@ class Thread:
 
 
 def parse_thread_event(raw_line: str) -> ThreadEvent:
+    """Parse a single JSONL event line from `codex exec --experimental-json`."""
     try:
         parsed = json.loads(raw_line)
     except json.JSONDecodeError as exc:
@@ -148,6 +160,7 @@ def parse_thread_event(raw_line: str) -> ThreadEvent:
 
 
 def normalize_input(input_value: Input) -> tuple[str, list[str]]:
+    """Normalize string or input-item lists into exec prompt and image arguments."""
     if isinstance(input_value, str):
         return input_value, []
 
