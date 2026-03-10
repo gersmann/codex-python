@@ -104,6 +104,10 @@ def _wait_until(predicate: Callable[[], bool], timeout: float = 1.0) -> None:
     raise AssertionError("condition was not met before timeout")
 
 
+def _turn_start_count(transport: ScriptedTransport) -> int:
+    return sum(1 for message in transport.sent if message.get("method") == "turn/start")
+
+
 def test_async_client_start_thread_returns_thread_object() -> None:
     async def scenario() -> None:
         transport = ScriptedTransport()
@@ -218,6 +222,58 @@ def test_async_turn_stream_yields_typed_events_and_aggregates_final_text() -> No
         assert stream.final_turn is not None
         assert stream.final_turn.status.root == "completed"
         assert isinstance(stream.items[0].root, protocol.AgentMessageThreadItem)
+
+        await client.close()
+
+    asyncio.run(scenario())
+
+
+def test_async_thread_run_text_json_and_model_helpers() -> None:
+    async def scenario() -> None:
+        transport = ScriptedTransport()
+        transport.responses["thread/start"] = {"thread": _thread_payload()}
+        transport.responses["turn/start"] = {"turn": _turn_payload()}
+        client = AsyncAppServerClient(transport)
+        await client.start()
+
+        thread = await client.start_thread()
+
+        async def push_turn_result(text: str) -> None:
+            await asyncio.sleep(0)
+            transport.push(
+                {
+                    "method": "item/completed",
+                    "params": {
+                        "threadId": "thr-1",
+                        "turnId": "turn-1",
+                        "item": _agent_message_item(text),
+                    },
+                }
+            )
+            transport.push(
+                {
+                    "method": "turn/completed",
+                    "params": {
+                        "threadId": "thr-1",
+                        "turn": _turn_payload(status="completed"),
+                    },
+                }
+            )
+
+        text_task = asyncio.create_task(thread.run_text("Summarize this repo."))
+        await asyncio.to_thread(_wait_until, lambda: _turn_start_count(transport) >= 1)
+        await push_turn_result("Async summary")
+        assert await text_task == "Async summary"
+
+        json_task = asyncio.create_task(thread.run_json("Return JSON"))
+        await asyncio.to_thread(_wait_until, lambda: _turn_start_count(transport) >= 2)
+        await push_turn_result('{"answer":"async structured summary"}')
+        assert await json_task == {"answer": "async structured summary"}
+
+        model_task = asyncio.create_task(thread.run_model("Return JSON", SummaryModel))
+        await asyncio.to_thread(_wait_until, lambda: _turn_start_count(transport) >= 3)
+        await push_turn_result('{"answer":"async model summary"}')
+        assert await model_task == SummaryModel(answer="async model summary")
 
         await client.close()
 
@@ -375,5 +431,63 @@ def test_turn_stream_can_parse_final_json_and_model() -> None:
 
         assert stream.final_json() == {"answer": "structured summary"}
         assert stream.final_model(SummaryModel) == SummaryModel(answer="structured summary")
+    finally:
+        client.close()
+
+
+def test_sync_thread_run_text_json_and_model_helpers() -> None:
+    loop = _LoopThread()
+    transport = ScriptedTransport()
+    transport.responses["thread/start"] = {"thread": _thread_payload()}
+    transport.responses["turn/start"] = {"turn": _turn_payload()}
+    async_client = AsyncAppServerClient(transport)
+    loop.run(async_client.start())
+    client = AppServerClient(async_client, loop)
+
+    try:
+        thread = client.start_thread()
+
+        def push_turn_result(text: str) -> None:
+            transport.push(
+                {
+                    "method": "item/completed",
+                    "params": {
+                        "threadId": "thr-1",
+                        "turnId": "turn-1",
+                        "item": _agent_message_item(text),
+                    },
+                }
+            )
+            transport.push(
+                {
+                    "method": "turn/completed",
+                    "params": {
+                        "threadId": "thr-1",
+                        "turn": _turn_payload(status="completed"),
+                    },
+                }
+            )
+
+        async def run_in_threadpool() -> None:
+            text_future = asyncio.create_task(
+                asyncio.to_thread(thread.run_text, "Summarize this repo.")
+            )
+            await asyncio.to_thread(_wait_until, lambda: _turn_start_count(transport) >= 1)
+            push_turn_result("Sync summary")
+            assert await text_future == "Sync summary"
+
+            json_future = asyncio.create_task(asyncio.to_thread(thread.run_json, "Return JSON"))
+            await asyncio.to_thread(_wait_until, lambda: _turn_start_count(transport) >= 2)
+            push_turn_result('{"answer":"sync structured summary"}')
+            assert await json_future == {"answer": "sync structured summary"}
+
+            model_future = asyncio.create_task(
+                asyncio.to_thread(thread.run_model, "Return JSON", SummaryModel)
+            )
+            await asyncio.to_thread(_wait_until, lambda: _turn_start_count(transport) >= 3)
+            push_turn_result('{"answer":"sync model summary"}')
+            assert await model_future == SummaryModel(answer="sync model summary")
+
+        asyncio.run(run_in_threadpool())
     finally:
         client.close()

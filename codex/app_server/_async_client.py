@@ -280,6 +280,37 @@ class AsyncAppServerThread:
         )
         return await AsyncTurnStream.start(self, payload)
 
+    async def run_text(
+        self,
+        input: TurnInput,
+        params: protocol.TurnStartParams | Mapping[str, object] | None = None,
+        **overrides: object,
+    ) -> str:
+        stream = await self.run(input, params, **overrides)
+        await stream.wait()
+        return stream.final_text
+
+    async def run_json(
+        self,
+        input: TurnInput,
+        params: protocol.TurnStartParams | Mapping[str, object] | None = None,
+        **overrides: object,
+    ) -> object:
+        stream = await self.run(input, params, **overrides)
+        await stream.wait()
+        return stream.final_json()
+
+    async def run_model(
+        self,
+        input: TurnInput,
+        model_type: type[_ModelT],
+        params: protocol.TurnStartParams | Mapping[str, object] | None = None,
+        **overrides: object,
+    ) -> _ModelT:
+        stream = await self.run(input, params, **overrides)
+        await stream.wait()
+        return stream.final_model(model_type)
+
     async def review(
         self,
         *,

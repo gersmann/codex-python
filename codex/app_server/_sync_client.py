@@ -192,6 +192,31 @@ class AppServerThread:
             self._loop,
         )
 
+    def run_text(
+        self,
+        input: TurnInput,
+        params: protocol.TurnStartParams | Mapping[str, object] | None = None,
+        **overrides: object,
+    ) -> str:
+        return self._loop.run(self._async_thread.run_text(input, params, **overrides))
+
+    def run_json(
+        self,
+        input: TurnInput,
+        params: protocol.TurnStartParams | Mapping[str, object] | None = None,
+        **overrides: object,
+    ) -> object:
+        return self._loop.run(self._async_thread.run_json(input, params, **overrides))
+
+    def run_model(
+        self,
+        input: TurnInput,
+        model_type: type[_ModelT],
+        params: protocol.TurnStartParams | Mapping[str, object] | None = None,
+        **overrides: object,
+    ) -> _ModelT:
+        return self._loop.run(self._async_thread.run_model(input, model_type, params, **overrides))
+
     def review(
         self,
         *,
