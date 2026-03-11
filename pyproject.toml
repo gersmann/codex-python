@@ -61,7 +61,7 @@ python_files = ["test_*.py"]
 
 [tool.coverage.run]
 source = ["codex"]
-omit = ["codex/protocol/types.py", "codex/events.py", "codex/items.py"]
+omit = ["codex/protocol/types.py"]
 
 [tool.coverage.report]
 fail_under = 75

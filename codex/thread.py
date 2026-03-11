@@ -6,15 +6,123 @@ import json
 from collections.abc import Iterator, Sequence
 from typing import Literal, Protocol, TypedDict, TypeVar, cast, get_args
 
-from pydantic import BaseModel, ValidationError
+from pydantic import BaseModel, ConfigDict, ValidationError
 
 from codex.errors import CodexParseError, ThreadRunError
 from codex.exec import CodexExecArgs
 from codex.options import CodexOptions, ThreadOptions, TurnOptions
+from codex.output_schema import normalize_output_schema
 from codex.output_schema_file import create_output_schema_file
 from codex.protocol import types as protocol
 
 _ModelT = TypeVar("_ModelT", bound=BaseModel)
+
+
+class _ExecAgentMessageItem(BaseModel):
+    id: str
+    type: Literal["agent_message"]
+    text: str
+
+
+class _ExecErrorItem(BaseModel):
+    id: str
+    type: Literal["error"]
+    message: str
+
+
+class _ExecCommandExecutionItem(BaseModel):
+    id: str
+    type: Literal["command_execution"]
+    command: str
+    aggregated_output: str | None = None
+    exit_code: int | None = None
+    status: str | None = None
+
+
+class _ExecGenericItem(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
+    id: str
+    type: str
+
+
+class _ExecThreadStartedEvent(BaseModel):
+    type: Literal["thread.started"]
+    thread_id: str
+
+
+class _ExecTurnStartedEvent(BaseModel):
+    type: Literal["turn.started"]
+    turn_id: str | None = None
+
+
+class _ExecItemStartedEvent(BaseModel):
+    type: Literal["item.started"]
+    item: _ExecAgentMessageItem | _ExecErrorItem | _ExecCommandExecutionItem | _ExecGenericItem
+
+
+class _ExecItemCompletedEvent(BaseModel):
+    type: Literal["item.completed"]
+    item: _ExecAgentMessageItem | _ExecErrorItem | _ExecCommandExecutionItem | _ExecGenericItem
+
+
+class _ExecUsage(BaseModel):
+    input_tokens: int
+    cached_input_tokens: int
+    output_tokens: int
+    reasoning_output_tokens: int | None = None
+    total_tokens: int | None = None
+
+    def to_protocol(self) -> protocol.TokenUsage:
+        reasoning_output_tokens = (
+            0 if self.reasoning_output_tokens is None else self.reasoning_output_tokens
+        )
+        total_tokens = (
+            self.input_tokens
+            + self.cached_input_tokens
+            + self.output_tokens
+            + reasoning_output_tokens
+            if self.total_tokens is None
+            else self.total_tokens
+        )
+        return protocol.TokenUsage(
+            input_tokens=self.input_tokens,
+            cached_input_tokens=self.cached_input_tokens,
+            output_tokens=self.output_tokens,
+            reasoning_output_tokens=reasoning_output_tokens,
+            total_tokens=total_tokens,
+        )
+
+
+class _ExecTurnCompletedEvent(BaseModel):
+    type: Literal["turn.completed"]
+    usage: _ExecUsage | None = None
+
+
+class _ExecErrorPayload(BaseModel):
+    message: str
+
+
+class _ExecTurnFailedEvent(BaseModel):
+    type: Literal["turn.failed"]
+    error: _ExecErrorPayload
+
+
+class _ExecErrorEvent(BaseModel):
+    type: Literal["error"]
+    message: str
+
+
+class _ExecUnknownDottedEvent(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
+    type: str
+
+
+type _ExecDottedItem = (
+    _ExecAgentMessageItem | _ExecErrorItem | _ExecCommandExecutionItem | _ExecGenericItem
+)
+type _ExecStreamItem = protocol.TurnItem | _ExecDottedItem
 
 
 def _build_exec_event_registry() -> dict[str, type[BaseModel]]:
@@ -67,7 +175,7 @@ class ExecTurnStream:
         self.turn_id: str | None = None
         self.final_text = ""
         self.usage: protocol.TokenUsage | None = None
-        self.items: list[protocol.TurnItem] = []
+        self.items: list[_ExecStreamItem] = []
         self._item_index: dict[str, int] = {}
         self._has_final_text = False
         self._text_deltas: list[str] = []
@@ -123,10 +231,20 @@ class ExecTurnStream:
             close()
 
     def _apply(self, event: BaseModel) -> None:
-        if isinstance(event, protocol.SessionConfiguredEventMsg):
+        if isinstance(event, _ExecThreadStartedEvent):
+            self._thread._id = event.thread_id
+        elif isinstance(event, protocol.SessionConfiguredEventMsg):
             self._thread._id = event.session_id.root
+        elif isinstance(event, _ExecTurnStartedEvent):
+            self.turn_id = event.turn_id
         elif isinstance(event, protocol.TaskStartedEventMsg):
             self.turn_id = event.turn_id
+        elif isinstance(event, _ExecItemStartedEvent | _ExecItemCompletedEvent):
+            item = event.item
+            self._update_dotted_item(item)
+            if isinstance(item, _ExecAgentMessageItem):
+                self.final_text = item.text
+                self._has_final_text = True
         elif isinstance(event, protocol.AgentMessageDeltaEventMsg):
             self._text_deltas.append(event.delta)
             self.final_text += event.delta
@@ -137,20 +255,26 @@ class ExecTurnStream:
         elif isinstance(event, protocol.TokenCountEventMsg) and event.info is not None:
             self.usage = event.info.last_token_usage
         elif isinstance(event, protocol.ItemStartedEventMsg | protocol.ItemCompletedEventMsg):
-            item = event.item
-            item_id = item.root.id
+            turn_item = event.item
+            item_id = turn_item.root.id
             if item_id in self._item_index:
-                self.items[self._item_index[item_id]] = item
+                self.items[self._item_index[item_id]] = turn_item
             else:
                 self._item_index[item_id] = len(self.items)
-                self.items.append(item)
-            if isinstance(item.root, protocol.AgentMessageTurnItem):
-                self.final_text = extract_agent_message_text(item.root)
+                self.items.append(turn_item)
+            if isinstance(turn_item.root, protocol.AgentMessageTurnItem):
+                self.final_text = extract_agent_message_text(turn_item.root)
                 self._has_final_text = True
+        elif isinstance(event, _ExecTurnCompletedEvent):
+            self.usage = None if event.usage is None else event.usage.to_protocol()
         elif isinstance(event, protocol.TaskCompleteEventMsg):
             if event.last_agent_message is not None:
                 self.final_text = event.last_agent_message
                 self._has_final_text = True
+        elif isinstance(event, _ExecTurnFailedEvent):
+            self._error_message = event.error.message
+        elif isinstance(event, _ExecErrorEvent):
+            self._error_message = event.message
         elif isinstance(event, protocol.ErrorEventMsg | protocol.StreamErrorEventMsg):
             self._error_message = event.message
         elif isinstance(event, protocol.TurnAbortedEventMsg):
@@ -162,6 +286,14 @@ class ExecTurnStream:
                 "No final text is available yet. Wait for the turn stream to complete."
             )
         return self.final_text
+
+    def _update_dotted_item(self, item: _ExecDottedItem) -> None:
+        item_id = item.id
+        if item_id in self._item_index:
+            self.items[self._item_index[item_id]] = item
+        else:
+            self._item_index[item_id] = len(self.items)
+            self.items.append(item)
 
 
 class Thread:
@@ -207,7 +339,7 @@ class Thread:
         turn_options: TurnOptions | None = None,
     ) -> _ModelT:
         """Run a turn and validate the final assistant text with `model_type`."""
-        stream = self.run(input, turn_options)
+        stream = self.run(input, _turn_options_with_model_schema(turn_options, model_type))
         stream.wait()
         return stream.final_model(model_type)
 
@@ -243,6 +375,16 @@ class Thread:
             schema_file.cleanup()
 
 
+def _turn_options_with_model_schema(
+    turn_options: TurnOptions | None,
+    model_type: type[BaseModel],
+) -> TurnOptions:
+    if turn_options is not None and normalize_output_schema(turn_options.output_schema) is not None:
+        return turn_options
+    signal = None if turn_options is None else turn_options.signal
+    return TurnOptions(output_schema=model_type, signal=signal)
+
+
 def parse_exec_event(raw_line: str) -> BaseModel:
     """Parse a single JSONL event line from `codex exec --experimental-json`."""
     try:
@@ -259,12 +401,59 @@ def parse_exec_event(raw_line: str) -> BaseModel:
 
     event_model = EXEC_EVENT_TYPES.get(event_type)
     if event_model is None:
-        raise CodexParseError(f"Unsupported exec event type: {event_type}")
+        return _parse_dotted_exec_event(payload)
 
     try:
         return event_model.model_validate(payload)
     except (ValidationError, ValueError) as exc:
         raise CodexParseError(f"Failed to parse item: {raw_line}") from exc
+
+
+def _parse_dotted_exec_event(payload: dict[str, object]) -> BaseModel:
+    event_type = payload["type"]
+    if not isinstance(event_type, str):
+        raise CodexParseError("Event is missing string field 'type'")
+    try:
+        if event_type == "thread.started":
+            return _ExecThreadStartedEvent.model_validate(payload)
+        if event_type == "turn.started":
+            return _ExecTurnStartedEvent.model_validate(payload)
+        if event_type == "item.started":
+            item_payload = payload.get("item")
+            return _ExecItemStartedEvent(
+                type="item.started",
+                item=_parse_dotted_exec_item(item_payload),
+            )
+        if event_type == "item.completed":
+            item_payload = payload.get("item")
+            return _ExecItemCompletedEvent(
+                type="item.completed",
+                item=_parse_dotted_exec_item(item_payload),
+            )
+        if event_type == "turn.completed":
+            return _ExecTurnCompletedEvent.model_validate(payload)
+        if event_type == "turn.failed":
+            return _ExecTurnFailedEvent.model_validate(payload)
+        if event_type == "error":
+            return _ExecErrorEvent.model_validate(payload)
+        if "." in event_type:
+            return _ExecUnknownDottedEvent.model_validate(payload)
+    except (ValidationError, ValueError, TypeError) as exc:
+        raise CodexParseError(f"Failed to parse item: {json.dumps(payload)}") from exc
+    raise CodexParseError(f"Unsupported exec event type: {event_type}")
+
+
+def _parse_dotted_exec_item(payload: object) -> _ExecDottedItem:
+    if not isinstance(payload, dict):
+        raise ValueError("dotted exec item payload must be an object")
+    item_type = payload.get("type")
+    if item_type == "agent_message":
+        return _ExecAgentMessageItem.model_validate(payload)
+    if item_type == "error":
+        return _ExecErrorItem.model_validate(payload)
+    if item_type == "command_execution":
+        return _ExecCommandExecutionItem.model_validate(payload)
+    return _ExecGenericItem.model_validate(payload)
 
 
 def extract_agent_message_text(item: protocol.AgentMessageTurnItem) -> str:

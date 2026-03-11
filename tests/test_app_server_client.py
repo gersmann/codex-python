@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import concurrent.futures
 import time
 from collections.abc import Callable
 from queue import Queue
@@ -13,8 +14,11 @@ from codex.app_server import (
     AppServerClient,
     AppServerClientInfo,
     AppServerInitializeOptions,
+    AppServerProtocolError,
     AppServerRpcError,
     AsyncAppServerClient,
+    GenericNotification,
+    GenericServerRequest,
 )
 from codex.app_server.client import _LoopThread
 from codex.protocol import types as protocol
@@ -228,11 +232,156 @@ def test_async_turn_stream_yields_typed_events_and_aggregates_final_text() -> No
     asyncio.run(scenario())
 
 
+def test_async_turn_stream_yields_generic_unknown_notifications_in_non_strict_mode() -> None:
+    async def scenario() -> None:
+        transport = ScriptedTransport()
+        transport.responses["thread/start"] = {"thread": _thread_payload()}
+
+        def start_turn(message: JsonObject) -> JsonObject:
+            transport.push(
+                {
+                    "method": "codex/event/mcp_startup_update",
+                    "params": {
+                        "id": "",
+                        "conversationId": "thr-1",
+                        "msg": {
+                            "type": "mcp_startup_update",
+                            "server": "shopify",
+                            "status": {"state": "starting"},
+                        },
+                    },
+                }
+            )
+            return {"id": message["id"], "result": {"turn": _turn_payload()}}
+
+        transport.responses["turn/start"] = start_turn
+        client = AsyncAppServerClient(transport)
+        await client.start()
+
+        thread = await client.start_thread()
+        stream = await thread.run("Summarize this repo.")
+
+        transport.push(
+            {
+                "method": "item/completed",
+                "params": {
+                    "threadId": "thr-1",
+                    "turnId": "turn-1",
+                    "item": _agent_message_item("Repository summary"),
+                },
+            }
+        )
+        transport.push(
+            {
+                "method": "turn/completed",
+                "params": {
+                    "threadId": "thr-1",
+                    "turn": _turn_payload(status="completed"),
+                },
+            }
+        )
+
+        events = [event async for event in stream]
+
+        assert isinstance(events[0], GenericNotification)
+        assert events[0].method == "codex/event/mcp_startup_update"
+        assert events[0].params["conversationId"] == "thr-1"
+        assert stream.final_text == "Repository summary"
+        assert stream.final_turn is not None
+        assert stream.final_turn.status.root == "completed"
+
+        await client.close()
+
+    asyncio.run(scenario())
+
+
+def test_async_client_strict_mode_rejects_unknown_notifications() -> None:
+    async def scenario() -> None:
+        transport = ScriptedTransport()
+
+        def start_thread(message: JsonObject) -> JsonObject:
+            transport.push(
+                {
+                    "method": "codex/event/mcp_startup_update",
+                    "params": {
+                        "id": "",
+                        "conversationId": "thr-1",
+                        "msg": {
+                            "type": "mcp_startup_update",
+                            "server": "shopify",
+                            "status": {"state": "starting"},
+                        },
+                    },
+                }
+            )
+            return {"id": message["id"], "result": {"thread": _thread_payload()}}
+
+        transport.responses["thread/start"] = start_thread
+        client = AsyncAppServerClient(
+            transport,
+            AppServerInitializeOptions(strict_protocol=True),
+        )
+        await client.start()
+
+        with pytest.raises(
+            AppServerProtocolError,
+            match="Unsupported app-server notification method",
+        ):
+            await client.start_thread()
+
+        await client.close()
+
+    asyncio.run(scenario())
+
+
+def test_async_client_accepts_generic_unknown_server_request_in_non_strict_mode() -> None:
+    async def scenario() -> None:
+        transport = ScriptedTransport()
+        client = AsyncAppServerClient(transport)
+        await client.start()
+
+        seen: list[GenericServerRequest] = []
+
+        def handle_custom_request(request: GenericServerRequest) -> JsonObject:
+            seen.append(request)
+            assert request.method == "custom/request"
+            assert request.params == {"foo": "bar"}
+            return {"ok": True}
+
+        client.on_request("custom/request", handle_custom_request)
+
+        transport.push(
+            {
+                "id": "req-1",
+                "method": "custom/request",
+                "params": {"foo": "bar"},
+            }
+        )
+
+        await asyncio.to_thread(
+            _wait_until,
+            lambda: any(message.get("id") == "req-1" for message in transport.sent),
+        )
+
+        assert seen == [
+            GenericServerRequest(id="req-1", method="custom/request", params={"foo": "bar"})
+        ]
+        assert transport.sent[-1] == {"id": "req-1", "result": {"ok": True}}
+
+        await client.close()
+
+    asyncio.run(scenario())
+
+
 def test_async_thread_run_text_json_and_model_helpers() -> None:
     async def scenario() -> None:
         transport = ScriptedTransport()
         transport.responses["thread/start"] = {"thread": _thread_payload()}
-        transport.responses["turn/start"] = {"turn": _turn_payload()}
+
+        def start_turn(message: JsonObject) -> JsonObject:
+            return {"id": message["id"], "result": {"turn": _turn_payload()}}
+
+        transport.responses["turn/start"] = start_turn
         client = AsyncAppServerClient(transport)
         await client.start()
 
@@ -272,6 +421,10 @@ def test_async_thread_run_text_json_and_model_helpers() -> None:
 
         model_task = asyncio.create_task(thread.run_model("Return JSON", SummaryModel))
         await asyncio.to_thread(_wait_until, lambda: _turn_start_count(transport) >= 3)
+        turn_start_request = [
+            message for message in transport.sent if message.get("method") == "turn/start"
+        ][-1]
+        assert turn_start_request["params"]["outputSchema"] == SummaryModel.model_json_schema()
         await push_turn_result('{"answer":"async model summary"}')
         assert await model_task == SummaryModel(answer="async model summary")
 
@@ -491,3 +644,77 @@ def test_sync_thread_run_text_json_and_model_helpers() -> None:
         asyncio.run(run_in_threadpool())
     finally:
         client.close()
+
+
+def test_loop_thread_run_cancels_future_on_keyboard_interrupt(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class FakeFuture:
+        def __init__(self) -> None:
+            self.cancelled = False
+
+        def result(self, timeout: float | None = None) -> None:
+            _ = timeout
+            raise KeyboardInterrupt
+
+        def cancel(self) -> bool:
+            self.cancelled = True
+            return True
+
+    loop = _LoopThread()
+    fake_future = FakeFuture()
+
+    async def never() -> None:
+        await asyncio.sleep(60)
+
+    original_submit = loop._submit
+
+    def fake_submit(coro: object) -> FakeFuture:
+        close = getattr(coro, "close", None)
+        if callable(close):
+            close()
+        return fake_future
+
+    monkeypatch.setattr(loop, "_submit", fake_submit)
+
+    try:
+        with pytest.raises(KeyboardInterrupt):
+            loop.run(never())
+        assert fake_future.cancelled is True
+    finally:
+        monkeypatch.setattr(loop, "_submit", original_submit)
+        loop.close()
+
+
+def test_sync_client_close_after_interrupted_run_closes_transport(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    loop = _LoopThread()
+    transport = ScriptedTransport()
+    transport.responses["thread/start"] = {"thread": _thread_payload()}
+    transport.responses["turn/start"] = {"turn": _turn_payload()}
+    async_client = AsyncAppServerClient(transport)
+    loop.run(async_client.start())
+    client = AppServerClient(async_client, loop)
+    thread = client.start_thread()
+
+    original_wait = loop._wait_for_future_result
+    interrupted = False
+
+    def interrupt_once(future: concurrent.futures.Future[object]) -> object:
+        nonlocal interrupted
+        if not interrupted:
+            interrupted = True
+            raise KeyboardInterrupt
+        return original_wait(future)
+
+    monkeypatch.setattr(loop, "_wait_for_future_result", interrupt_once)
+
+    try:
+        with pytest.raises(KeyboardInterrupt):
+            thread.run_text("Summarize this repo.")
+    finally:
+        monkeypatch.setattr(loop, "_wait_for_future_result", original_wait)
+        client.close()
+
+    assert transport.closed is True

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from collections.abc import Iterator
 from pathlib import Path
 
@@ -108,6 +109,55 @@ def _success_events(thread_id: str, text: str) -> list[BaseModel]:
     ]
 
 
+def _dotted_success_events(thread_id: str, text: str) -> list[str]:
+    return [
+        json.dumps({"type": "thread.started", "thread_id": thread_id}),
+        json.dumps({"type": "turn.started"}),
+        json.dumps(
+            {
+                "type": "item.started",
+                "item": {
+                    "id": "item_cmd_0",
+                    "type": "command_execution",
+                    "command": "/bin/pwd",
+                    "aggregated_output": "",
+                    "exit_code": None,
+                    "status": "in_progress",
+                },
+            }
+        ),
+        json.dumps(
+            {
+                "type": "item.completed",
+                "item": {
+                    "id": "item_cmd_0",
+                    "type": "command_execution",
+                    "command": "/bin/pwd",
+                    "aggregated_output": "/repo\n",
+                    "exit_code": 0,
+                    "status": "completed",
+                },
+            }
+        ),
+        json.dumps(
+            {
+                "type": "item.completed",
+                "item": {"id": "item_0", "type": "agent_message", "text": text},
+            }
+        ),
+        json.dumps(
+            {
+                "type": "turn.completed",
+                "usage": {
+                    "input_tokens": 10,
+                    "cached_input_tokens": 2,
+                    "output_tokens": 3,
+                },
+            }
+        ),
+    ]
+
+
 def test_run_returns_typed_stream_and_aggregates_state() -> None:
     fake_exec = FakeExec([_success_events("thread-1", "Hi!")])
     thread = Thread(fake_exec, CodexOptions(), ThreadOptions())
@@ -151,6 +201,52 @@ def test_run_text_twice_reuses_thread_id() -> None:
     assert second == "Second"
     assert fake_exec.calls[1].thread_id == "thread-1"
     assert fake_exec.calls[1].input == "second input"
+
+
+def test_run_supports_current_dotted_exec_event_stream() -> None:
+    class DottedExec:
+        def run(self, args: CodexExecArgs) -> Iterator[str]:
+            _ = args
+            yield from _dotted_success_events("thread-1", "Hi from dotted events")
+
+    thread = Thread(DottedExec(), CodexOptions(), ThreadOptions())
+    stream = thread.run("hello")
+    stream.wait()
+
+    assert stream.final_text == "Hi from dotted events"
+    assert thread.id == "thread-1"
+    assert len(stream.items) == 2
+    assert stream.usage == protocol.TokenUsage(
+        input_tokens=10,
+        cached_input_tokens=2,
+        output_tokens=3,
+        reasoning_output_tokens=0,
+        total_tokens=15,
+    )
+
+
+def test_run_raises_thread_run_error_for_dotted_failed_turn() -> None:
+    class FailedDottedExec:
+        def run(self, args: CodexExecArgs) -> Iterator[str]:
+            _ = args
+            yield json.dumps({"type": "thread.started", "thread_id": "thread-1"})
+            yield json.dumps(
+                {
+                    "type": "item.completed",
+                    "item": {
+                        "id": "item_0",
+                        "type": "error",
+                        "message": "model lookup warning",
+                    },
+                }
+            )
+            yield json.dumps({"type": "error", "message": "request failed"})
+            yield json.dumps({"type": "turn.failed", "error": {"message": "request failed"}})
+
+    thread = Thread(FailedDottedExec(), CodexOptions(), ThreadOptions())
+
+    with pytest.raises(ThreadRunError, match="request failed"):
+        thread.run_text("hello")
 
 
 def test_resume_thread_uses_given_id() -> None:
@@ -252,6 +348,36 @@ def test_run_writes_and_cleans_output_schema_file() -> None:
 
     assert len(schema_paths) == 1
     assert not schema_paths[0].exists()
+
+
+def test_run_model_uses_pydantic_model_schema_as_output_schema() -> None:
+    schema_payloads: list[str] = []
+
+    class SchemaExec:
+        calls: list[CodexExecArgs]
+
+        def __init__(self) -> None:
+            self.calls = []
+
+        def run(self, args: CodexExecArgs) -> Iterator[str]:
+            self.calls.append(args)
+            if args.output_schema_file is None:
+                raise AssertionError("expected output_schema_file to be set")
+            schema_payloads.append(Path(args.output_schema_file).read_text(encoding="utf-8"))
+            yield from (
+                event.model_dump_json(by_alias=True)
+                for event in _success_events("thread-1", '{"answer":"ok"}')
+            )
+
+    fake_exec = SchemaExec()
+    thread = Thread(fake_exec, CodexOptions(), ThreadOptions())
+
+    result = thread.run_model("hello", SummaryModel)
+
+    assert result == SummaryModel(answer="ok")
+    assert [json.loads(payload) for payload in schema_payloads] == [
+        SummaryModel.model_json_schema()
+    ]
 
 
 def test_run_normalizes_structured_input_and_forwards_images() -> None:

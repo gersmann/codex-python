@@ -18,6 +18,7 @@ from codex.app_server._helpers import (
     extract_token_usage,
     extract_turn,
     extract_turn_id,
+    has_output_schema,
     merge_params,
     normalize_turn_input,
 )
@@ -341,6 +342,8 @@ class AsyncAppServerThread:
         **overrides: object,
     ) -> _ModelT:
         """Run a turn and validate the final assistant text with `model_type`."""
+        if "outputSchema" not in overrides and not has_output_schema(params):
+            overrides = {"outputSchema": model_type, **overrides}
         stream = await self.run(input, params, **overrides)
         await stream.wait()
         return stream.final_model(model_type)

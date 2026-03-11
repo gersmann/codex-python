@@ -39,6 +39,7 @@ class AppServerInitializeOptions:
     )
     experimental_api: bool = False
     opt_out_notification_methods: tuple[str, ...] = ()
+    strict_protocol: bool = False
 
     def to_params(self) -> dict[str, object]:
         """Build the JSON-RPC `initialize` params object."""

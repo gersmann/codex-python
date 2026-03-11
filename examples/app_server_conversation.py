@@ -15,9 +15,13 @@ def main() -> None:
 
     with AppServerClient.connect_stdio(initialize_options=initialize_options) as client:
         thread = client.start_thread()
-        summary = thread.run_text("Briefly summarize this repository's purpose.")
-        print(summary)
+        stream = thread.run("Briefly summarize this repository's purpose.")
+        stream.wait()
+        print(stream.final_text)
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except KeyboardInterrupt:
+        raise SystemExit(130) from None

@@ -5,7 +5,9 @@ from __future__ import annotations
 import asyncio
 import concurrent.futures
 import inspect
+import time
 from collections.abc import Awaitable, Coroutine, Mapping
+from contextlib import suppress
 from threading import Thread
 from typing import Any, TypeVar, cast
 
@@ -30,24 +32,124 @@ _ModelT = TypeVar("_ModelT", bound=BaseModel)
 class _LoopThread:
     """Run the async app-server client behind a dedicated event loop thread."""
 
+    _POLL_INTERVAL = 0.05
+    _SHUTDOWN_TIMEOUT = 3.0
+
     def __init__(self) -> None:
         self._loop = asyncio.new_event_loop()
         self._thread = Thread(target=self._run, daemon=True)
+        self._closed = False
         self._thread.start()
 
     def _run(self) -> None:
         asyncio.set_event_loop(self._loop)
-        self._loop.run_forever()
+        try:
+            self._loop.run_forever()
+        finally:
+            self._loop.run_until_complete(self._finalize_loop())
+            self._loop.close()
 
     def run(self, coro: Coroutine[Any, Any, _T]) -> _T:
         """Run a coroutine on the loop thread and return its result."""
-        future: concurrent.futures.Future[_T] = asyncio.run_coroutine_threadsafe(coro, self._loop)
-        return future.result()
+        future = self._submit(coro)
+        try:
+            return self._wait_for_future_result(future)
+        except KeyboardInterrupt:
+            future.cancel()
+            with suppress(concurrent.futures.CancelledError, concurrent.futures.TimeoutError):
+                future.result(timeout=self._POLL_INTERVAL)
+            raise
 
     def close(self) -> None:
         """Stop the loop thread."""
+        self.shutdown()
+
+    def shutdown(
+        self,
+        cleanup_coro: Coroutine[Any, Any, object] | None = None,
+        *,
+        timeout: float | None = None,
+    ) -> bool:
+        """Run best-effort async cleanup, cancel pending tasks, and stop the loop."""
+        if self._closed:
+            return False
+        interrupted = False
+        deadline = time.monotonic() + (self._SHUTDOWN_TIMEOUT if timeout is None else timeout)
+        cleanup_error: BaseException | None = None
+
+        cleanup_future: concurrent.futures.Future[object] | None = None
+        if cleanup_coro is not None:
+            cleanup_future = self._submit(cleanup_coro)
+            interrupted, cleanup_error = self._drain_future(cleanup_future, deadline)
+            if cleanup_error is not None and not isinstance(
+                cleanup_error, concurrent.futures.CancelledError
+            ):
+                cleanup_future = None
+
+        cancel_future = self._submit(self._cancel_pending_tasks())
+        cancel_interrupted, cancel_error = self._drain_future(cancel_future, deadline)
+        interrupted = interrupted or cancel_interrupted
+        if cleanup_error is None and cancel_error is not None:
+            cleanup_error = cancel_error
+        self._closed = True
+
         self._loop.call_soon_threadsafe(self._loop.stop)
-        self._thread.join()
+        self._thread.join(timeout=max(0.0, deadline - time.monotonic()))
+
+        if cleanup_error is not None and not isinstance(
+            cleanup_error, concurrent.futures.CancelledError
+        ):
+            raise cleanup_error
+        return interrupted
+
+    def _submit(self, coro: Coroutine[Any, Any, _T]) -> concurrent.futures.Future[_T]:
+        if self._closed:
+            coro.close()
+            raise RuntimeError("loop thread is closed")
+        return asyncio.run_coroutine_threadsafe(coro, self._loop)
+
+    def _wait_for_future_result(self, future: concurrent.futures.Future[_T]) -> _T:
+        while True:
+            try:
+                return future.result(timeout=self._POLL_INTERVAL)
+            except concurrent.futures.TimeoutError:
+                continue
+
+    def _drain_future(
+        self,
+        future: concurrent.futures.Future[Any],
+        deadline: float,
+    ) -> tuple[bool, BaseException | None]:
+        interrupted = False
+        while True:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                future.cancel()
+                return interrupted, concurrent.futures.TimeoutError()
+            try:
+                future.result(timeout=min(self._POLL_INTERVAL, remaining))
+                return interrupted, None
+            except concurrent.futures.TimeoutError:
+                continue
+            except KeyboardInterrupt:
+                interrupted = True
+                future.cancel()
+            except concurrent.futures.CancelledError as exc:
+                return interrupted, exc
+            except BaseException as exc:  # pragma: no cover - defensive propagation
+                return interrupted, exc
+
+    async def _cancel_pending_tasks(self) -> None:
+        current = asyncio.current_task()
+        pending = [task for task in asyncio.all_tasks() if task is not current]
+        for task in pending:
+            task.cancel()
+        if pending:
+            await asyncio.gather(*pending, return_exceptions=True)
+
+    async def _finalize_loop(self) -> None:
+        await self._cancel_pending_tasks()
+        await self._loop.shutdown_asyncgens()
 
 
 class RpcClient:
@@ -365,14 +467,20 @@ class AppServerClient:
 
     def __exit__(self, exc_type: object, exc: object, tb: object) -> None:
         _ = (exc_type, exc, tb)
-        self.close()
+        try:
+            interrupted = self._loop.shutdown(self._async_client.close())
+        except BaseException:
+            if exc_type is None:
+                raise
+            return
+        if interrupted and exc_type is None:
+            raise KeyboardInterrupt
 
     def close(self) -> None:
         """Close the app-server session and its loop thread."""
-        try:
-            self._loop.run(self._async_client.close())
-        finally:
-            self._loop.close()
+        interrupted = self._loop.shutdown(self._async_client.close())
+        if interrupted:
+            raise KeyboardInterrupt
 
     def start_thread(
         self,

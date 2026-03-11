@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from codex.protocol import types as protocol
 
@@ -37,3 +37,14 @@ class ReviewResult(BaseModel):
 
 class TurnIdResult(BaseModel):
     turnId: str
+
+
+class GenericNotification(BaseModel):
+    method: str
+    params: dict[str, object] = Field(default_factory=dict)
+
+
+class GenericServerRequest(BaseModel):
+    id: str | int
+    method: str
+    params: dict[str, object] = Field(default_factory=dict)

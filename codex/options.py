@@ -5,6 +5,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Literal, Protocol, runtime_checkable
 
+from codex.output_schema import OutputSchemaInput
+
 ApprovalMode = Literal["never", "on-request", "on-failure", "untrusted"]
 SandboxMode = Literal["read-only", "workspace-write", "danger-full-access"]
 ModelReasoningEffort = Literal["minimal", "low", "medium", "high", "xhigh"]
@@ -61,5 +63,5 @@ class ThreadOptions:
 class TurnOptions:
     """Per-run options for the exec-based `Thread.run()` APIs."""
 
-    output_schema: dict[str, object] | None = None
+    output_schema: OutputSchemaInput | None = None
     signal: CancelSignal | None = None

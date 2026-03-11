@@ -15,6 +15,7 @@ from codex.app_server.errors import (
     AppServerProtocolError,
     AppServerRpcError,
 )
+from codex.app_server.models import GenericNotification, GenericServerRequest
 from codex.app_server.options import (
     AppServerClientInfo,
     AppServerInitializeOptions,
@@ -36,6 +37,8 @@ __all__ = [
     "AppServerClosedError",
     "AppServerProtocolError",
     "AppServerRpcError",
+    "GenericNotification",
+    "GenericServerRequest",
     "AppServerClientInfo",
     "AppServerInitializeOptions",
     "AppServerProcessOptions",

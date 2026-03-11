@@ -12,7 +12,9 @@ from codex.app_server._helpers import (
     Notification,
     RequestHandler,
     method_name,
+    parse_notification,
     parse_result,
+    parse_server_request,
     request_id,
     serialize_value,
 )
@@ -75,6 +77,8 @@ class _AsyncSession:
         self._request_handlers: dict[str, _RegisteredHandler] = {}
         self._notification_sinks: list[_NotificationSink] = []
         self._reader_task: asyncio.Task[None] | None = None
+        self._reader_error: Exception | None = None
+        self._strict_protocol = self._initialize_options.strict_protocol
         self._initialize_result: InitializeResult | None = None
 
     async def start(self) -> InitializeResult:
@@ -103,6 +107,8 @@ class _AsyncSession:
             try:
                 await self._reader_task
             except asyncio.CancelledError:
+                pass
+            except Exception:
                 pass
         self._fail_pending(AppServerClosedError("app-server client closed"))
         await self._transport.close()
@@ -144,7 +150,7 @@ class _AsyncSession:
                 )
             message["params"] = cast(JsonObject, serialized)
         await self._transport.send(message)
-        return await future
+        return await self._await_future(future)
 
     async def request_typed(
         self,
@@ -175,6 +181,8 @@ class _AsyncSession:
             raise AppServerClosedError("app-server client is closed")
         if self._reader_task is None:
             raise AppServerClosedError("app-server client is not started")
+        if self._reader_task.done():
+            raise self._reader_failure()
 
     async def _reader_loop(self) -> None:
         try:
@@ -195,9 +203,43 @@ class _AsyncSession:
         except asyncio.CancelledError:
             raise
         except Exception as exc:
+            self._reader_error = exc
             self._fail_pending(exc)
             for sink in list(self._notification_sinks):
                 await sink.queue.put(None)
+
+    async def _await_future(self, future: asyncio.Future[object]) -> object:
+        while True:
+            if future.done():
+                return future.result()
+            if self._reader_task is not None and self._reader_task.done():
+                raise self._reader_failure()
+            if self._reader_task is None:
+                await future
+                continue
+            done, _ = await asyncio.wait(
+                {
+                    cast(asyncio.Future[Any], future),
+                    cast(asyncio.Future[Any], self._reader_task),
+                },
+                return_when=asyncio.FIRST_COMPLETED,
+            )
+            if future in done:
+                return future.result()
+            if self._reader_task in done:
+                raise self._reader_failure()
+
+    def _reader_failure(self) -> Exception:
+        if self._reader_error is not None:
+            return self._reader_error
+        if self._reader_task is None:
+            return AppServerClosedError("app-server client is not started")
+        task_exception = self._reader_task.exception()
+        if task_exception is not None:
+            if isinstance(task_exception, Exception):
+                return task_exception
+            return AppServerClosedError(f"app-server reader failed: {task_exception}")
+        return AppServerClosedError("app-server reader stopped unexpectedly")
 
     def _handle_response(self, message: JsonObject) -> None:
         pending_id = message.get("id")
@@ -218,14 +260,14 @@ class _AsyncSession:
         future.set_result(response.result)
 
     async def _broadcast_notification(self, message: JsonObject) -> None:
-        notification = protocol.ServerNotification.model_validate(message).root
+        notification = parse_notification(message, strict=self._strict_protocol)
         notification_method = method_name(notification)
         for sink in list(self._notification_sinks):
             if sink.matches(notification_method):
                 await sink.queue.put(notification)
 
     async def _handle_server_request(self, message: JsonObject) -> None:
-        request = protocol.ServerRequest.model_validate(message).root
+        request = parse_server_request(message, strict=self._strict_protocol)
         request_method = method_name(request)
         request_id_value = request_id(request)
         registered = self._request_handlers.get(request_method)

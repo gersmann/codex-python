@@ -1,15 +1,15 @@
 from __future__ import annotations
 
 from collections.abc import Awaitable, Callable, Mapping, Sequence
-from typing import Any, cast
+from typing import Any, cast, get_args
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ValidationError
 
 from codex.app_server.errors import AppServerProtocolError
+from codex.app_server.models import GenericNotification, GenericServerRequest
 from codex.app_server.transports import JsonObject
 from codex.protocol import types as protocol
 
-JsonValue = str | int | float | bool | None | list["JsonValue"] | dict[str, "JsonValue"]
 InputItem = (
     str
     | Mapping[str, Any]
@@ -25,7 +25,37 @@ RequestHandler = Callable[[BaseModel], object | Awaitable[object]]
 Notification = BaseModel
 
 
+def _build_known_methods(*, root_model: type[BaseModel]) -> set[str]:
+    methods: set[str] = set()
+    root_field = getattr(root_model, "model_fields", {}).get("root")
+    if root_field is None:
+        return methods
+    for candidate in get_args(root_field.annotation):
+        if not isinstance(candidate, type) or not issubclass(candidate, BaseModel):
+            continue
+        model_fields = getattr(candidate, "model_fields", None)
+        if not isinstance(model_fields, dict) or "method" not in model_fields:
+            continue
+        annotation = getattr(model_fields["method"], "annotation", None)
+        if not isinstance(annotation, type) or not issubclass(annotation, BaseModel):
+            continue
+        root_fields = getattr(annotation, "model_fields", None)
+        if not isinstance(root_fields, dict) or "root" not in root_fields:
+            continue
+        root_annotation = getattr(root_fields["root"], "annotation", None)
+        literal_args = get_args(root_annotation)
+        if len(literal_args) == 1 and isinstance(literal_args[0], str):
+            methods.add(literal_args[0])
+    return methods
+
+
+KNOWN_NOTIFICATION_METHODS = _build_known_methods(root_model=protocol.ServerNotification)
+KNOWN_SERVER_REQUEST_METHODS = _build_known_methods(root_model=protocol.ServerRequest)
+
+
 def method_name(message: BaseModel) -> str:
+    if isinstance(message, GenericNotification | GenericServerRequest):
+        return message.method
     method = getattr(message, "method", None)
     if isinstance(method, BaseModel) and hasattr(method, "root"):
         root = method.root
@@ -37,6 +67,8 @@ def method_name(message: BaseModel) -> str:
 
 
 def request_id(message: BaseModel) -> str | int:
+    if isinstance(message, GenericServerRequest):
+        return message.id
     message_id = getattr(message, "id", None)
     if isinstance(message_id, BaseModel) and hasattr(message_id, "root"):
         root = message_id.root
@@ -50,11 +82,13 @@ def request_id(message: BaseModel) -> str | int:
 def serialize_value(value: object) -> object:
     if isinstance(value, BaseModel):
         return value.model_dump(mode="json", by_alias=True, exclude_none=True)
+    if isinstance(value, type) and issubclass(value, BaseModel):
+        return value.model_json_schema()
     if isinstance(value, list):
         return [serialize_value(item) for item in value]
     if isinstance(value, tuple):
         return [serialize_value(item) for item in value]
-    if isinstance(value, dict):
+    if isinstance(value, Mapping):
         return {key: serialize_value(item) for key, item in value.items()}
     return value
 
@@ -92,6 +126,14 @@ def merge_params(
         if value is not None:
             payload[key] = serialize_value(value)
     return payload
+
+
+def has_output_schema(params: BaseModel | Mapping[str, Any] | None) -> bool:
+    if params is None:
+        return False
+    if isinstance(params, BaseModel):
+        return getattr(params, "outputSchema", None) is not None
+    return params.get("outputSchema") is not None or params.get("output_schema") is not None
 
 
 def parse_result(result: object, result_model: type[BaseModel]) -> BaseModel:
@@ -144,3 +186,52 @@ def extract_token_usage(notification: BaseModel) -> protocol.ThreadTokenUsage | 
     if isinstance(notification, protocol.ThreadTokenUsageUpdatedNotificationModel):
         return notification.params.tokenUsage
     return None
+
+
+def parse_notification(message: JsonObject, *, strict: bool) -> Notification:
+    method = message.get("method")
+    try:
+        return protocol.ServerNotification.model_validate(message).root
+    except ValidationError as exc:
+        if strict or not isinstance(method, str) or method in KNOWN_NOTIFICATION_METHODS:
+            raise AppServerProtocolError(_notification_error_message(message)) from exc
+        params = message.get("params")
+        if params is None:
+            return GenericNotification(method=method)
+        if isinstance(params, Mapping):
+            return GenericNotification(method=method, params=dict(params))
+        raise AppServerProtocolError(_notification_error_message(message)) from exc
+
+
+def parse_server_request(message: JsonObject, *, strict: bool) -> BaseModel:
+    method = message.get("method")
+    try:
+        return protocol.ServerRequest.model_validate(message).root
+    except ValidationError as exc:
+        if strict or not isinstance(method, str) or method in KNOWN_SERVER_REQUEST_METHODS:
+            raise AppServerProtocolError(_server_request_error_message(message)) from exc
+        params = message.get("params")
+        if params is None:
+            params_payload: dict[str, object] = {}
+        elif isinstance(params, Mapping):
+            params_payload = dict(params)
+        else:
+            raise AppServerProtocolError(_server_request_error_message(message)) from exc
+        raw_id = message.get("id")
+        if not isinstance(raw_id, str | int):
+            raise AppServerProtocolError(_server_request_error_message(message)) from exc
+        return GenericServerRequest(id=raw_id, method=method, params=params_payload)
+
+
+def _notification_error_message(message: JsonObject) -> str:
+    method = message.get("method")
+    if isinstance(method, str):
+        return f"Unsupported app-server notification method {method!r}"
+    return f"Unsupported app-server notification: {message!r}"
+
+
+def _server_request_error_message(message: JsonObject) -> str:
+    method = message.get("method")
+    if isinstance(method, str):
+        return f"Unsupported app-server server request method {method!r}"
+    return f"Unsupported app-server server request: {message!r}"

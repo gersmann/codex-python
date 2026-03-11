@@ -101,22 +101,18 @@ class Summary(BaseModel):
     summary: str
 
 
-schema = {
-    "type": "object",
-    "properties": {"summary": {"type": "string"}},
-    "required": ["summary"],
-    "additionalProperties": False,
-}
-
 with AppServerClient.connect_stdio() as client:
     thread = client.start_thread()
     result = thread.run_model(
         "Summarize repository status",
         Summary,
-        outputSchema=schema,
     )
     print(result.summary)
 ```
+
+`run_model()` uses `Summary` both as the validation model and, by default, as the output schema sent
+to Codex. If you want JSON back without validation, you can also pass the model class directly to
+`outputSchema`, for example `thread.run_json(..., outputSchema=Summary)`.
 
 ## Streaming
 

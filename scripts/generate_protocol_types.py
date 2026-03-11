@@ -67,6 +67,7 @@ def main() -> int:
                 "pydantic_v2.BaseModel",
                 "--target-python-version",
                 "3.12",
+                "--use-annotated",
                 "--use-title-as-name",
                 "--enum-field-as-literal",
                 "all",

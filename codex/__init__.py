@@ -15,6 +15,8 @@ from codex.app_server import (
     AsyncAppServerThread,
     AsyncRpcClient,
     AsyncTurnStream,
+    GenericNotification,
+    GenericServerRequest,
     RpcClient,
     TurnStream,
 )
@@ -51,6 +53,8 @@ __all__ = [
     "AppServerClosedError",
     "AppServerProtocolError",
     "AppServerRpcError",
+    "GenericNotification",
+    "GenericServerRequest",
     "AppServerClientInfo",
     "AppServerInitializeOptions",
     "AppServerProcessOptions",

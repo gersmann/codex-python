@@ -37,7 +37,13 @@ for event in stream:
 ## Structured output
 
 ```python
+from pydantic import BaseModel
+
 from codex import Codex, TurnOptions
+
+
+class Summary(BaseModel):
+    answer: str
 
 schema = {
     "type": "object",
@@ -49,10 +55,14 @@ schema = {
 client = Codex()
 thread = client.start_thread()
 payload = thread.run_json("Return JSON matching the schema", TurnOptions(output_schema=schema))
+payload_from_model = thread.run_json(
+    "Return JSON matching the schema",
+    TurnOptions(output_schema=Summary),
+)
 print(payload["answer"])
 ```
 
-If you want typed validation directly, use `thread.run_model(...)`.
+If you want typed validation directly, use `thread.run_model("Return JSON matching the schema", Summary)`.
 
 ## Inputs
 

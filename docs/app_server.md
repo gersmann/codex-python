@@ -102,10 +102,13 @@ schema = {
 with AppServerClient.connect_stdio() as client:
     thread = client.start_thread()
     payload = thread.run_json("Return JSON matching the schema", outputSchema=schema)
-    result = thread.run_model("Return JSON matching the schema", Summary, outputSchema=schema)
+    payload_from_model = thread.run_json("Return JSON matching the schema", outputSchema=Summary)
+    result = thread.run_model("Return JSON matching the schema", Summary)
 ```
 
-`run_model()` validates the final assistant message text with `pydantic`.
+`run_model()` validates the final assistant message text with `pydantic` and uses the model class as
+the output schema by default. If you want JSON back without validation, you can also pass a
+Pydantic model class directly to `outputSchema`.
 
 ## Working with `TurnStream`
 
