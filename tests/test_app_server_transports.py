@@ -6,12 +6,13 @@ from typing import Any
 
 import pytest
 
+from codex._binary import BundledCodexNotFoundError
 from codex.app_server.errors import (
     AppServerClosedError,
     AppServerConnectionError,
     AppServerProtocolError,
 )
-from codex.app_server.options import AppServerProcessOptions
+from codex.app_server.options import AppServerProcessOptions, AppServerWebSocketOptions
 from codex.app_server.transports import (
     AsyncStdioTransport,
     AsyncWebSocketTransport,
@@ -100,6 +101,19 @@ class _FakeWebSocketConnection:
         self.closed = True
 
 
+class _FakeConnectionClosedOK(Exception):
+    pass
+
+
+class _FakeConnectionClosedError(Exception):
+    pass
+
+
+class _FakeWebSocketExceptions:
+    ConnectionClosedOK = _FakeConnectionClosedOK
+    ConnectionClosedError = _FakeConnectionClosedError
+
+
 def test_resolve_codex_path_prefers_override() -> None:
     assert _resolve_codex_path("/tmp/custom-codex") == "/tmp/custom-codex"
 
@@ -107,7 +121,7 @@ def test_resolve_codex_path_prefers_override() -> None:
 def test_resolve_codex_path_falls_back_to_path(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(
         "codex.app_server.transports.bundled_codex_path",
-        lambda: (_ for _ in ()).throw(RuntimeError("missing bundled")),
+        lambda: (_ for _ in ()).throw(BundledCodexNotFoundError("missing bundled")),
     )
     monkeypatch.setattr("codex.app_server.transports.shutil.which", lambda _: "/usr/bin/codex")
 
@@ -119,11 +133,24 @@ def test_resolve_codex_path_raises_when_no_binary_available(
 ) -> None:
     monkeypatch.setattr(
         "codex.app_server.transports.bundled_codex_path",
-        lambda: (_ for _ in ()).throw(RuntimeError("missing bundled")),
+        lambda: (_ for _ in ()).throw(BundledCodexNotFoundError("missing bundled")),
     )
     monkeypatch.setattr("codex.app_server.transports.shutil.which", lambda _: None)
 
     with pytest.raises(AppServerConnectionError, match="Also failed to find `codex` on PATH"):
+        _resolve_codex_path(None)
+
+
+def test_resolve_codex_path_preserves_non_missing_bundle_failures(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        "codex.app_server.transports.bundled_codex_path",
+        lambda: (_ for _ in ()).throw(RuntimeError("permission denied")),
+    )
+    monkeypatch.setattr("codex.app_server.transports.shutil.which", lambda _: "/usr/bin/codex")
+
+    with pytest.raises(RuntimeError, match="permission denied"):
         _resolve_codex_path(None)
 
 
@@ -378,7 +405,10 @@ def test_websocket_transport_start_raises_when_websockets_missing(
 
     async def scenario() -> None:
         transport = AsyncWebSocketTransport("ws://127.0.0.1:4500")
-        with pytest.raises(AppServerConnectionError, match="requires the `websockets` package"):
+        with pytest.raises(
+            AppServerConnectionError,
+            match=r"install codex-python\[websocket\]",
+        ):
             await transport.start()
 
     asyncio.run(scenario())
@@ -388,6 +418,8 @@ def test_websocket_transport_start_raises_on_connect_failure(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     class _FakeWebsocketsModule:
+        exceptions = _FakeWebSocketExceptions
+
         @staticmethod
         async def connect(url: str) -> _FakeWebSocketConnection:
             _ = url
@@ -407,6 +439,8 @@ def test_websocket_transport_send_receive_and_close(monkeypatch: pytest.MonkeyPa
     connection = _FakeWebSocketConnection([_json_message := '{"method":"ping","params":{}}'])
 
     class _FakeWebsocketsModule:
+        exceptions = _FakeWebSocketExceptions
+
         @staticmethod
         async def connect(url: str) -> _FakeWebSocketConnection:
             assert url == "ws://127.0.0.1:4500"
@@ -428,11 +462,99 @@ def test_websocket_transport_send_receive_and_close(monkeypatch: pytest.MonkeyPa
     asyncio.run(scenario())
 
 
-def test_websocket_transport_receive_returns_none_on_connection_error() -> None:
+def test_websocket_transport_start_passes_explicit_auth_and_config(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured: dict[str, object] = {}
+    connection = _FakeWebSocketConnection()
+
+    class _FakeWebsocketsModule:
+        exceptions = _FakeWebSocketExceptions
+
+        @staticmethod
+        async def connect(url: str, **kwargs: object) -> _FakeWebSocketConnection:
+            captured["url"] = url
+            captured["kwargs"] = kwargs
+            return connection
+
+    monkeypatch.setitem(sys.modules, "websockets", _FakeWebsocketsModule())
+
+    async def scenario() -> None:
+        transport = AsyncWebSocketTransport(
+            "ws://127.0.0.1:4500",
+            AppServerWebSocketOptions(
+                bearer_token="secret-token",
+                headers={"X-Client": "pytest"},
+                subprotocols=("codex-rpc",),
+                open_timeout=5.0,
+                close_timeout=2.0,
+            ),
+        )
+        await transport.start()
+        await transport.close()
+
+    asyncio.run(scenario())
+
+    assert captured["url"] == "ws://127.0.0.1:4500"
+    assert captured["kwargs"] == {
+        "additional_headers": {
+            "Authorization": "Bearer secret-token",
+            "X-Client": "pytest",
+        },
+        "subprotocols": ["codex-rpc"],
+        "open_timeout": 5.0,
+        "close_timeout": 2.0,
+    }
+
+
+def test_websocket_options_reject_authorization_header() -> None:
+    options = AppServerWebSocketOptions(headers={"Authorization": "Basic abc123"})
+
+    with pytest.raises(ValueError, match="headers cannot include Authorization"):
+        options.to_connect_kwargs()
+
+
+def test_websocket_transport_start_preserves_option_validation_errors(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class _FakeWebsocketsModule:
+        exceptions = _FakeWebSocketExceptions
+
+        @staticmethod
+        async def connect(url: str, **kwargs: object) -> _FakeWebSocketConnection:
+            _ = (url, kwargs)
+            raise AssertionError("connect should not be called when option validation fails")
+
+    monkeypatch.setitem(sys.modules, "websockets", _FakeWebsocketsModule())
+
+    async def scenario() -> None:
+        transport = AsyncWebSocketTransport(
+            "ws://127.0.0.1:4500",
+            AppServerWebSocketOptions(headers={"Authorization": "Basic abc123"}),
+        )
+        with pytest.raises(ValueError, match="headers cannot include Authorization"):
+            await transport.start()
+
+    asyncio.run(scenario())
+
+
+def test_websocket_transport_receive_returns_none_on_clean_close() -> None:
     async def scenario() -> None:
         transport = AsyncWebSocketTransport("ws://127.0.0.1:4500")
-        transport._connection = _FakeWebSocketConnection([RuntimeError("closed")])
+        transport._connection = _FakeWebSocketConnection([_FakeConnectionClosedOK("closed")])
+        transport._connection_closed_ok_types = (_FakeConnectionClosedOK,)
         assert await transport.receive() is None
+
+    asyncio.run(scenario())
+
+
+def test_websocket_transport_receive_raises_on_connection_error() -> None:
+    async def scenario() -> None:
+        transport = AsyncWebSocketTransport("ws://127.0.0.1:4500")
+        transport._connection = _FakeWebSocketConnection([_FakeConnectionClosedError("boom")])
+        transport._connection_closed_error_types = (_FakeConnectionClosedError,)
+        with pytest.raises(AppServerConnectionError, match="websocket receive failed: boom"):
+            await transport.receive()
 
     asyncio.run(scenario())
 

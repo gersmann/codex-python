@@ -5,19 +5,17 @@ import json
 import os
 import shutil
 from collections.abc import Mapping
-from pathlib import Path
 from typing import Any, Protocol
 
 from codex._binary import bundled_codex_path
+from codex._runtime import build_child_env, resolve_codex_path, serialize_config_overrides
+from codex.app_server._types import JsonObject
 from codex.app_server.errors import (
     AppServerClosedError,
     AppServerConnectionError,
     AppServerProtocolError,
 )
-from codex.app_server.options import AppServerProcessOptions
-from codex.exec import INTERNAL_ORIGINATOR_ENV, PYTHON_SDK_ORIGINATOR, serialize_config_overrides
-
-JsonObject = dict[str, Any]
+from codex.app_server.options import AppServerProcessOptions, AppServerWebSocketOptions
 
 
 class AsyncMessageTransport(Protocol):
@@ -31,28 +29,21 @@ class AsyncMessageTransport(Protocol):
 
 
 def _resolve_codex_path(executable_path: str | None) -> str:
-    if executable_path is not None:
-        return str(Path(executable_path))
-    try:
-        return str(bundled_codex_path())
-    except Exception as bundled_error:
-        system_codex = shutil.which("codex")
-        if system_codex is None:
-            raise AppServerConnectionError(
-                f"{bundled_error} Also failed to find `codex` on PATH."
-            ) from bundled_error
-        return system_codex
+    return resolve_codex_path(
+        executable_path,
+        bundled_path=bundled_codex_path,
+        which=shutil.which,
+        error_type=AppServerConnectionError,
+    )
 
 
 def _build_env(options: AppServerProcessOptions) -> dict[str, str]:
-    env = os.environ.copy() if options.env is None else dict(options.env)
-    if INTERNAL_ORIGINATOR_ENV not in env:
-        env[INTERNAL_ORIGINATOR_ENV] = PYTHON_SDK_ORIGINATOR
-    if options.base_url is not None:
-        env["OPENAI_BASE_URL"] = options.base_url
-    if options.api_key is not None:
-        env["CODEX_API_KEY"] = options.api_key
-    return env
+    env_override = os.environ if options.env is None else options.env
+    return build_child_env(
+        env_override,
+        base_url=options.base_url,
+        api_key=options.api_key,
+    )
 
 
 class AsyncStdioTransport:
@@ -147,36 +138,60 @@ class AsyncStdioTransport:
 
 
 class AsyncWebSocketTransport:
-    def __init__(self, url: str) -> None:
+    def __init__(
+        self,
+        url: str,
+        options: AppServerWebSocketOptions | None = None,
+    ) -> None:
         self._url = url
+        self._options = options or AppServerWebSocketOptions()
         self._connection: Any | None = None
+        self._connection_closed_ok_types: tuple[type[BaseException], ...] = ()
+        self._connection_closed_error_types: tuple[type[BaseException], ...] = ()
 
     async def start(self) -> None:
         if self._connection is not None:
             return
+        websockets = _load_websockets_module()
+        self._configure_websocket_exception_types(websockets)
+        connect_kwargs = self._options.to_connect_kwargs()
         try:
-            import websockets
-        except ImportError as exc:
-            raise AppServerConnectionError(
-                "websockets transport requires the `websockets` package"
-            ) from exc
-        try:
-            self._connection = await websockets.connect(self._url)
+            self._connection = await websockets.connect(
+                self._url,
+                **connect_kwargs,
+            )
         except Exception as exc:
             raise AppServerConnectionError(f"Failed to connect to {self._url}: {exc}") from exc
 
     async def send(self, message: JsonObject) -> None:
         if self._connection is None:
             raise AppServerClosedError("app-server websocket transport is not connected")
-        await self._connection.send(json.dumps(message, separators=(",", ":")))
+        try:
+            await self._connection.send(json.dumps(message, separators=(",", ":")))
+        except self._connection_closed_ok_types as exc:
+            self._connection = None
+            raise AppServerClosedError("app-server websocket connection is closed") from exc
+        except self._connection_closed_error_types as exc:
+            self._connection = None
+            raise AppServerConnectionError(f"app-server websocket send failed: {exc}") from exc
+        except Exception as exc:
+            self._connection = None
+            raise AppServerConnectionError(f"app-server websocket send failed: {exc}") from exc
 
     async def receive(self) -> JsonObject | None:
         if self._connection is None:
             raise AppServerClosedError("app-server websocket transport is not connected")
         try:
             payload = await self._connection.recv()
-        except Exception:
+        except self._connection_closed_ok_types:
+            self._connection = None
             return None
+        except self._connection_closed_error_types as exc:
+            self._connection = None
+            raise AppServerConnectionError(f"app-server websocket receive failed: {exc}") from exc
+        except Exception as exc:
+            self._connection = None
+            raise AppServerConnectionError(f"app-server websocket receive failed: {exc}") from exc
         if not isinstance(payload, str):
             raise AppServerProtocolError("Expected websocket text frame from app-server")
         try:
@@ -197,3 +212,31 @@ class AsyncWebSocketTransport:
         connection = self._connection
         self._connection = None
         await connection.close()
+
+    def _configure_websocket_exception_types(self, websockets: Any) -> None:
+        exceptions = getattr(websockets, "exceptions", None)
+        if exceptions is None:
+            self._connection_closed_ok_types = ()
+            self._connection_closed_error_types = ()
+            return
+        connection_closed_ok = getattr(exceptions, "ConnectionClosedOK", None)
+        connection_closed_error = getattr(exceptions, "ConnectionClosedError", None)
+        self._connection_closed_ok_types = _exception_types(connection_closed_ok)
+        self._connection_closed_error_types = _exception_types(connection_closed_error)
+
+
+def _load_websockets_module() -> Any:
+    try:
+        import websockets
+    except ImportError as exc:
+        raise AppServerConnectionError(
+            "websocket transport requires the optional `websockets` package; "
+            "install codex-python[websocket]"
+        ) from exc
+    return websockets
+
+
+def _exception_types(candidate: object) -> tuple[type[BaseException], ...]:
+    if isinstance(candidate, type) and issubclass(candidate, BaseException):
+        return (candidate,)
+    return ()

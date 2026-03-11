@@ -1,21 +1,104 @@
-"""Options shared by the exec-based Codex client."""
+"""Public option models for the high-level `Codex` client."""
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-from typing import Literal, Protocol, runtime_checkable
+from typing import Protocol, runtime_checkable
 
-from codex.output_schema import OutputSchemaInput
+from pydantic import BaseModel, ConfigDict
 
-ApprovalMode = Literal["never", "on-request", "on-failure", "untrusted"]
-SandboxMode = Literal["read-only", "workspace-write", "danger-full-access"]
-ModelReasoningEffort = Literal["minimal", "low", "medium", "high", "xhigh"]
-WebSearchMode = Literal["disabled", "cached", "live"]
-
-type CodexConfigValue = (
-    str | int | float | bool | list["CodexConfigValue"] | dict[str, "CodexConfigValue"]
+from codex._config_types import CodexConfigObject, CodexConfigValue
+from codex.app_server.options import (
+    AppServerProcessOptions,
+    AppServerThreadResumeOptions,
+    AppServerThreadStartOptions,
+    AppServerTurnOptions,
 )
-type CodexConfigObject = dict[str, CodexConfigValue]
+from codex.output_schema import OutputSchemaInput
+from codex.protocol import types as protocol
+
+
+class _CodexOptionsModel(BaseModel):
+    model_config = ConfigDict(
+        frozen=True,
+        extra="forbid",
+    )
+
+
+class CodexOptions(_CodexOptionsModel):
+    """Process options for the high-level `Codex` client."""
+
+    codex_path_override: str | None = None
+    base_url: str | None = None
+    api_key: str | None = None
+    config: CodexConfigObject | None = None
+    env: dict[str, str] | None = None
+    analytics_default_enabled: bool = False
+
+    def to_app_server_options(self) -> AppServerProcessOptions:
+        return AppServerProcessOptions.model_validate(self.model_dump(mode="python"))
+
+
+class ThreadStartOptions(_CodexOptionsModel):
+    """Thread creation options for the high-level `Codex` client."""
+
+    approval_policy: protocol.AskForApproval | None = None
+    base_instructions: str | None = None
+    config: CodexConfigObject | None = None
+    cwd: str | None = None
+    developer_instructions: str | None = None
+    dynamic_tools: list[protocol.DynamicToolSpec] | None = None
+    ephemeral: bool | None = None
+    experimental_raw_events: bool | None = None
+    mock_experimental_field: str | None = None
+    model: str | None = None
+    model_provider: str | None = None
+    persist_extended_history: bool | None = None
+    personality: protocol.Personality | None = None
+    sandbox: protocol.SandboxMode | None = None
+    service_name: str | None = None
+    service_tier: protocol.ServiceTier | None = None
+
+    def to_app_server_options(self) -> AppServerThreadStartOptions:
+        return AppServerThreadStartOptions.model_validate(self.model_dump(mode="python"))
+
+
+class ThreadResumeOptions(_CodexOptionsModel):
+    """Thread resume options for the high-level `Codex` client."""
+
+    approval_policy: protocol.AskForApproval | None = None
+    base_instructions: str | None = None
+    config: CodexConfigObject | None = None
+    cwd: str | None = None
+    developer_instructions: str | None = None
+    history: list[protocol.ResponseItem] | None = None
+    model: str | None = None
+    model_provider: str | None = None
+    path: str | None = None
+    persist_extended_history: bool | None = None
+    personality: protocol.Personality | None = None
+    sandbox: protocol.SandboxMode | None = None
+    service_tier: protocol.ServiceTier | None = None
+
+    def to_app_server_options(self) -> AppServerThreadResumeOptions:
+        return AppServerThreadResumeOptions.model_validate(self.model_dump(mode="python"))
+
+
+class TurnOptions(_CodexOptionsModel):
+    """Turn execution options for the high-level `Codex` client."""
+
+    approval_policy: protocol.AskForApproval | None = None
+    collaboration_mode: protocol.CollaborationMode | None = None
+    cwd: str | None = None
+    effort: protocol.ReasoningEffort | None = None
+    model: str | None = None
+    output_schema: OutputSchemaInput | None = None
+    personality: protocol.Personality | None = None
+    sandbox_policy: protocol.SandboxPolicy | None = None
+    service_tier: protocol.ServiceTier | None = None
+    summary: protocol.ReasoningSummary | None = None
+
+    def to_app_server_options(self) -> AppServerTurnOptions:
+        return AppServerTurnOptions.model_validate(self.model_dump(mode="python"))
 
 
 @runtime_checkable
@@ -31,37 +114,14 @@ class SupportsAborted(Protocol):
 
 type CancelSignal = SupportsIsSet | SupportsAborted
 
-
-@dataclass(slots=True, frozen=True)
-class CodexOptions:
-    """Process-level configuration for the `Codex` client."""
-
-    codex_path_override: str | None = None
-    base_url: str | None = None
-    api_key: str | None = None
-    config: CodexConfigObject | None = None
-    env: dict[str, str] | None = None
-
-
-@dataclass(slots=True, frozen=True)
-class ThreadOptions:
-    """Default execution settings applied to runs on a thread."""
-
-    model: str | None = None
-    sandbox_mode: SandboxMode | None = None
-    working_directory: str | None = None
-    skip_git_repo_check: bool = False
-    model_reasoning_effort: ModelReasoningEffort | None = None
-    network_access_enabled: bool | None = None
-    web_search_mode: WebSearchMode | None = None
-    web_search_enabled: bool | None = None
-    approval_policy: ApprovalMode | None = None
-    additional_directories: list[str] | None = None
-
-
-@dataclass(slots=True, frozen=True)
-class TurnOptions:
-    """Per-run options for the exec-based `Thread.run()` APIs."""
-
-    output_schema: OutputSchemaInput | None = None
-    signal: CancelSignal | None = None
+__all__ = [
+    "CodexOptions",
+    "ThreadStartOptions",
+    "ThreadResumeOptions",
+    "TurnOptions",
+    "CodexConfigValue",
+    "CodexConfigObject",
+    "SupportsIsSet",
+    "SupportsAborted",
+    "CancelSignal",
+]

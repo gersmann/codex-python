@@ -3,7 +3,12 @@ from __future__ import annotations
 
 import argparse
 import json
+from collections.abc import Callable
 from pathlib import Path
+
+from codex._file_utils import atomic_write_text
+
+type SchemaNode = dict[str, object]
 
 TARGETS = [
     ("EventMsg", "type"),
@@ -19,51 +24,152 @@ def camelize(s: str) -> str:
     return "".join(p[:1].upper() + p[1:] for p in parts)
 
 
+def _definitions_node(schema: SchemaNode) -> tuple[dict[str, object], str] | None:
+    for key in ("definitions", "$defs"):
+        defs = schema.get(key)
+        if isinstance(defs, dict):
+            return defs, key
+    return None
+
+
+def _tag_variants(node: SchemaNode) -> list[SchemaNode] | None:
+    one_of = node.get("oneOf") or node.get("anyOf")
+    if not isinstance(one_of, list):
+        return None
+    return [variant for variant in one_of if isinstance(variant, dict)]
+
+
+def _tag_value(properties: object, tag_key: str) -> str | None:
+    if not isinstance(properties, dict):
+        return None
+    tag = properties.get(tag_key)
+    if not isinstance(tag, dict):
+        return None
+    enum = tag.get("enum")
+    if isinstance(enum, list) and enum and isinstance(enum[0], str):
+        return enum[0]
+    const = tag.get("const")
+    if isinstance(const, str):
+        return const
+    return None
+
+
+def _walk_schema(node: object, visit: Callable[[SchemaNode], None]) -> None:
+    if isinstance(node, dict):
+        visit(node)
+        for key in ("items", "additionalProperties", "not"):
+            child = node.get(key)
+            if isinstance(child, dict):
+                _walk_schema(child, visit)
+        for key in ("anyOf", "oneOf", "allOf"):
+            children = node.get(key)
+            if isinstance(children, list):
+                for child in children:
+                    _walk_schema(child, visit)
+        for key in ("definitions", "$defs", "patternProperties"):
+            children = node.get(key)
+            if isinstance(children, dict):
+                for child in children.values():
+                    _walk_schema(child, visit)
+        return
+    if isinstance(node, list):
+        for child in node:
+            _walk_schema(child, visit)
+
+
+def _nullable(prop_schema: object) -> bool:
+    if not isinstance(prop_schema, dict):
+        return False
+    field_type = prop_schema.get("type")
+    if field_type == "null":
+        return True
+    if isinstance(field_type, list) and "null" in field_type:
+        return True
+    for key in ("anyOf", "oneOf"):
+        variants = prop_schema.get(key)
+        if not isinstance(variants, list):
+            continue
+        if any(isinstance(variant, dict) and variant.get("type") == "null" for variant in variants):
+            return True
+    return False
+
+
+def _normalize_numeric_type(value: object) -> tuple[object, bool]:
+    if value == "number":
+        return "integer", True
+    if not isinstance(value, list) or "number" not in value:
+        return value, False
+    normalized = ["integer" if item == "number" else item for item in value]
+    return _dedupe_preserve_order(normalized), True
+
+
+def _replace_number_with_integer(node: SchemaNode) -> bool:
+    changed = False
+    normalized_type, type_changed = _normalize_numeric_type(node.get("type"))
+    if type_changed:
+        node["type"] = normalized_type
+        changed = True
+    for key in ("anyOf", "oneOf"):
+        variants = node.get(key)
+        if not isinstance(variants, list):
+            continue
+        for variant in variants:
+            if not isinstance(variant, dict):
+                continue
+            normalized_variant_type, variant_changed = _normalize_numeric_type(variant.get("type"))
+            if variant_changed:
+                variant["type"] = normalized_variant_type
+                changed = True
+    return changed
+
+
+def _duration_union(description: object) -> list[SchemaNode]:
+    description_field = {"description": description} if isinstance(description, str) else {}
+    return [
+        {"type": "string", **description_field},
+        {
+            "type": "object",
+            "properties": {
+                "secs": {"type": "integer"},
+                "nanos": {"type": "integer"},
+            },
+            "required": ["secs", "nanos"],
+            "additionalProperties": False,
+            **description_field,
+        },
+    ]
+
+
 def add_titles(schema: dict) -> tuple[bool, int]:
-    if isinstance(schema.get("definitions"), dict):
-        defs = schema["definitions"]
-        base_key = "definitions"
-    elif isinstance(schema.get("$defs"), dict):
-        defs = schema["$defs"]
-        base_key = "$defs"
-    else:
+    definitions = _definitions_node(schema)
+    if definitions is None:
         return (False, 0)
+    defs, base_key = definitions
     changed = False
     added = 0
     for name, tag_key in TARGETS:
         node = defs.get(name)
         if not isinstance(node, dict):
             continue
+        variants = _tag_variants(node)
+        if variants is None:
+            continue
         one_of = node.get("oneOf") or node.get("anyOf")
         if not isinstance(one_of, list):
             continue
-        for idx, subs in enumerate(list(one_of)):
-            if not isinstance(subs, dict):
+        for index, variant in enumerate(one_of):
+            if not isinstance(variant, dict):
                 continue
-            props = subs.get("properties")
-            if not isinstance(props, dict):
+            tag_value = _tag_value(variant.get("properties"), tag_key)
+            if tag_value is None:
                 continue
-            tag = props.get(tag_key)
-            if not isinstance(tag, dict):
-                continue
-            enum = tag.get("enum")
-            # ts-json-schema-generator uses `const` instead of `enum` for tagged unions
-            if not enum and isinstance(tag.get("const"), str):
-                enum = [tag["const"]]
-            if not (isinstance(enum, list) and enum and isinstance(enum[0], str)):
-                continue
-            variant = enum[0]
-            title = f"{name}_{camelize(variant)}"
-            # 1) set a title on the inline subschema for robustness
-            subs["title"] = title
-            # 2) hoist inline subschema to definitions and replace with $ref
+            title = f"{name}_{camelize(tag_value)}"
+            variant["title"] = title
             if title not in defs:
-                defs[title] = subs
+                defs[title] = variant
                 changed = True
                 added += 1
-            # replace inline with $ref
-            ref = {"$ref": f"#/{base_key}/{title}"}
-            one_of[idx] = ref
+            one_of[index] = {"$ref": f"#/{base_key}/{title}"}
     return changed, added
 
 
@@ -76,52 +182,20 @@ def relax_required_for_nullables(schema: dict) -> tuple[bool, int]:
     changed = False
     count = 0
 
-    def prop_is_nullable(prop_schema: dict) -> bool:
-        if not isinstance(prop_schema, dict):
-            return False
-        t = prop_schema.get("type")
-        if isinstance(t, list) and "null" in t:
-            return True
-        if t == "null":
-            return True
-        for key in ("anyOf", "oneOf"):
-            arr = prop_schema.get(key)
-            if isinstance(arr, list):
-                for sub in arr:
-                    if isinstance(sub, dict) and sub.get("type") == "null":
-                        return True
-        return False
-
-    def walk(node: object) -> None:
+    def visit(node: SchemaNode) -> None:
         nonlocal changed, count
-        if isinstance(node, dict):
-            props = node.get("properties")
-            req = node.get("required")
-            if isinstance(props, dict) and isinstance(req, list):
-                new_req = [name for name in req if not prop_is_nullable(props.get(name, {}))]
-                if len(new_req) != len(req):
-                    node["required"] = new_req
-                    changed = True
-                    count += len(req) - len(new_req)
-            # Recurse into common schema containers
-            for k in ("items", "additionalProperties", "not"):
-                if isinstance(node.get(k), dict):
-                    walk(node[k])
-            for k in ("anyOf", "oneOf", "allOf"):
-                arr = node.get(k)
-                if isinstance(arr, list):
-                    for sub in arr:
-                        walk(sub)
-            for k in ("definitions", "$defs", "patternProperties"):
-                m = node.get(k)
-                if isinstance(m, dict):
-                    for sub in m.values():
-                        walk(sub)
-        elif isinstance(node, list):
-            for sub in node:
-                walk(sub)
+        properties = node.get("properties")
+        required = node.get("required")
+        if not isinstance(properties, dict) or not isinstance(required, list):
+            return
+        new_required = [name for name in required if not _nullable(properties.get(name))]
+        if len(new_required) == len(required):
+            return
+        node["required"] = new_required
+        changed = True
+        count += len(required) - len(new_required)
 
-    walk(schema)
+    _walk_schema(schema, visit)
     return changed, count
 
 
@@ -165,35 +239,6 @@ def enforce_exec_exit_code_integer(schema: dict) -> bool:
     return False
 
 
-def _replace_number_with_integer(node: dict) -> bool:
-    changed = False
-    t = node.get("type")
-    if t == "number":
-        node["type"] = "integer"
-        changed = True
-    elif isinstance(t, list) and "number" in t:
-        node["type"] = ["integer" if v == "number" else v for v in t]
-        # dedupe while preserving order without side-effects in comprehensions
-        node["type"] = _dedupe_preserve_order(node["type"])
-        changed = True
-    # Normalize anyOf/oneOf branches
-    for key in ("anyOf", "oneOf"):
-        arr = node.get(key)
-        if isinstance(arr, list):
-            for sub in arr:
-                if isinstance(sub, dict) and sub.get("type") == "number":
-                    sub["type"] = "integer"
-                    changed = True
-                elif isinstance(sub, dict) and isinstance(sub.get("type"), list):
-                    sub_t = sub["type"]
-                    if "number" in sub_t:
-                        sub["type"] = ["integer" if v == "number" else v for v in sub_t]
-                        # dedupe while preserving order
-                        sub["type"] = _dedupe_preserve_order(sub["type"])
-                        changed = True
-    return changed
-
-
 def _dedupe_preserve_order(items: list[str]) -> list[str]:
     """Return a new list with duplicates removed, preserving order."""
     seen: set[str] = set()
@@ -232,36 +277,20 @@ def enforce_integer_fields(schema: dict) -> int:
     """
     changed = 0
 
-    def walk(node: object) -> None:
+    def visit(node: SchemaNode) -> None:
         nonlocal changed
-        if isinstance(node, dict):
-            # Adjust matching properties
-            props = node.get("properties")
-            if isinstance(props, dict):
-                for name, sub in props.items():
-                    if name in INTEGER_FIELDS and isinstance(sub, dict):
-                        if _replace_number_with_integer(sub):
-                            changed += 1
-            # Recurse into common schema containers
-            for k in ("items", "additionalProperties", "not"):
-                if isinstance(node.get(k), dict):
-                    walk(node[k])
-            for k in ("anyOf", "oneOf", "allOf"):
-                arr = node.get(k)
-                if isinstance(arr, list):
-                    for sub in arr:
-                        walk(sub)
-            # Dive into nested definition maps
-            for k in ("definitions", "$defs", "patternProperties"):
-                m = node.get(k)
-                if isinstance(m, dict):
-                    for sub in m.values():
-                        walk(sub)
-        elif isinstance(node, list):
-            for sub in node:
-                walk(sub)
+        properties = node.get("properties")
+        if not isinstance(properties, dict):
+            return
+        for name, sub_schema in properties.items():
+            if (
+                name in INTEGER_FIELDS
+                and isinstance(sub_schema, dict)
+                and _replace_number_with_integer(sub_schema)
+            ):
+                changed += 1
 
-    walk(schema)
+    _walk_schema(schema, visit)
     return changed
 
 
@@ -277,57 +306,20 @@ def enforce_duration_union(schema: dict) -> int:
     """
     changed = 0
 
-    def patch_prop(node: dict) -> bool:
-        t = node.get("type")
-        if t == "string":
-            desc = node.get("description")
-            node.clear()
-            node["oneOf"] = [
-                {"type": "string", **({"description": desc} if desc else {})},
-                {
-                    "type": "object",
-                    "properties": {
-                        "secs": {"type": "integer"},
-                        "nanos": {"type": "integer"},
-                    },
-                    "required": ["secs", "nanos"],
-                    "additionalProperties": False,
-                    **({"description": desc} if desc else {}),
-                },
-            ]
-            return True
-        return False
-
-    def walk(node: object) -> None:
+    def visit(node: SchemaNode) -> None:
         nonlocal changed
-        if isinstance(node, dict):
-            props = node.get("properties")
-            if (
-                isinstance(props, dict)
-                and "duration" in props
-                and isinstance(props["duration"], dict)
-            ):
-                if patch_prop(props["duration"]):
-                    changed += 1
-            # Recurse
-            for k in ("items", "additionalProperties", "not"):
-                if isinstance(node.get(k), dict):
-                    walk(node[k])
-            for k in ("anyOf", "oneOf", "allOf"):
-                arr = node.get(k)
-                if isinstance(arr, list):
-                    for sub in arr:
-                        walk(sub)
-            for k in ("definitions", "$defs", "patternProperties"):
-                m = node.get(k)
-                if isinstance(m, dict):
-                    for sub in m.values():
-                        walk(sub)
-        elif isinstance(node, list):
-            for sub in node:
-                walk(sub)
+        properties = node.get("properties")
+        if not isinstance(properties, dict):
+            return
+        duration = properties.get("duration")
+        if not isinstance(duration, dict) or duration.get("type") != "string":
+            return
+        description = duration.get("description")
+        duration.clear()
+        duration["oneOf"] = _duration_union(description)
+        changed += 1
 
-    walk(schema)
+    _walk_schema(schema, visit)
     return changed
 
 
@@ -361,7 +353,7 @@ def main() -> int:
     coerced = enforce_integer_fields(data)
     durations = enforce_duration_union(data)
     if t_changed or r_changed or id_fixed or exit_fixed or coerced or durations:
-        path.write_text(json.dumps(data, indent=2, ensure_ascii=False) + "\n")
+        atomic_write_text(path, json.dumps(data, indent=2, ensure_ascii=False) + "\n")
     print(
         f"Schema postprocess: titles+hoist added={t_added}, relaxed_required={r_count if args.relax_nullable_required else 0}, "
         f"requestId_fixed={'yes' if id_fixed else 'no'}, exit_code_fixed={'yes' if exit_fixed else 'no'}, integers_coerced={coerced}, durations_patched={durations} in {path.name}"

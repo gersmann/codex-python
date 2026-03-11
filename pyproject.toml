@@ -20,8 +20,12 @@ classifiers = [
 dynamic = ["version"]
 license = { file = "LICENSE" }
 dependencies = [
-  "pydantic>=2.11.7",
-  "websockets>=15.0.1",
+  "pydantic>=2.11.7,<3",
+]
+
+[project.optional-dependencies]
+websocket = [
+  "websockets>=15.0.1,<16",
 ]
 
 [project.urls]

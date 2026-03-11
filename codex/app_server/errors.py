@@ -1,8 +1,11 @@
 from __future__ import annotations
 
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from codex.errors import CodexError
+
+if TYPE_CHECKING:
+    from codex.protocol import types as protocol
 
 
 class AppServerError(CodexError):
@@ -29,3 +32,12 @@ class AppServerRpcError(AppServerError):
         self.code = code
         self.message = message
         self.data = data
+
+
+class AppServerTurnError(AppServerError):
+    """Raised when a turn reaches a terminal non-success status."""
+
+    def __init__(self, message: str, *, turn: protocol.Turn | None = None) -> None:
+        super().__init__(message)
+        self.turn = turn
+        self.terminal_status = None if turn is None else turn.status.root

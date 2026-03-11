@@ -2,14 +2,16 @@
 
 This guide covers the lower-level app-server surface that sits under the thread convenience helpers.
 
-Use it when you need protocol-native events, raw JSON-RPC calls, or typed handlers for server-driven requests.
+Use it when you need typed stable RPC domains, protocol-native events, raw JSON-RPC fallbacks, or typed handlers for server-driven requests.
+
+Import this surface from `codex.app_server`; the top-level `codex` package is reserved for the higher-level `Codex` facade.
 
 ## Protocol-native event iteration
 
 `thread.run()` returns a `TurnStream` that yields generated protocol models from `codex.protocol.types`.
 
 ```python
-from codex import AppServerClient
+from codex.app_server import AppServerClient
 from codex.protocol import types as protocol
 
 with AppServerClient.connect_stdio() as client:
@@ -25,41 +27,57 @@ with AppServerClient.connect_stdio() as client:
 
 This is the right level when you want exact protocol semantics instead of a wrapper event layer.
 
-## Raw JSON-RPC
+## Typed stable RPC domains
 
-The `rpc` client is the low-level escape hatch:
+The advanced client exposes typed domain clients for stable non-thread RPC methods:
 
 ```python
-from codex import AppServerClient
+from codex.app_server import AppServerClient
 
 with AppServerClient.connect_stdio() as client:
-    result = client.rpc.request("model/list", {"limit": 20})
+    models = client.models.list(limit=20, include_hidden=False)
+    print(models.data[0].displayName)
+
+    account = client.account.read()
+    print(account.requiresOpenaiAuth)
+
+    result = client.command.exec(command=["git", "status"], cwd="/repo")
+    print(result.exitCode)
+```
+
+These domain clients cover the stable RPC surface that does not naturally belong on a thread object, including `models`, `apps`, `skills`, `account`, `config`, `mcp_servers`, `feedback`, `command`, `external_agent_config`, and `windows_sandbox`.
+
+The concrete sync wrapper classes behind these attributes are internal implementation details. Rely on `client.models` and the other domain attributes instead of importing wrapper types directly.
+
+## Raw JSON-RPC
+
+The `rpc` client remains the low-level escape hatch for experimental methods, version-skewed endpoints, or anything that does not have a typed wrapper yet.
+
+```python
+from codex.app_server import AppServerClient
+
+with AppServerClient.connect_stdio() as client:
+    result = client.rpc.request("experimentalFeature/list", {"limit": 20})
     print(result)
 ```
 
 If you want typed results, use `request_typed()` with one of the Pydantic models from `codex.app_server.models` or `codex.protocol.types`.
 
-## Service namespaces
+## Connection-wide notifications
 
-The convenience namespaces wrap common method prefixes:
-
-- `client.models`
-- `client.account`
-- `client.config`
-- `client.apps`
-- `client.skills`
-- `client.mcp_servers`
-- `client.feedback`
-- `client.experimental_features`
-- `client.collaboration_modes`
-- `client.windows_sandbox`
-
-Example:
+Use `client.events.subscribe()` when you want notifications outside a single turn stream.
 
 ```python
+from codex.app_server import AppServerClient, GenericNotification
+
 with AppServerClient.connect_stdio() as client:
-    models = client.models.call("list", {"limit": 20})
-    print(models)
+    subscription = client.events.subscribe({"codex/event/mcp_startup_update"})
+    try:
+        event = subscription.next()
+        if isinstance(event, GenericNotification):
+            print(event.method, event.params)
+    finally:
+        subscription.close()
 ```
 
 ## Typed request handlers
@@ -67,7 +85,7 @@ with AppServerClient.connect_stdio() as client:
 Use `on_request()` when the server sends a JSON-RPC request that expects a client response.
 
 ```python
-from codex import AppServerClient
+from codex.app_server import AppServerClient
 from codex.protocol import types as protocol
 
 
@@ -98,6 +116,7 @@ The async client exposes the same pattern with async handlers.
 
 Prefer the advanced app-server APIs when you need:
 
+- stable typed access to lower-level RPC domains
 - exact access to generated protocol notifications
 - lower-level JSON-RPC methods not wrapped by a thread helper
 - typed responses to server-driven requests

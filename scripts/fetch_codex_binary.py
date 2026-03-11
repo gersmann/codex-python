@@ -6,7 +6,7 @@ import json
 import os
 import shutil
 import stat
-import subprocess
+import subprocess  # nosec B404
 import tarfile
 import tempfile
 import zipfile
@@ -14,10 +14,12 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 from urllib.error import HTTPError, URLError
+from urllib.parse import urlparse
 from urllib.request import Request, urlopen
 
 GITHUB_API = "https://api.github.com"
 USER_AGENT = "codex-python-binary-fetcher"
+ZSTD_TIMEOUT_SECONDS = 300
 
 
 @dataclass(slots=True, frozen=True)
@@ -179,8 +181,13 @@ def _extract_from_zip(archive_path: Path, dest_path: Path) -> None:
 
 
 def _extract_zst(archive_path: Path, dest_path: Path) -> None:
-    if shutil.which("zstd") is not None:
-        subprocess.check_call(["zstd", "-f", "-d", str(archive_path), "-o", str(dest_path)])
+    zstd_path = shutil.which("zstd")
+    if zstd_path is not None:
+        subprocess.run(
+            [zstd_path, "-f", "-d", str(archive_path), "-o", str(dest_path)],
+            check=True,
+            timeout=ZSTD_TIMEOUT_SECONDS,
+        )  # nosec B603
         return
 
     try:
@@ -197,6 +204,7 @@ def _extract_zst(archive_path: Path, dest_path: Path) -> None:
 
 
 def github_json(url: str, token: str | None) -> dict[str, Any]:
+    _require_https_url(url)
     headers = {
         "Accept": "application/vnd.github+json",
         "User-Agent": USER_AGENT,
@@ -205,7 +213,7 @@ def github_json(url: str, token: str | None) -> dict[str, Any]:
         headers["Authorization"] = f"Bearer {token}"
     request = Request(url, headers=headers)
     try:
-        with urlopen(request) as response:
+        with urlopen(request) as response:  # nosec B310
             payload = response.read().decode("utf-8")
     except HTTPError as exc:
         body = exc.read().decode("utf-8", errors="replace")
@@ -220,18 +228,25 @@ def github_json(url: str, token: str | None) -> dict[str, Any]:
 
 
 def download(url: str, destination: Path, token: str | None) -> None:
+    _require_https_url(url)
     headers = {"User-Agent": USER_AGENT}
     if token is not None:
         headers["Authorization"] = f"Bearer {token}"
     request = Request(url, headers=headers)
     try:
-        with urlopen(request) as response, open(destination, "wb") as output:
+        with urlopen(request) as response, open(destination, "wb") as output:  # nosec B310
             shutil.copyfileobj(response, output)
     except HTTPError as exc:
         body = exc.read().decode("utf-8", errors="replace")
         raise RuntimeError(f"Download failed ({exc.code}) for {url}: {body}") from exc
     except URLError as exc:
         raise RuntimeError(f"Network error while downloading {url}: {exc}") from exc
+
+
+def _require_https_url(url: str) -> None:
+    parsed = urlparse(url)
+    if parsed.scheme != "https" or parsed.netloc == "":
+        raise RuntimeError(f"Refusing to fetch non-HTTPS URL: {url}")
 
 
 if __name__ == "__main__":

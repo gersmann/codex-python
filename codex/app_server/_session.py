@@ -6,9 +6,10 @@ from collections.abc import Awaitable, Callable, Collection, Mapping
 from dataclasses import dataclass
 from typing import Any, TypeVar, cast
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ValidationError
 
-from codex.app_server._helpers import (
+from codex.app_server._payloads import serialize_value
+from codex.app_server._protocol_helpers import (
     Notification,
     RequestHandler,
     method_name,
@@ -16,7 +17,6 @@ from codex.app_server._helpers import (
     parse_result,
     parse_server_request,
     request_id,
-    serialize_value,
 )
 from codex.app_server.errors import (
     AppServerClosedError,
@@ -29,19 +29,29 @@ from codex.app_server.transports import AsyncMessageTransport, JsonObject
 from codex.protocol import types as protocol
 
 _ModelT = TypeVar("_ModelT", bound=BaseModel)
+_RequestT = TypeVar("_RequestT", bound=BaseModel)
+_NotificationPredicate = Callable[[Notification], bool]
 
 
 class _NotificationSink:
-    def __init__(self, methods: set[str] | None = None) -> None:
+    def __init__(
+        self,
+        methods: set[str] | None = None,
+        predicate: _NotificationPredicate | None = None,
+    ) -> None:
         self.methods = methods
+        self.predicate = predicate
         self.queue: asyncio.Queue[Notification | None] = asyncio.Queue()
 
-    def matches(self, method: str) -> bool:
-        return self.methods is None or method in self.methods
+    def matches(self, method: str, notification: Notification) -> bool:
+        if self.methods is not None and method not in self.methods:
+            return False
+        return self.predicate is None or self.predicate(notification)
 
 
 @dataclass(slots=True)
 class _AsyncNotificationSubscription:
+    sink: _NotificationSink
     queue: asyncio.Queue[Notification | None]
     close_callback: Callable[[], None]
 
@@ -53,12 +63,17 @@ class _AsyncNotificationSubscription:
 
     async def close(self) -> None:
         self.close_callback()
+        while not self.queue.empty():
+            self.queue.get_nowait()
         await self.queue.put(None)
+
+    def update_predicate(self, predicate: _NotificationPredicate | None) -> None:
+        self.sink.predicate = predicate
 
 
 @dataclass(slots=True)
 class _RegisteredHandler:
-    handler: RequestHandler
+    handler: RequestHandler[BaseModel]
     request_model: type[BaseModel] | None = None
 
 
@@ -78,22 +93,31 @@ class _AsyncSession:
         self._notification_sinks: list[_NotificationSink] = []
         self._reader_task: asyncio.Task[None] | None = None
         self._reader_error: Exception | None = None
+        self._reader_error_reported = False
         self._strict_protocol = self._initialize_options.strict_protocol
         self._initialize_result: InitializeResult | None = None
 
     async def start(self) -> InitializeResult:
+        if self._closed:
+            raise AppServerClosedError("app-server client is closed")
         if self._started:
             if self._initialize_result is None:
                 raise AppServerClosedError("app-server client initialization state is inconsistent")
             return self._initialize_result
         await self._transport.start()
         self._reader_task = asyncio.create_task(self._reader_loop())
-        result = await self.request_typed(
-            "initialize",
-            self._initialize_options.to_params(),
-            InitializeResult,
-        )
-        await self.notify("initialized", {})
+        try:
+            result = await self.request_typed(
+                "initialize",
+                self._initialize_options.to_params(),
+                InitializeResult,
+            )
+            await self.notify("initialized", {})
+        except Exception as exc:
+            close_error = await self._close_for_start_failure()
+            if close_error is not None and close_error is not exc:
+                exc.add_note(f"Cleanup after start failure also failed: {close_error!r}")
+            raise
         self._initialize_result = result
         self._started = True
         return result
@@ -102,19 +126,36 @@ class _AsyncSession:
         if self._closed:
             return
         self._closed = True
+        close_error: Exception | None = None if self._reader_error_reported else self._reader_error
         if self._reader_task is not None:
-            self._reader_task.cancel()
-            try:
-                await self._reader_task
-            except asyncio.CancelledError:
-                pass
-            except Exception:
-                pass
+            if not self._reader_task.done():
+                self._reader_task.cancel()
+            reader_result = await asyncio.gather(self._reader_task, return_exceptions=True)
+            reader_error = reader_result[0]
+            if isinstance(reader_error, Exception):
+                close_error = reader_error
         self._fail_pending(AppServerClosedError("app-server client closed"))
-        await self._transport.close()
-        for sink in list(self._notification_sinks):
-            await sink.queue.put(None)
-        self._notification_sinks.clear()
+        try:
+            await self._transport.close()
+        except Exception as exc:
+            if close_error is None:
+                close_error = exc
+        finally:
+            self._started = False
+            self._initialize_result = None
+            self._reader_task = None
+            for sink in list(self._notification_sinks):
+                await sink.queue.put(None)
+            self._notification_sinks.clear()
+        if close_error is not None:
+            raise close_error
+
+    async def _close_for_start_failure(self) -> Exception | None:
+        try:
+            await self.close()
+        except Exception as exc:
+            return exc
+        return None
 
     async def notify(
         self, method: str, params: BaseModel | Mapping[str, Any] | None = None
@@ -158,23 +199,29 @@ class _AsyncSession:
         params: BaseModel | Mapping[str, Any] | None,
         result_model: type[_ModelT],
     ) -> _ModelT:
-        return cast(_ModelT, parse_result(await self.request(method, params), result_model))
+        return parse_result(await self.request(method, params), result_model, method=method)
 
     def on_request(
         self,
         method: str,
-        handler: RequestHandler,
+        handler: RequestHandler[_RequestT],
         *,
-        request_model: type[BaseModel] | None = None,
+        request_model: type[_RequestT] | None = None,
     ) -> None:
-        self._request_handlers[method] = _RegisteredHandler(handler, request_model=request_model)
+        self._request_handlers[method] = _RegisteredHandler(
+            cast(RequestHandler[BaseModel], handler),
+            request_model=cast(type[BaseModel] | None, request_model),
+        )
 
     def subscribe_notifications(
-        self, methods: Collection[str] | None = None
+        self,
+        methods: Collection[str] | None = None,
+        *,
+        predicate: _NotificationPredicate | None = None,
     ) -> _AsyncNotificationSubscription:
-        sink = _NotificationSink(None if methods is None else set(methods))
+        sink = _NotificationSink(None if methods is None else set(methods), predicate=predicate)
         self._notification_sinks.append(sink)
-        return _AsyncNotificationSubscription(sink.queue, lambda: self._remove_sink(sink))
+        return _AsyncNotificationSubscription(sink, sink.queue, lambda: self._remove_sink(sink))
 
     async def _ensure_started_or_starting(self) -> None:
         if self._closed:
@@ -211,12 +258,9 @@ class _AsyncSession:
     async def _await_future(self, future: asyncio.Future[object]) -> object:
         while True:
             if future.done():
-                return future.result()
+                return self._future_result(future)
             if self._reader_task is not None and self._reader_task.done():
                 raise self._reader_failure()
-            if self._reader_task is None:
-                await future
-                continue
             done, _ = await asyncio.wait(
                 {
                     cast(asyncio.Future[Any], future),
@@ -225,18 +269,28 @@ class _AsyncSession:
                 return_when=asyncio.FIRST_COMPLETED,
             )
             if future in done:
-                return future.result()
+                return self._future_result(future)
             if self._reader_task in done:
                 raise self._reader_failure()
 
+    def _future_result(self, future: asyncio.Future[object]) -> object:
+        try:
+            return future.result()
+        except Exception as exc:
+            if exc is self._reader_error:
+                self._reader_error_reported = True
+            raise
+
     def _reader_failure(self) -> Exception:
         if self._reader_error is not None:
+            self._reader_error_reported = True
             return self._reader_error
         if self._reader_task is None:
             return AppServerClosedError("app-server client is not started")
         task_exception = self._reader_task.exception()
         if task_exception is not None:
             if isinstance(task_exception, Exception):
+                self._reader_error_reported = True
                 return task_exception
             return AppServerClosedError(f"app-server reader failed: {task_exception}")
         return AppServerClosedError("app-server reader stopped unexpectedly")
@@ -247,7 +301,15 @@ class _AsyncSession:
         if future is None:
             return
         if "error" in message:
-            parsed = protocol.JSONRPCError.model_validate(message)
+            try:
+                parsed = protocol.JSONRPCError.model_validate(message)
+            except ValidationError as exc:
+                error = AppServerProtocolError(
+                    f"Malformed app-server error response envelope for request {pending_id!r}"
+                )
+                error.__cause__ = exc
+                future.set_exception(error)
+                return
             future.set_exception(
                 AppServerRpcError(
                     parsed.error.code,
@@ -256,14 +318,22 @@ class _AsyncSession:
                 )
             )
             return
-        response = protocol.JSONRPCResponse.model_validate(message)
+        try:
+            response = protocol.JSONRPCResponse.model_validate(message)
+        except ValidationError as exc:
+            error = AppServerProtocolError(
+                f"Malformed app-server response envelope for request {pending_id!r}"
+            )
+            error.__cause__ = exc
+            future.set_exception(error)
+            return
         future.set_result(response.result)
 
     async def _broadcast_notification(self, message: JsonObject) -> None:
         notification = parse_notification(message, strict=self._strict_protocol)
         notification_method = method_name(notification)
         for sink in list(self._notification_sinks):
-            if sink.matches(notification_method):
+            if sink.matches(notification_method, notification):
                 await sink.queue.put(notification)
 
     async def _handle_server_request(self, message: JsonObject) -> None:
@@ -285,8 +355,10 @@ class _AsyncSession:
         try:
             request_value: BaseModel = request
             if registered.request_model is not None:
-                request_value = registered.request_model.model_validate(
-                    request.model_dump(mode="json", by_alias=True)
+                request_value = _adapt_server_request_model(
+                    request,
+                    registered.request_model,
+                    method=request_method,
                 )
             result = registered.handler(request_value)
             if inspect.isawaitable(result):
@@ -297,10 +369,7 @@ class _AsyncSession:
             await self._transport.send(
                 {
                     "id": request_id_value,
-                    "error": {
-                        "code": -32000,
-                        "message": str(exc),
-                    },
+                    "error": _jsonrpc_error_from_exception(exc),
                 }
             )
 
@@ -313,3 +382,35 @@ class _AsyncSession:
     def _remove_sink(self, sink: _NotificationSink) -> None:
         if sink in self._notification_sinks:
             self._notification_sinks.remove(sink)
+
+
+def _jsonrpc_error_from_exception(exc: Exception) -> JsonObject:
+    if isinstance(exc, AppServerRpcError):
+        return {"code": exc.code, "message": exc.message, "data": exc.data}
+    message = str(exc)
+    summary = type(exc).__name__ if not message else f"{type(exc).__name__}: {message}"
+    return {
+        "code": -32000,
+        "message": summary,
+        "data": {
+            "exceptionType": type(exc).__name__,
+            "exceptionModule": type(exc).__module__,
+            "exceptionMessage": message,
+        },
+    }
+
+
+def _adapt_server_request_model[RequestModelT: BaseModel](
+    request: BaseModel,
+    request_model: type[RequestModelT],
+    *,
+    method: str,
+) -> RequestModelT:
+    if isinstance(request, request_model):
+        return request
+    try:
+        return request_model.model_validate(serialize_value(request))
+    except ValidationError as exc:
+        raise AppServerProtocolError(
+            f"Failed to parse app-server request {method!r} as {request_model.__name__}"
+        ) from exc

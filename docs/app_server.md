@@ -4,10 +4,12 @@
 
 Use it when you need a deeper integration than `Codex` provides: persistent connections, typed protocol notifications, or server-driven requests.
 
+Import the raw app-server surface from `codex.app_server`, not from the top-level `codex` facade.
+
 ## Happy path
 
 ```python
-from codex import AppServerClient, AppServerClientInfo, AppServerInitializeOptions
+from codex.app_server import AppServerClient, AppServerClientInfo, AppServerInitializeOptions
 
 initialize_options = AppServerInitializeOptions(
     client_info=AppServerClientInfo(
@@ -37,10 +39,22 @@ Async equivalents are also available:
 
 `AsyncAppServerClient.connect_stdio()` and `connect_websocket()` return an already started client.
 
+If you use websocket transport, install the optional extra:
+
+```bash
+pip install "codex-python[websocket]"
+```
+
+`connect_websocket()` also accepts `AppServerWebSocketOptions` for explicit bearer auth,
+headers, subprotocols, and connection timeouts.
+
+A minimal websocket example is available at
+[`examples/app_server_websocket_conversation.py`](../examples/app_server_websocket_conversation.py).
+
 ## Starting and resuming threads
 
 ```python
-from codex import AppServerClient
+from codex.app_server import AppServerClient
 
 with AppServerClient.connect_stdio() as client:
     new_thread = client.start_thread()
@@ -56,7 +70,7 @@ Thread objects expose lifecycle methods such as `refresh()`, `fork()`, `archive(
 Use `run()` when you want to consume protocol-native notifications:
 
 ```python
-from codex import AppServerClient
+from codex.app_server import AppServerClient
 from codex.protocol import types as protocol
 
 with AppServerClient.connect_stdio() as client:
@@ -85,7 +99,7 @@ Use these helpers when the turn is expected to return structured JSON:
 ```python
 from pydantic import BaseModel
 
-from codex import AppServerClient
+from codex.app_server import AppServerClient, AppServerTurnOptions
 
 
 class Summary(BaseModel):
@@ -101,14 +115,20 @@ schema = {
 
 with AppServerClient.connect_stdio() as client:
     thread = client.start_thread()
-    payload = thread.run_json("Return JSON matching the schema", outputSchema=schema)
-    payload_from_model = thread.run_json("Return JSON matching the schema", outputSchema=Summary)
+    payload = thread.run_json(
+        "Return JSON matching the schema",
+        AppServerTurnOptions(output_schema=schema),
+    )
+    payload_from_model = thread.run_json(
+        "Return JSON matching the schema",
+        AppServerTurnOptions(output_schema=Summary),
+    )
     result = thread.run_model("Return JSON matching the schema", Summary)
 ```
 
 `run_model()` validates the final assistant message text with `pydantic` and uses the model class as
 the output schema by default. If you want JSON back without validation, you can also pass a
-Pydantic model class directly to `outputSchema`.
+Pydantic model class directly to `AppServerTurnOptions(output_schema=...)`.
 
 ## Working with `TurnStream`
 
@@ -135,10 +155,12 @@ with AppServerClient.connect_stdio() as client:
 
 ## Sync and async usage
 
-The sync and async APIs intentionally mirror each other:
+The sync client mirrors the stable blocking workflow and the current stable typed RPC domains such as `client.models`, `client.account`, `client.config`, and `client.command`.
+
+The async client remains the canonical surface for lower-level extensibility and future protocol expansion:
 
 ```python
-from codex import AsyncAppServerClient
+from codex.app_server import AsyncAppServerClient
 
 
 async def main() -> None:
@@ -150,5 +172,7 @@ async def main() -> None:
     finally:
         await client.close()
 ```
+
+For unsupported or experimental methods, use `client.rpc` on either client instead of expecting full sync/async wrapper parity for every future protocol addition.
 
 For lower-level RPC access, typed request handlers, and protocol-native event iteration patterns, see [app_server_advanced.md](app_server_advanced.md).

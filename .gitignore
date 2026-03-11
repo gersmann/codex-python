@@ -67,5 +67,4 @@ crates/**/Cargo.lock
 .beads/
 codex/vendor/**
 !codex/vendor/.gitkeep
-/.desloppify/config.json
-/.desloppify/config.json.bak
+/.desloppify

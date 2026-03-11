@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from codex import AppServerClient, AppServerClientInfo, AppServerInitializeOptions
+from codex.app_server import AppServerClient, AppServerClientInfo, AppServerInitializeOptions
 from codex.protocol import types as protocol
 
 
@@ -26,6 +26,7 @@ def main() -> None:
     )
 
     with AppServerClient.connect_stdio(initialize_options=initialize_options) as client:
+        # `request_model` preserves the typed request contract for `handle_tool_call`.
         client.on_request(
             "item/tool/call",
             handle_tool_call,

@@ -6,6 +6,7 @@ import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 
+from codex._file_utils import atomic_write_text
 from codex.output_schema import OutputSchemaInput, normalize_output_schema
 
 
@@ -27,7 +28,7 @@ def create_output_schema_file(schema: OutputSchemaInput | None) -> OutputSchemaF
     schema_dir = Path(tempfile.mkdtemp(prefix="codex-output-schema-"))
     schema_path = schema_dir / "schema.json"
     try:
-        schema_path.write_text(json.dumps(normalized_schema), encoding="utf-8")
+        atomic_write_text(schema_path, json.dumps(normalized_schema))
     except Exception:
         shutil.rmtree(schema_dir, ignore_errors=True)
         raise

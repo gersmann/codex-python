@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from codex import AppServerClient, AppServerClientInfo, AppServerInitializeOptions
+from codex.app_server import AppServerClient, AppServerClientInfo, AppServerInitializeOptions
 from codex.protocol import types as protocol
 
 
