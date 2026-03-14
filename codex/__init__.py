@@ -14,7 +14,7 @@ from codex.options import (
     TurnOptions,
 )
 
-__version__ = "1.0.1"
+__version__ = "1.114.0"
 
 __all__ = [
     "Codex",
