@@ -244,6 +244,7 @@ jobs:
         shell: bash
         env:
           CODEX_BINARY_RELEASE_TAG: ${{ vars.CODEX_BINARY_RELEASE_TAG || 'latest' }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
           IFS=',' read -r -a targets <<< "${{ matrix.codex-targets }}"

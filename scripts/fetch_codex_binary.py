@@ -18,6 +18,7 @@ from urllib.parse import urlparse
 from urllib.request import Request, urlopen
 
 GITHUB_API = "https://api.github.com"
+GITHUB_WEB = "https://github.com"
 USER_AGENT = "codex-python-binary-fetcher"
 ZSTD_TIMEOUT_SECONDS = 300
 
@@ -59,10 +60,17 @@ def parse_args() -> argparse.Namespace:
 def main() -> int:
     args = parse_args()
     token = _read_optional_env("GITHUB_TOKEN")
-    release_assets = list_release_assets(args.repo, args.release_tag, token)
     dest_root = Path(args.dest_root).resolve()
     targets: list[str] = list(dict.fromkeys(args.target_triple))
+    resolved_tag = resolve_release_tag(args.repo, args.release_tag, token)
+
+    release_assets: list[ReleaseAsset] | None = None
     for target in targets:
+        if try_install_direct_asset(args.repo, resolved_tag, target, dest_root, token):
+            continue
+
+        if release_assets is None:
+            release_assets = list_release_assets(args.repo, resolved_tag, token)
         asset = select_asset_for_target(release_assets, target)
         if asset is None:
             raise RuntimeError(
@@ -82,10 +90,7 @@ def _read_optional_env(name: str) -> str | None:
 
 
 def list_release_assets(repo: str, release_tag: str, token: str | None) -> list[ReleaseAsset]:
-    if release_tag == "latest":
-        url = f"{GITHUB_API}/repos/{repo}/releases/latest"
-    else:
-        url = f"{GITHUB_API}/repos/{repo}/releases/tags/{release_tag}"
+    url = f"{GITHUB_API}/repos/{repo}/releases/tags/{release_tag}"
     payload = github_json(url, token)
     assets = payload.get("assets")
     if not isinstance(assets, list):
@@ -101,9 +106,21 @@ def list_release_assets(repo: str, release_tag: str, token: str | None) -> list[
     return release_assets
 
 
-def select_asset_for_target(assets: list[ReleaseAsset], target: str) -> ReleaseAsset | None:
+def resolve_release_tag(repo: str, release_tag: str, token: str | None) -> str:
+    if release_tag != "latest":
+        return release_tag
+
+    url = f"{GITHUB_WEB}/{repo}/releases/latest"
+    final_url = github_redirect_url(url, token)
+    marker = "/releases/tag/"
+    if marker not in final_url:
+        raise RuntimeError(f"Could not resolve latest release tag from redirect URL: {final_url}")
+    return final_url.split(marker, 1)[1]
+
+
+def candidate_asset_names(target: str) -> list[str]:
     prefix = f"codex-{target}"
-    exact_candidates = [
+    return [
         f"{prefix}.tar.gz",
         f"{prefix}.zip",
         f"{prefix}.exe",
@@ -111,6 +128,11 @@ def select_asset_for_target(assets: list[ReleaseAsset], target: str) -> ReleaseA
         f"{prefix}.zst",
         f"{prefix}.exe.zst",
     ]
+
+
+def select_asset_for_target(assets: list[ReleaseAsset], target: str) -> ReleaseAsset | None:
+    prefix = f"codex-{target}"
+    exact_candidates = candidate_asset_names(target)
     by_name = {asset.name: asset for asset in assets}
     for candidate in exact_candidates:
         if candidate in by_name:
@@ -121,6 +143,28 @@ def select_asset_for_target(assets: list[ReleaseAsset], target: str) -> ReleaseA
     if matching:
         return matching[0]
     return None
+
+
+def try_install_direct_asset(
+    repo: str,
+    release_tag: str,
+    target: str,
+    dest_root: Path,
+    token: str | None,
+) -> bool:
+    for asset_name in candidate_asset_names(target):
+        asset = ReleaseAsset(
+            name=asset_name,
+            url=f"{GITHUB_WEB}/{repo}/releases/download/{release_tag}/{asset_name}",
+        )
+        try:
+            install_asset(asset, target, dest_root, token)
+        except RuntimeError as exc:
+            if _is_not_found_download_error(exc):
+                continue
+            raise
+        return True
+    return False
 
 
 def install_asset(asset: ReleaseAsset, target: str, dest_root: Path, token: str | None) -> None:
@@ -227,6 +271,24 @@ def github_json(url: str, token: str | None) -> dict[str, Any]:
     return data
 
 
+def github_redirect_url(url: str, token: str | None) -> str:
+    _require_https_url(url)
+    headers = {"User-Agent": USER_AGENT}
+    if token is not None:
+        headers["Authorization"] = f"Bearer {token}"
+    request = Request(url, headers=headers)
+    try:
+        with urlopen(request) as response:  # nosec B310
+            return response.geturl()
+    except HTTPError as exc:
+        body = exc.read().decode("utf-8", errors="replace")
+        raise RuntimeError(
+            f"GitHub redirect request failed ({exc.code}) for {url}: {body}"
+        ) from exc
+    except URLError as exc:
+        raise RuntimeError(f"Network error while requesting {url}: {exc}") from exc
+
+
 def download(url: str, destination: Path, token: str | None) -> None:
     _require_https_url(url)
     headers = {"User-Agent": USER_AGENT}
@@ -247,6 +309,10 @@ def _require_https_url(url: str) -> None:
     parsed = urlparse(url)
     if parsed.scheme != "https" or parsed.netloc == "":
         raise RuntimeError(f"Refusing to fetch non-HTTPS URL: {url}")
+
+
+def _is_not_found_download_error(exc: RuntimeError) -> bool:
+    return str(exc).startswith("Download failed (404)")
 
 
 if __name__ == "__main__":

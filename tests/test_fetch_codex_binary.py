@@ -50,6 +50,77 @@ def test_select_asset_for_target_prefers_exact_names() -> None:
     )
 
 
+def test_resolve_release_tag_uses_latest_redirect(monkeypatch: pytest.MonkeyPatch) -> None:
+    module = _load_script_module("fetch_codex_binary", "scripts/fetch_codex_binary.py")
+
+    def fake_redirect(url: str, token: str | None) -> str:
+        assert url == "https://github.com/openai/codex/releases/latest"
+        assert token == "secret"
+        return "https://github.com/openai/codex/releases/tag/rust-v1.2.3"
+
+    monkeypatch.setattr(module, "github_redirect_url", fake_redirect)
+
+    assert module.resolve_release_tag("openai/codex", "latest", "secret") == "rust-v1.2.3"
+
+
+def test_try_install_direct_asset_skips_missing_candidates(monkeypatch: pytest.MonkeyPatch) -> None:
+    module = _load_script_module("fetch_codex_binary", "scripts/fetch_codex_binary.py")
+    attempted: list[str] = []
+
+    def fake_install_asset(
+        asset: object,
+        target: str,
+        dest_root: Path,
+        token: str | None,
+    ) -> None:
+        _ = (target, dest_root, token)
+        attempted.append(asset.name)
+        if asset.name.endswith(".tar.gz"):
+            raise RuntimeError(f"Download failed (404) for {asset.url}: missing")
+
+    monkeypatch.setattr(module, "install_asset", fake_install_asset)
+
+    installed = module.try_install_direct_asset(
+        "openai/codex",
+        "rust-v1.2.3",
+        "x86_64-unknown-linux-musl",
+        Path("/tmp/vendor"),
+        None,
+    )
+
+    assert installed is True
+    assert attempted == [
+        "codex-x86_64-unknown-linux-musl.tar.gz",
+        "codex-x86_64-unknown-linux-musl.zip",
+    ]
+
+
+def test_try_install_direct_asset_propagates_non_404_errors(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    module = _load_script_module("fetch_codex_binary", "scripts/fetch_codex_binary.py")
+
+    def fake_install_asset(
+        asset: object,
+        target: str,
+        dest_root: Path,
+        token: str | None,
+    ) -> None:
+        _ = (asset, target, dest_root, token)
+        raise RuntimeError("Download failed (403) for https://example.test: rate limit")
+
+    monkeypatch.setattr(module, "install_asset", fake_install_asset)
+
+    with pytest.raises(RuntimeError, match="Download failed \\(403\\)"):
+        module.try_install_direct_asset(
+            "openai/codex",
+            "rust-v1.2.3",
+            "x86_64-unknown-linux-musl",
+            Path("/tmp/vendor"),
+            None,
+        )
+
+
 def test_select_asset_for_target_falls_back_to_sorted_prefix_match() -> None:
     module = _load_script_module("fetch_codex_binary", "scripts/fetch_codex_binary.py")
     assets = [
