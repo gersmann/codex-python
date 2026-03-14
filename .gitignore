@@ -51,6 +51,7 @@ codex-proj/
 
 # Ignore new markdown files by default
 *.md
+!docs/*.md
 
 # Rust build outputs
 target/
@@ -66,3 +67,4 @@ crates/**/Cargo.lock
 .beads/
 codex/vendor/**
 !codex/vendor/.gitkeep
+/.desloppify

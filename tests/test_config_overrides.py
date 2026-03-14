@@ -4,10 +4,15 @@ import shutil
 from pathlib import Path
 
 import pytest
+from pydantic import BaseModel
 
 from codex._binary import bundled_codex_path, resolve_target_triple
 from codex.errors import CodexExecError
 from codex.output_schema_file import create_output_schema_file
+
+
+class AnswerSchema(BaseModel):
+    answer: str
 
 
 def test_resolve_target_triple() -> None:
@@ -52,6 +57,17 @@ def test_output_schema_file_lifecycle() -> None:
     assert not schema_path.exists()
 
 
-def test_output_schema_requires_plain_object() -> None:
-    with pytest.raises(ValueError, match="plain JSON object"):
+def test_output_schema_file_accepts_pydantic_model_class() -> None:
+    output_schema = create_output_schema_file(AnswerSchema)
+
+    assert output_schema.schema_path is not None
+    schema_path = Path(output_schema.schema_path)
+    assert schema_path.exists()
+    assert schema_path.read_text(encoding="utf-8")
+    output_schema.cleanup()
+    assert not schema_path.exists()
+
+
+def test_output_schema_requires_json_object_or_pydantic_model_class() -> None:
+    with pytest.raises(ValueError, match="JSON object or a Pydantic model class"):
         create_output_schema_file(["not", "an", "object"])

@@ -1,170 +1,313 @@
+"""Thread abstractions for the simple `Codex` client."""
+
 from __future__ import annotations
 
-import json
-from collections.abc import Iterator, Mapping, Sequence
-from dataclasses import dataclass
-from typing import Any, Literal, Protocol, TypedDict, cast
+import threading
+import time
+from collections.abc import Callable, Mapping, Sequence
+from typing import TYPE_CHECKING, Any, TypeVar
 
-from codex.errors import CodexParseError, ThreadRunError
-from codex.events import ThreadEvent, Usage
-from codex.exec import CodexExecArgs
-from codex.items import ThreadItem
-from codex.options import CodexOptions, ThreadOptions, TurnOptions
-from codex.output_schema_file import create_output_schema_file
+from pydantic import BaseModel
+
+from codex._turn_options import with_model_output_schema
+from codex.app_server.errors import AppServerTurnError
+from codex.app_server.options import (
+    AppServerThreadResumeOptions,
+    AppServerThreadStartOptions,
+    AppServerTurnOptions,
+)
+from codex.errors import ThreadRunError
+from codex.options import (
+    CancelSignal,
+    SupportsAborted,
+    SupportsIsSet,
+    ThreadResumeOptions,
+    ThreadStartOptions,
+    TurnOptions,
+)
+from codex.protocol import types as protocol
+
+if TYPE_CHECKING:
+    from codex.app_server import AppServerClient, AppServerThread, TurnStream
+
+_ModelT = TypeVar("_ModelT", bound=BaseModel)
+type InputItem = (
+    str
+    | Mapping[str, Any]
+    | protocol.UserInput
+    | protocol.TextUserInput
+    | protocol.ImageUserInput
+    | protocol.LocalImageUserInput
+    | protocol.SkillUserInput
+    | protocol.MentionUserInput
+)
+type Input = InputItem | Sequence[InputItem]
 
 
-class ExecRunner(Protocol):
-    def run(self, args: CodexExecArgs) -> Iterator[str]: ...
+class CodexTurnStream:
+    """Iterate over app-server notifications and aggregate final run state."""
 
+    def __init__(
+        self,
+        stream: TurnStream,
+        *,
+        thread_id: str,
+        signal: CancelSignal | None = None,
+    ) -> None:
+        self._stream = stream
+        self._thread_id = thread_id
+        self._closed = False
+        self._interrupt_requested = False
+        self._watcher = _SignalWatcher(self, signal)
 
-class TextInput(TypedDict):
-    type: Literal["text"]
-    text: str
+    def __iter__(self) -> CodexTurnStream:
+        return self
 
+    def __next__(self) -> BaseModel:
+        notification: BaseModel = next(self._stream)
+        if self.final_turn is not None:
+            self._watcher.stop()
+        return notification
 
-class LocalImageInput(TypedDict):
-    type: Literal["local_image"]
-    path: str
+    @property
+    def turn_id(self) -> str:
+        return self._stream.initial_turn.id
 
+    @property
+    def thread_id(self) -> str:
+        return self._thread_id
 
-UserInput = TextInput | LocalImageInput
-Input = str | Sequence[UserInput]
+    @property
+    def final_text(self) -> str:
+        return self._stream.final_text
 
+    @property
+    def usage(self) -> protocol.ThreadTokenUsage | None:
+        return self._stream.usage
 
-@dataclass(slots=True, frozen=True)
-class RunResult:
-    items: list[ThreadItem]
-    final_response: str
-    usage: Usage | None
+    @property
+    def items(self) -> list[protocol.ThreadItem]:
+        return self._stream.items
 
+    @property
+    def text_deltas(self) -> tuple[str, ...]:
+        return self._stream.text_deltas
 
-@dataclass(slots=True, frozen=True)
-class RunStreamedResult:
-    events: Iterator[ThreadEvent]
+    @property
+    def final_turn(self) -> protocol.Turn | None:
+        return self._stream.final_turn
+
+    def wait(self) -> CodexTurnStream:
+        try:
+            self._stream.wait()
+            self._stream.raise_for_terminal_status()
+        except AppServerTurnError as exc:
+            raise ThreadRunError(str(exc), turn=exc.turn) from exc
+        finally:
+            self._watcher.stop()
+        return self
+
+    def collect(self) -> CodexTurnStream:
+        return self.wait()
+
+    def final_json(self) -> object:
+        return self._stream.final_json()
+
+    def final_model(self, model_type: type[_ModelT]) -> _ModelT:
+        return self._stream.final_model(model_type)
+
+    def close(self) -> None:
+        if self._closed:
+            return
+        self._closed = True
+        self._watcher.stop()
+        self._stream.close()
+
+    def _interrupt(self) -> None:
+        if self._interrupt_requested or self.final_turn is not None:
+            return
+        self._interrupt_requested = True
+        self._stream.interrupt()
 
 
 class Thread:
+    """A simple conversation thread for the `Codex` client."""
+
     def __init__(
         self,
-        exec_runner: ExecRunner,
-        options: CodexOptions,
-        thread_options: ThreadOptions,
+        client_factory: Callable[[], AppServerClient],
+        *,
+        start_options: ThreadStartOptions | AppServerThreadStartOptions | None = None,
+        resume_options: ThreadResumeOptions | AppServerThreadResumeOptions | None = None,
         thread_id: str | None = None,
     ) -> None:
-        self._exec = exec_runner
-        self._options = options
-        self._thread_options = thread_options
+        self._client_factory = client_factory
+        self._start_options = start_options
+        self._resume_options = resume_options
         self._id = thread_id
+        self._thread: AppServerThread | None = None
 
     @property
     def id(self) -> str | None:
-        return self._id
+        if self._thread is None:
+            return self._id
+        return self._thread.id
 
-    def run_streamed(
-        self, input: Input, turn_options: TurnOptions | None = None
-    ) -> RunStreamedResult:
-        return RunStreamedResult(events=self._run_streamed_internal(input, turn_options))
+    def run(
+        self,
+        input: Input,
+        turn_options: TurnOptions | AppServerTurnOptions | None = None,
+        *,
+        signal: CancelSignal | None = None,
+    ) -> CodexTurnStream:
+        """Start a streamed turn on this thread.
 
-    def _run_streamed_internal(
-        self, input: Input, turn_options: TurnOptions | None = None
-    ) -> Iterator[ThreadEvent]:
+        Raises:
+            ThreadRunError: pre-run interruption via `signal`.
+        """
         effective_turn_options = turn_options or TurnOptions()
-        schema_file = create_output_schema_file(effective_turn_options.output_schema)
-        prompt, images = normalize_input(input)
-        options = self._thread_options
-        exec_args = CodexExecArgs(
-            input=prompt,
-            base_url=self._options.base_url,
-            api_key=self._options.api_key,
-            thread_id=self._id,
-            images=images,
-            model=options.model,
-            sandbox_mode=options.sandbox_mode,
-            working_directory=options.working_directory,
-            additional_directories=options.additional_directories,
-            skip_git_repo_check=options.skip_git_repo_check,
-            output_schema_file=schema_file.schema_path,
-            model_reasoning_effort=options.model_reasoning_effort,
-            signal=effective_turn_options.signal,
-            network_access_enabled=options.network_access_enabled,
-            web_search_mode=options.web_search_mode,
-            web_search_enabled=options.web_search_enabled,
-            approval_policy=options.approval_policy,
+        if _is_signal_aborted(signal):
+            raise ThreadRunError("Turn aborted: interrupted")
+        thread = self._ensure_thread()
+        stream = thread.run(input, _to_app_server_turn_options(effective_turn_options))
+        return CodexTurnStream(stream, thread_id=thread.id, signal=signal)
+
+    def run_text(
+        self,
+        input: Input,
+        turn_options: TurnOptions | AppServerTurnOptions | None = None,
+        *,
+        signal: CancelSignal | None = None,
+    ) -> str:
+        """Run a turn and return final assistant text.
+
+        Raises:
+            ThreadRunError: terminal turn status is failed/interrupted.
+        """
+        stream = self.run(input, turn_options, signal=signal)
+        stream.wait()
+        return stream.final_text
+
+    def run_json(
+        self,
+        input: Input,
+        turn_options: TurnOptions | AppServerTurnOptions | None = None,
+        *,
+        signal: CancelSignal | None = None,
+    ) -> object:
+        """Run a turn and parse the final assistant message as JSON.
+
+        Raises:
+            ThreadRunError: terminal turn status is failed/interrupted.
+            ValueError: no final assistant message or invalid JSON payload.
+        """
+        stream = self.run(input, turn_options, signal=signal)
+        stream.wait()
+        return stream.final_json()
+
+    def run_model(
+        self,
+        input: Input,
+        model_type: type[_ModelT],
+        turn_options: TurnOptions | AppServerTurnOptions | None = None,
+        *,
+        signal: CancelSignal | None = None,
+    ) -> _ModelT:
+        """Run a turn and validate final assistant output with `model_type`.
+
+        Raises:
+            ThreadRunError: terminal turn status is failed/interrupted.
+            ValueError: no final assistant message is available.
+            pydantic.ValidationError: final message does not match `model_type`.
+        """
+        stream = self.run(
+            input,
+            with_model_output_schema(
+                None if turn_options is None else _to_app_server_turn_options(turn_options),
+                model_type,
+                owner="Thread.run_model()",
+            ),
+            signal=signal,
         )
-        try:
-            for item in self._exec.run(exec_args):
-                parsed = parse_thread_event(item)
-                if parsed["type"] == "thread.started":
-                    self._id = parsed["thread_id"]
-                yield parsed
-        finally:
-            schema_file.cleanup()
+        stream.wait()
+        return stream.final_model(model_type)
 
-    def run(self, input: Input, turn_options: TurnOptions | None = None) -> RunResult:
-        generator = self._run_streamed_internal(input, turn_options)
-        items: list[ThreadItem] = []
-        final_response = ""
-        usage: Usage | None = None
-        turn_failure: str | None = None
-        for event in generator:
-            event_dict = cast(dict[str, Any], event)
-            event_type = event_dict.get("type")
-            if event_type == "item.completed":
-                item = event_dict.get("item")
-                if isinstance(item, dict):
-                    if item.get("type") == "agent_message":
-                        text = item.get("text")
-                        if isinstance(text, str):
-                            final_response = text
-                    items.append(cast(ThreadItem, item))
-            elif event_type == "turn.completed":
-                usage_value = event_dict.get("usage")
-                if isinstance(usage_value, dict):
-                    usage = cast(Usage, usage_value)
-            elif event_type == "turn.failed":
-                error_value = event_dict.get("error")
-                if isinstance(error_value, dict):
-                    message = error_value.get("message")
-                    if isinstance(message, str):
-                        turn_failure = message
-                        break
-        if turn_failure is not None:
-            raise ThreadRunError(turn_failure)
-        return RunResult(items=items, final_response=final_response, usage=usage)
+    def _ensure_thread(self) -> AppServerThread:
+        if self._thread is not None:
+            return self._thread
 
-
-def parse_thread_event(raw_line: str) -> ThreadEvent:
-    try:
-        parsed = json.loads(raw_line)
-    except json.JSONDecodeError as exc:
-        raise CodexParseError(f"Failed to parse item: {raw_line}") from exc
-
-    if not isinstance(parsed, Mapping):
-        raise CodexParseError(f"Expected object event, received {type(parsed).__name__}")
-    event_type = parsed.get("type")
-    if not isinstance(event_type, str):
-        raise CodexParseError("Event is missing string field 'type'")
-    return cast(ThreadEvent, dict(parsed))
-
-
-def normalize_input(input_value: Input) -> tuple[str, list[str]]:
-    if isinstance(input_value, str):
-        return input_value, []
-
-    prompt_parts: list[str] = []
-    images: list[str] = []
-    for item in input_value:
-        item_type = item.get("type")
-        if item_type == "text":
-            text = item.get("text")
-            if not isinstance(text, str):
-                raise ValueError("text input item requires string field 'text'")
-            prompt_parts.append(text)
-        elif item_type == "local_image":
-            path = item.get("path")
-            if not isinstance(path, str):
-                raise ValueError("local_image input item requires string field 'path'")
-            images.append(path)
+        client = self._client_factory()
+        if self._id is None:
+            self._thread = client.start_thread(_to_app_server_start_options(self._start_options))
         else:
-            raise ValueError(f"Unsupported input item type: {item_type}")
-    return "\n\n".join(prompt_parts), images
+            self._thread = client.resume_thread(
+                self._id,
+                _to_app_server_resume_options(self._resume_options),
+            )
+        self._id = self._thread.id
+        return self._thread
+
+
+def _is_signal_aborted(signal: CancelSignal | None) -> bool:
+    if signal is None:
+        return False
+    if isinstance(signal, SupportsAborted):
+        return signal.aborted
+    if isinstance(signal, SupportsIsSet):
+        return bool(signal.is_set())
+    raise TypeError("signal must expose `aborted` or `is_set()`")
+
+
+def _to_app_server_start_options(
+    options: ThreadStartOptions | AppServerThreadStartOptions | None,
+) -> AppServerThreadStartOptions | None:
+    if options is None:
+        return None
+    if isinstance(options, ThreadStartOptions):
+        return options.to_app_server_options()
+    return options
+
+
+def _to_app_server_resume_options(
+    options: ThreadResumeOptions | AppServerThreadResumeOptions | None,
+) -> AppServerThreadResumeOptions | None:
+    if options is None:
+        return None
+    if isinstance(options, ThreadResumeOptions):
+        return options.to_app_server_options()
+    return options
+
+
+def _to_app_server_turn_options(
+    options: TurnOptions | AppServerTurnOptions,
+) -> AppServerTurnOptions:
+    if isinstance(options, TurnOptions):
+        return options.to_app_server_options()
+    return options
+
+
+class _SignalWatcher:
+    def __init__(self, stream: CodexTurnStream, signal: CancelSignal | None) -> None:
+        self._stream = stream
+        self._signal = signal
+        self._stop = threading.Event()
+        self._thread: threading.Thread | None = None
+        if signal is not None:
+            self._thread = threading.Thread(target=self._run, name="codex-turn-signal", daemon=True)
+            self._thread.start()
+
+    def stop(self) -> None:
+        self._stop.set()
+        thread = self._thread
+        if thread is not None and thread.is_alive() and thread is not threading.current_thread():
+            thread.join(timeout=0.1)
+
+    def _run(self) -> None:
+        while not self._stop.is_set():
+            if _is_signal_aborted(self._signal):
+                try:
+                    self._stream._interrupt()
+                finally:
+                    self._stop.set()
+                return
+            time.sleep(0.05)

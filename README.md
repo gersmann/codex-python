@@ -2,10 +2,15 @@
 
 Python SDK for Codex with bundled `codex` binaries inside platform wheels.
 
-The SDK mirrors the TypeScript SDK behavior:
-- Spawns `codex exec --experimental-json`
-- Streams JSONL events
-- Supports thread resume, structured output schemas, images, sandbox/model options
+This package exposes two supported APIs:
+
+- `Codex`: a simple, local convenience interface backed by a private stdio app-server session
+- `AppServerClient`: a richer app-server client for thread management, streaming events, approvals, and typed protocol access
+
+Canonical import paths:
+
+- use `from codex import ...` for the high-level `Codex` facade
+- use `from codex.app_server import ...` for the raw app-server client and app-server option types
 
 ## Install
 
@@ -13,36 +18,66 @@ The SDK mirrors the TypeScript SDK behavior:
 pip install codex-python
 ```
 
-## Quickstart
+## Which API should I use?
+
+### `Codex`
+
+Use `Codex` when you want the smallest surface area for local automation:
+
+- one private local app-server session per `Codex` instance
+- stateless `run*()` convenience (fresh internal thread per call)
+- stateful thread workflows when needed via `start_thread()` / `resume_thread()`
+- simple request/response usage
+- optional streaming over the exec event stream
+- structured output via `TurnOptions(output_schema=...)`
+
+### `AppServerClient`
+
+Use `AppServerClient` when you want a deeper integration:
+
+- persistent app-server connection
+- thread objects and turn streams
+- protocol-native notifications
+- server-driven requests such as tool callbacks and approvals
+- typed protocol models and raw JSON-RPC access when needed
+
+## Quickstart: `Codex`
 
 ```python
 from codex import Codex
 
 client = Codex()
-thread = client.start_thread()
-
-result = thread.run("Diagnose the failing tests and propose a fix")
-print(result.final_response)
-print(result.items)
+summary = client.run_text("Diagnose the failing tests and propose a fix")
+print(summary)
 ```
 
-## Streaming
+More `Codex` examples: [docs/exec_api.md](docs/exec_api.md)
+
+## Quickstart: `AppServerClient`
 
 ```python
-from codex import Codex
+from codex.app_server import AppServerClient, AppServerClientInfo, AppServerInitializeOptions
 
-client = Codex()
-thread = client.start_thread()
+initialize_options = AppServerInitializeOptions(
+    client_info=AppServerClientInfo(
+        name="my_integration",
+        title="My Integration",
+        version="0.1.0",
+    )
+)
 
-stream = thread.run_streamed("Investigate this bug")
-for event in stream.events:
-    if event["type"] == "item.completed":
-        print(event["item"])
-    elif event["type"] == "turn.completed":
-        print(event["usage"])
+with AppServerClient.connect_stdio(initialize_options=initialize_options) as client:
+    thread = client.start_thread()
+    summary = thread.run_text("Briefly summarize this repository's purpose.")
+    print(summary)
 ```
+
+More app-server examples: [docs/app_server.md](docs/app_server.md)
+For websocket transport, install the optional extra: `pip install "codex-python[websocket]"`.
 
 ## Structured output
+
+### `Codex`
 
 ```python
 from codex import Codex, TurnOptions
@@ -55,60 +90,84 @@ schema = {
 }
 
 client = Codex()
-thread = client.start_thread()
-result = thread.run("Summarize repository status", TurnOptions(output_schema=schema))
-print(result.final_response)
+payload = client.run_json("Summarize repository status", TurnOptions(output_schema=schema))
+print(payload["summary"])
 ```
 
-## Input with local images
+### `AppServerClient`
+
+```python
+from pydantic import BaseModel
+
+from codex.app_server import AppServerClient, AppServerTurnOptions
+
+
+class Summary(BaseModel):
+    summary: str
+
+
+with AppServerClient.connect_stdio() as client:
+    thread = client.start_thread()
+    result = thread.run_model(
+        "Summarize repository status",
+        Summary,
+    )
+    print(result.summary)
+```
+
+`run_model()` uses `Summary` both as the validation model and, by default, as the output schema sent
+to Codex. If you want JSON back without validation, you can also pass the model class directly to
+`output_schema`, for example `thread.run_json(..., AppServerTurnOptions(output_schema=Summary))`.
+
+## Streaming
+
+### `Codex` stream
 
 ```python
 from codex import Codex
+from codex.protocol import types as protocol
 
 client = Codex()
-thread = client.start_thread()
-result = thread.run(
-    [
-        {"type": "text", "text": "Describe these screenshots"},
-        {"type": "local_image", "path": "./ui.png"},
-        {"type": "local_image", "path": "./diagram.jpg"},
-    ]
-)
+stream = client.run("Investigate this bug")
+for event in stream:
+    if isinstance(event, protocol.ItemAgentMessageDeltaNotification):
+        print(event.params.delta, end="", flush=True)
+
+print()
 ```
 
-## Resume a thread
+`Codex.run*()` starts a fresh internal thread for each call. Use
+`start_thread()` or `resume_thread()` when you want later runs to share context.
+
+High-level `Codex` helpers raise `ThreadRunError` on failed or interrupted terminal turns and
+preserve the final turn metadata on the exception for debugging and UI handling.
+
+### App-server stream
 
 ```python
-from codex import Codex
+from codex.app_server import AppServerClient
+from codex.protocol import types as protocol
 
-client = Codex()
-thread = client.resume_thread("thread_123")
-thread.run("Continue from previous context")
+with AppServerClient.connect_stdio() as client:
+    thread = client.start_thread()
+    stream = thread.run("Investigate this bug")
+
+    for event in stream:
+        if isinstance(event, protocol.ItemAgentMessageDeltaNotification):
+            print(event.params.delta, end="", flush=True)
+
+    print()
 ```
 
-## Options
+Advanced app-server usage, including typed stable RPC domains such as `client.models` and the raw `client.rpc` fallback: [docs/app_server_advanced.md](docs/app_server_advanced.md)
 
-- `CodexOptions`: `codex_path_override`, `base_url`, `api_key`, `config`, `env`
-- `ThreadOptions`: `model`, `sandbox_mode`, `working_directory`, `skip_git_repo_check`, `model_reasoning_effort`, `network_access_enabled`, `web_search_mode`, `web_search_enabled`, `approval_policy`, `additional_directories`
-- `TurnOptions`: `output_schema`, `signal`
+## Examples
 
-## Cancellation
-
-```python
-import threading
-
-from codex import Codex, TurnOptions
-
-cancel = threading.Event()
-
-client = Codex()
-thread = client.start_thread()
-stream = thread.run_streamed("Long running task", TurnOptions(signal=cancel))
-
-cancel.set()
-for event in stream.events:
-    print(event)
-```
+- [examples/basic_conversation.py](examples/basic_conversation.py): minimal `Codex` flow
+- [examples/app_server_conversation.py](examples/app_server_conversation.py): minimal app-server flow
+- [examples/app_server_websocket_conversation.py](examples/app_server_websocket_conversation.py): minimal websocket app-server flow
+- [examples/app_server_stream_events.py](examples/app_server_stream_events.py): protocol-native app-server streaming
+- [examples/app_server_tool_handler.py](examples/app_server_tool_handler.py): typed app-server request handling
 
 ## Bundled binary behavior
 
@@ -116,10 +175,13 @@ By default, the SDK resolves the bundled binary at:
 
 `codex/vendor/<target-triple>/codex/{codex|codex.exe}`
 
-If the bundled binary is not present (for example in a source checkout), the SDK falls back to
+If the bundled binary is not present, for example in a source checkout, the SDK falls back to
 `codex` on `PATH`.
 
-You can always override with `CodexOptions(codex_path_override=...)`.
+You can override the executable path with:
+
+- `CodexOptions(codex_path_override=...)`
+- `codex.app_server.AppServerProcessOptions(codex_path_override=...)`
 
 ## Development
 
@@ -127,6 +189,9 @@ You can always override with `CodexOptions(codex_path_override=...)`.
 make lint
 make test
 ```
+
+`make test` emits a terminal coverage report, writes `coverage.xml`, and enforces the repository
+coverage gate.
 
 If you want to test vendored-binary behavior locally, fetch binaries into `codex/vendor`:
 
