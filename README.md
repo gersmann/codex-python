@@ -91,6 +91,35 @@ with AppServerClient.connect_stdio(initialize_options=initialize_options) as cli
 More app-server examples: [docs/app_server.md](docs/app_server.md)
 For websocket transport, install the optional extra: `pip install "codex-python[websocket]"`.
 
+## Dynamic tools
+
+Decorator-driven dynamic tools are available on both SDK surfaces.
+
+### `Codex`
+
+```python
+from codex import Codex, dynamic_tool
+
+
+@dynamic_tool
+def lookup_ticket(id: str) -> str:
+    """Look up a support ticket by id."""
+    return f"Ticket {id}: Login requests time out in eu-west-1."
+
+
+client = Codex()
+summary = client.run_text(
+    "Use the lookup_ticket dynamic tool for ticket 123 and summarize the result.",
+    tools=[lookup_ticket],
+)
+print(summary)
+```
+
+### `AppServerClient`
+
+For a complete app-server example using the same decorator-driven flow, see
+[examples/app_server_dynamic_tool.py](examples/app_server_dynamic_tool.py).
+
 ## Structured output
 
 ### `Codex`
@@ -180,10 +209,12 @@ Advanced app-server usage, including typed stable RPC domains such as `client.mo
 ## Examples
 
 - [examples/basic_conversation.py](examples/basic_conversation.py): minimal `Codex` flow
+- [examples/basic_dynamic_tool.py](examples/basic_dynamic_tool.py): high-level `Codex` dynamic tool flow
 - [examples/app_server_conversation.py](examples/app_server_conversation.py): minimal app-server flow
 - [examples/app_server_websocket_conversation.py](examples/app_server_websocket_conversation.py): minimal websocket app-server flow
 - [examples/app_server_stream_events.py](examples/app_server_stream_events.py): protocol-native app-server streaming
 - [examples/app_server_tool_handler.py](examples/app_server_tool_handler.py): typed app-server request handling
+- [examples/app_server_dynamic_tool.py](examples/app_server_dynamic_tool.py): decorator-driven dynamic tool registration
 
 ## Bundled binary behavior
 

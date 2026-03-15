@@ -7,7 +7,7 @@ from collections.abc import Callable, Mapping
 from pathlib import Path
 
 from codex._binary import BundledCodexNotFoundError
-from codex._config_types import CodexConfigObject, CodexConfigValue
+from codex._config_types import CodexConfig, CodexConfigObject, CodexConfigValue
 
 INTERNAL_ORIGINATOR_ENV = "CODEX_INTERNAL_ORIGINATOR_OVERRIDE"
 PYTHON_SDK_ORIGINATOR = "codex_sdk_py"
@@ -50,9 +50,14 @@ def resolve_codex_path(
         return system_codex
 
 
-def serialize_config_overrides(config_overrides: CodexConfigObject) -> list[str]:
+def serialize_config_overrides(config_overrides: CodexConfig | CodexConfigObject) -> list[str]:
     overrides: list[str] = []
-    _flatten_config_overrides(config_overrides, "", overrides)
+    root = (
+        config_overrides.model_dump(mode="python", exclude_none=True, exclude_unset=True)
+        if isinstance(config_overrides, CodexConfig)
+        else config_overrides
+    )
+    _flatten_config_overrides(root, "", overrides)
     return overrides
 
 

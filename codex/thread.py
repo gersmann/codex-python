@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import threading
 import time
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable, Collection, Mapping, Sequence
 from typing import TYPE_CHECKING, Any, TypeVar
 
 from pydantic import BaseModel
@@ -29,6 +29,8 @@ from codex.protocol import types as protocol
 
 if TYPE_CHECKING:
     from codex.app_server import AppServerClient, AppServerThread, TurnStream
+
+type _ClientFactory = Callable[..., AppServerClient]
 
 _ModelT = TypeVar("_ModelT", bound=BaseModel)
 type InputItem = (
@@ -135,17 +137,19 @@ class Thread:
 
     def __init__(
         self,
-        client_factory: Callable[[], AppServerClient],
+        client_factory: _ClientFactory,
         *,
         start_options: ThreadStartOptions | AppServerThreadStartOptions | None = None,
         resume_options: ThreadResumeOptions | AppServerThreadResumeOptions | None = None,
         thread_id: str | None = None,
+        tools: Collection[Callable[..., object]] | None = None,
     ) -> None:
         self._client_factory = client_factory
         self._start_options = start_options
         self._resume_options = resume_options
         self._id = thread_id
         self._thread: AppServerThread | None = None
+        self._tools = tools
 
     @property
     def id(self) -> str | None:
@@ -236,9 +240,12 @@ class Thread:
         if self._thread is not None:
             return self._thread
 
-        client = self._client_factory()
+        client = self._client_factory(require_experimental=self._tools is not None)
         if self._id is None:
-            self._thread = client.start_thread(_to_app_server_start_options(self._start_options))
+            self._thread = client.start_thread(
+                _to_app_server_start_options(self._start_options),
+                tools=self._tools,
+            )
         else:
             self._thread = client.resume_thread(
                 self._id,

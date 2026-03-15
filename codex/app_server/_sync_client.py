@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 import concurrent.futures
 import time
-from collections.abc import Coroutine, Mapping
+from collections.abc import Callable, Collection, Coroutine, Mapping
 from contextlib import suppress
 from threading import Thread
 from typing import Any, TypeVar, cast
@@ -311,9 +311,13 @@ class AppServerClient(_SyncRunner):
     def start_thread(
         self,
         options: AppServerThreadStartOptions | None = None,
+        *,
+        tools: Collection[Callable[..., object]] | None = None,
     ) -> AppServerThread:
         return AppServerThread(
-            cast(_AsyncThreadLike, self._run(self._async_client.start_thread(options))),
+            cast(
+                _AsyncThreadLike, self._run(self._async_client.start_thread(options, tools=tools))
+            ),
             self._run,
         )
 

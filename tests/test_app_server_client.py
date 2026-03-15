@@ -28,6 +28,7 @@ from codex.app_server import (
     AppServerTurnOptions,
     AppServerWebSocketOptions,
     AsyncAppServerClient,
+    dynamic_tool,
 )
 from codex.app_server._sync_client import _LoopThread
 from codex.app_server.models import EmptyResult, GenericNotification, GenericServerRequest
@@ -1779,6 +1780,124 @@ def test_async_client_parses_typed_server_requests() -> None:
 
         assert len(seen) == 1
         assert response == {"id": "req-1", "result": {"echo": "lookup_ticket"}}
+
+        await client.close()
+
+    asyncio.run(scenario())
+
+
+def test_async_client_start_thread_registers_annotation_driven_dynamic_tools() -> None:
+    async def scenario() -> None:
+        transport = ScriptedTransport()
+        transport.responses["thread/start"] = {"thread": _thread_payload()}
+        client = AsyncAppServerClient(transport)
+        await client.start()
+
+        raw_tool = protocol.DynamicToolSpec(
+            name="raw_lookup",
+            description="Raw tool.",
+            inputSchema={"type": "object"},
+        )
+
+        @dynamic_tool
+        def lookup_ticket(id: str) -> str:
+            """Look up a support ticket by id."""
+            return f"Ticket {id}"
+
+        thread = await client.start_thread(
+            AppServerThreadStartOptions(dynamic_tools=[raw_tool]),
+            tools=[lookup_ticket],
+        )
+
+        request = transport.wait_for_method("thread/start")
+        assert thread.id == "thr-1"
+        assert [tool["name"] for tool in request["params"]["dynamicTools"]] == [
+            "raw_lookup",
+            "lookup_ticket",
+        ]
+
+        transport.push(
+            {
+                "id": "req-1",
+                "method": "item/tool/call",
+                "params": {
+                    "callId": "call-1",
+                    "threadId": "thr-1",
+                    "turnId": "turn-1",
+                    "tool": "lookup_ticket",
+                    "arguments": {"id": "123"},
+                },
+            }
+        )
+
+        response = await asyncio.to_thread(
+            transport.wait_for_message, lambda message: message.get("id") == "req-1"
+        )
+        assert response == {
+            "id": "req-1",
+            "result": {
+                "contentItems": [{"type": "inputText", "text": "Ticket 123"}],
+                "success": True,
+            },
+        }
+
+        await client.close()
+
+    asyncio.run(scenario())
+
+
+def test_async_client_rejects_dynamic_tool_activation_after_manual_handler_registration() -> None:
+    async def scenario() -> None:
+        transport = ScriptedTransport()
+        transport.responses["thread/start"] = {"thread": _thread_payload()}
+        client = AsyncAppServerClient(transport)
+        await client.start()
+
+        client.on_request(
+            "item/tool/call",
+            lambda request: {"ok": True},
+            request_model=protocol.ItemToolCallRequest,
+        )
+
+        @dynamic_tool
+        def lookup_ticket(id: str) -> str:
+            """Look up a support ticket by id."""
+            return id
+
+        with pytest.raises(
+            ValueError,
+            match="Cannot activate annotation-driven dynamic tools after registering a manual",
+        ):
+            await client.start_thread(tools=[lookup_ticket])
+
+        await client.close()
+
+    asyncio.run(scenario())
+
+
+def test_async_client_rejects_manual_dynamic_tool_handler_after_tool_activation() -> None:
+    async def scenario() -> None:
+        transport = ScriptedTransport()
+        transport.responses["thread/start"] = {"thread": _thread_payload()}
+        client = AsyncAppServerClient(transport)
+        await client.start()
+
+        @dynamic_tool
+        def lookup_ticket(id: str) -> str:
+            """Look up a support ticket by id."""
+            return id
+
+        await client.start_thread(tools=[lookup_ticket])
+
+        with pytest.raises(
+            ValueError,
+            match="item/tool/call is reserved for annotation-driven dynamic tools",
+        ):
+            client.on_request(
+                "item/tool/call",
+                lambda request: {"ok": True},
+                request_model=protocol.ItemToolCallRequest,
+            )
 
         await client.close()
 

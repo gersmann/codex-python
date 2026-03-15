@@ -6,7 +6,7 @@ from pydantic import BaseModel, Field
 from pydantic import ConfigDict as PydanticConfigDict
 from pydantic.alias_generators import to_camel
 
-from codex._config_types import CodexConfigObject, CodexConfigValue
+from codex._config_types import CodexConfig, CodexConfigObject, CodexConfigValue
 from codex.protocol import types as protocol
 
 
@@ -144,31 +144,8 @@ class AccountRateLimitsResult(AppServerResultModel):
     rate_limits_by_limit_id: dict[str, protocol.RateLimitSnapshot] | None = None
 
 
-class AppServerConfig(BaseModel):
-    model_config = PydanticConfigDict(extra="allow")
-
-    analytics: CodexConfigObject | None = None
-    approval_policy: protocol.AskForApproval | None = None
-    compact_prompt: str | None = None
-    developer_instructions: str | None = None
-    forced_chatgpt_workspace_id: str | None = None
-    forced_login_method: Literal["chatgpt", "api"] | None = None
-    instructions: str | None = None
-    model: str | None = None
-    model_auto_compact_token_limit: int | None = None
-    model_context_window: int | None = None
-    model_provider: str | None = None
-    model_reasoning_effort: protocol.ReasoningEffort | None = None
-    model_reasoning_summary: protocol.ReasoningSummary | None = None
-    model_verbosity: Literal["low", "medium", "high"] | None = None
-    profile: str | None = None
-    profiles: CodexConfigObject | None = Field(default_factory=dict)
-    review_model: str | None = None
-    sandbox_mode: protocol.SandboxMode | None = None
-    sandbox_workspace_write: CodexConfigObject | None = None
-    service_tier: protocol.ServiceTier | None = None
-    tools: CodexConfigObject | None = None
-    web_search: Literal["disabled", "cached", "live"] | None = None
+class AppServerConfig(CodexConfig):
+    """Typed config payload returned by app-server config APIs."""
 
 
 class ConfigLayerMetadata(AppServerResultModel):

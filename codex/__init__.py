@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 from codex.codex import Codex
+from codex.dynamic_tools import dynamic_tool
 from codex.errors import CodexError, CodexExecError, CodexParseError, ThreadRunError
 from codex.options import (
     CancelSignal,
+    CodexConfig,
     CodexConfigObject,
     CodexConfigValue,
     CodexOptions,
@@ -22,6 +24,7 @@ __all__ = [
     "CodexTurnStream",
     "Thread",
     "Input",
+    "dynamic_tool",
     "CodexError",
     "CodexExecError",
     "CodexParseError",
@@ -30,6 +33,7 @@ __all__ = [
     "ThreadStartOptions",
     "ThreadResumeOptions",
     "TurnOptions",
+    "CodexConfig",
     "CodexConfigValue",
     "CodexConfigObject",
     "CancelSignal",

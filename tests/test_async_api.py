@@ -35,7 +35,10 @@ class _FakeClient:
         self.closed = False
         self.account = _FakeAccountClient()
 
-    def start_thread(self, options: object | None = None) -> _FakeThread:
+    def start_thread(
+        self, options: object | None = None, *, tools: object | None = None
+    ) -> _FakeThread:
+        _ = tools
         self.start_calls.append(options)
         return _FakeThread("thr-1")
 

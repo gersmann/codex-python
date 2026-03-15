@@ -7,7 +7,14 @@ from typing import Any
 import pytest
 from pydantic import BaseModel
 
-from codex import Codex, CodexOptions, ThreadResumeOptions, ThreadStartOptions, TurnOptions
+from codex import (
+    Codex,
+    CodexOptions,
+    ThreadResumeOptions,
+    ThreadStartOptions,
+    TurnOptions,
+    dynamic_tool,
+)
 from codex.app_server import (
     AppServerClient,
     AppServerProcessOptions,
@@ -321,13 +328,18 @@ class _FakeAppServerClient:
             self._start_threads = []
             self._default_start_thread = start_thread
         self._resume_thread = resume_thread or self._default_start_thread
-        self.start_calls: list[object] = []
+        self.start_calls: list[tuple[object | None, object | None]] = []
         self.resume_calls: list[tuple[str, object]] = []
         self.closed = False
         self.account = _FakeAccountClient()
 
-    def start_thread(self, options: object | None = None) -> _FakeAppThread:
-        self.start_calls.append(options)
+    def start_thread(
+        self,
+        options: object | None = None,
+        *,
+        tools: object | None = None,
+    ) -> _FakeAppThread:
+        self.start_calls.append((options, tools))
         if self._start_threads:
             return self._start_threads.pop(0)
         return self._default_start_thread
@@ -456,7 +468,7 @@ def test_codex_run_passes_thread_options_through(monkeypatch: pytest.MonkeyPatch
 
     assert list(stream)[-1] == notifications[-1]
     assert stream.thread_id == "thr-run"
-    assert fake_client.start_calls == [thread_options.to_app_server_options()]
+    assert fake_client.start_calls == [(thread_options.to_app_server_options(), None)]
     assert fake_thread.run_calls[0][1] == turn_options.to_app_server_options()
 
 
@@ -477,8 +489,31 @@ def test_codex_run_accepts_app_server_option_types(monkeypatch: pytest.MonkeyPat
     stream = client.run("hello", turn_options, thread_options=thread_options)
 
     assert stream.thread_id == "thr-run"
-    assert fake_client.start_calls == [thread_options]
+    assert fake_client.start_calls == [(thread_options, None)]
     assert fake_thread.run_calls[0][1] == turn_options
+
+
+def test_codex_run_passes_annotation_driven_tools_through(monkeypatch: pytest.MonkeyPatch) -> None:
+    notifications = [
+        _turn_started_notification(thread_id="thr-run"),
+        _item_completed_notification("Repo summary", thread_id="thr-run"),
+        _turn_completed_notification(thread_id="thr-run"),
+    ]
+    fake_thread = _FakeAppThread("thr-run", [_FakeAppTurnStream(notifications)])
+    fake_client = _FakeAppServerClient(fake_thread)
+    _patch_connect_stdio(monkeypatch, fake_client=fake_client, capture={})
+
+    @dynamic_tool
+    def lookup_ticket(id: str) -> str:
+        """Look up a support ticket by id."""
+        return id
+
+    stream = Codex().run("hello", tools=[lookup_ticket])
+
+    assert stream.thread_id == "thr-run"
+    assert fake_client.start_calls == [
+        (ThreadStartOptions().to_app_server_options(), [lookup_ticket])
+    ]
 
 
 def test_run_preserves_usage_when_turn_completed_omits_usage(
@@ -728,9 +763,10 @@ def test_run_passes_process_thread_and_turn_options_through(
     )
     assert fake_client.account.login_api_key_calls == ["key"]
 
-    start_options = fake_client.start_calls[0]
+    start_options, tools = fake_client.start_calls[0]
     assert isinstance(start_options, AppServerThreadStartOptions)
     assert start_options == requested_start_options.to_app_server_options()
+    assert tools is None
 
     _, run_options = fake_thread.run_calls[0]
     assert isinstance(run_options, AppServerTurnOptions)

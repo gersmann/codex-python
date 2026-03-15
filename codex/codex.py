@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Callable, Collection
 from contextlib import suppress
 from typing import TYPE_CHECKING, TypeVar
 
@@ -7,6 +8,7 @@ from pydantic import BaseModel
 
 from codex.app_server.errors import AppServerError
 from codex.app_server.options import (
+    AppServerInitializeOptions,
     AppServerThreadResumeOptions,
     AppServerThreadStartOptions,
     AppServerTurnOptions,
@@ -33,6 +35,7 @@ class Codex:
     def __init__(self, options: CodexOptions | None = None) -> None:
         self._options = options or CodexOptions()
         self._client: AppServerClient | None = None
+        self._experimental_api_enabled = False
         self._closed = False
 
     def __enter__(self) -> Codex:
@@ -49,11 +52,17 @@ class Codex:
     def start_thread(
         self,
         options: ThreadStartOptions | AppServerThreadStartOptions | None = None,
+        *,
+        tools: Collection[Callable[..., object]] | None = None,
     ) -> Thread:
         from codex.thread import Thread
 
         self._raise_if_closed()
-        thread = Thread(self._ensure_client, start_options=options or ThreadStartOptions())
+        thread = Thread(
+            self._ensure_client,
+            start_options=options or ThreadStartOptions(),
+            tools=tools,
+        )
         thread._ensure_thread()
         return thread
 
@@ -81,6 +90,7 @@ class Codex:
         turn_options: TurnOptions | AppServerTurnOptions | None = None,
         *,
         thread_options: ThreadStartOptions | AppServerThreadStartOptions | None = None,
+        tools: Collection[Callable[..., object]] | None = None,
         signal: CancelSignal | None = None,
     ) -> CodexTurnStream:
         """Run a one-shot turn on a fresh internal thread.
@@ -88,7 +98,9 @@ class Codex:
         Raises:
             ThreadRunError: surfaced from stream consumption or `wait()`.
         """
-        return self.start_thread(thread_options).run(input, turn_options, signal=signal)
+        return self.start_thread(thread_options, tools=tools).run(
+            input, turn_options, signal=signal
+        )
 
     def run_text(
         self,
@@ -96,6 +108,7 @@ class Codex:
         turn_options: TurnOptions | AppServerTurnOptions | None = None,
         *,
         thread_options: ThreadStartOptions | AppServerThreadStartOptions | None = None,
+        tools: Collection[Callable[..., object]] | None = None,
         signal: CancelSignal | None = None,
     ) -> str:
         """Run a one-shot turn and return the final assistant text.
@@ -103,7 +116,11 @@ class Codex:
         Raises:
             ThreadRunError: terminal turn status is failed/interrupted.
         """
-        return self.start_thread(thread_options).run_text(input, turn_options, signal=signal)
+        return self.start_thread(thread_options, tools=tools).run_text(
+            input,
+            turn_options,
+            signal=signal,
+        )
 
     def run_json(
         self,
@@ -111,6 +128,7 @@ class Codex:
         turn_options: TurnOptions | AppServerTurnOptions | None = None,
         *,
         thread_options: ThreadStartOptions | AppServerThreadStartOptions | None = None,
+        tools: Collection[Callable[..., object]] | None = None,
         signal: CancelSignal | None = None,
     ) -> object:
         """Run a one-shot turn and parse the final assistant message as JSON.
@@ -119,7 +137,11 @@ class Codex:
             ThreadRunError: terminal turn status is failed/interrupted.
             ValueError: no final assistant message or invalid JSON payload.
         """
-        return self.start_thread(thread_options).run_json(input, turn_options, signal=signal)
+        return self.start_thread(thread_options, tools=tools).run_json(
+            input,
+            turn_options,
+            signal=signal,
+        )
 
     def run_model(
         self,
@@ -128,6 +150,7 @@ class Codex:
         turn_options: TurnOptions | AppServerTurnOptions | None = None,
         *,
         thread_options: ThreadStartOptions | AppServerThreadStartOptions | None = None,
+        tools: Collection[Callable[..., object]] | None = None,
         signal: CancelSignal | None = None,
     ) -> _ModelT:
         """Run a one-shot turn and validate the final assistant message against `model_type`.
@@ -137,7 +160,7 @@ class Codex:
             ValueError: no final assistant message is available.
             pydantic.ValidationError: final message does not match `model_type`.
         """
-        return self.start_thread(thread_options).run_model(
+        return self.start_thread(thread_options, tools=tools).run_model(
             input,
             model_type,
             turn_options,
@@ -153,13 +176,16 @@ class Codex:
         if client is not None:
             client.close()
 
-    def _ensure_client(self) -> AppServerClient:
+    def _ensure_client(self, *, require_experimental: bool = False) -> AppServerClient:
         self._raise_if_closed()
         if self._client is None:
             from codex.app_server import AppServerClient
 
             client = AppServerClient.connect_stdio(
-                process_options=self._options.to_app_server_options()
+                process_options=self._options.to_app_server_options(),
+                initialize_options=AppServerInitializeOptions(
+                    experimental_api=require_experimental,
+                ),
             )
             try:
                 if self._options.api_key is not None:
@@ -168,6 +194,12 @@ class Codex:
                 client.close()
                 raise
             self._client = client
+            self._experimental_api_enabled = require_experimental
+        elif require_experimental and not self._experimental_api_enabled:
+            raise CodexError(
+                "Dynamic tools require experimentalApi on the underlying app-server connection. "
+                "Create a fresh Codex() instance and use tools on the first thread or run call."
+            )
         return self._client
 
     def _raise_if_closed(self) -> None:

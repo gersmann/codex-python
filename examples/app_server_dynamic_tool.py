@@ -4,21 +4,15 @@ from codex.app_server import (
     AppServerClient,
     AppServerClientInfo,
     AppServerInitializeOptions,
-    AppServerThreadStartOptions,
+    dynamic_tool,
 )
-from codex.protocol import types as protocol
 
 
-def handle_tool_call(request: protocol.ItemToolCallRequest) -> dict[str, object]:
-    ticket_id = str(request.params.arguments["id"])
-    return {
-        "contentItems": [
-            {
-                "type": "text",
-                "text": f"Ticket {ticket_id}: Login requests time out in eu-west-1.",
-            }
-        ]
-    }
+class SupportDesk:
+    @dynamic_tool
+    def lookup_ticket(self, id: str) -> str:
+        """Look up a support ticket by id."""
+        return f"Ticket {id}: Login requests time out in eu-west-1."
 
 
 def main() -> None:
@@ -30,29 +24,10 @@ def main() -> None:
         ),
         experimental_api=True,
     )
-
-    thread_options = AppServerThreadStartOptions(
-        dynamic_tools=[
-            protocol.DynamicToolSpec(
-                name="lookup_ticket",
-                description="Look up a support ticket by id.",
-                inputSchema={
-                    "type": "object",
-                    "properties": {"id": {"type": "string"}},
-                    "required": ["id"],
-                    "additionalProperties": False,
-                },
-            )
-        ]
-    )
+    support_desk = SupportDesk()
 
     with AppServerClient.connect_stdio(initialize_options=initialize_options) as client:
-        client.on_request(
-            "item/tool/call",
-            handle_tool_call,
-            request_model=protocol.ItemToolCallRequest,
-        )
-        thread = client.start_thread(thread_options)
+        thread = client.start_thread(tools=[support_desk.lookup_ticket])
         result = thread.run_text(
             "Use the lookup_ticket dynamic tool for ticket 123 and summarize the result."
         )

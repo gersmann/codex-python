@@ -6,7 +6,7 @@ from typing import Protocol, runtime_checkable
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from codex._config_types import CodexConfigObject, CodexConfigValue
+from codex._config_types import CodexConfig, CodexConfigObject, CodexConfigValue
 from codex.app_server.options import (
     AppServerProcessOptions,
     AppServerThreadResumeOptions,
@@ -42,7 +42,7 @@ class CodexOptions(_CodexOptionsModel):
             "when the high-level Codex client connects."
         ),
     )
-    config: CodexConfigObject | None = Field(
+    config: CodexConfig | None = Field(
         default=None,
         description="Forwarded to AppServerProcessOptions.config.",
     )
@@ -70,7 +70,7 @@ class ThreadStartOptions(_CodexOptionsModel):
         default=None,
         description="Forwarded to AppServerThreadStartOptions.base_instructions.",
     )
-    config: CodexConfigObject | None = Field(
+    config: CodexConfig | None = Field(
         default=None,
         description="Forwarded to AppServerThreadStartOptions.config.",
     )
@@ -142,7 +142,7 @@ class ThreadResumeOptions(_CodexOptionsModel):
         default=None,
         description="Forwarded to AppServerThreadResumeOptions.base_instructions.",
     )
-    config: CodexConfigObject | None = Field(
+    config: CodexConfig | None = Field(
         default=None,
         description="Forwarded to AppServerThreadResumeOptions.config.",
     )
@@ -257,6 +257,7 @@ __all__ = [
     "ThreadStartOptions",
     "ThreadResumeOptions",
     "TurnOptions",
+    "CodexConfig",
     "CodexConfigValue",
     "CodexConfigObject",
     "SupportsIsSet",

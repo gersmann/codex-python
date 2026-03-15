@@ -16,8 +16,10 @@ class _FakeThread:
 
 
 class _FakeClient:
-    def start_thread(self, options: object | None = None) -> _FakeThread:
-        _ = options
+    def start_thread(
+        self, options: object | None = None, *, tools: object | None = None
+    ) -> _FakeThread:
+        _ = (options, tools)
         return _FakeThread("thr-1")
 
     def resume_thread(self, thread_id: str, options: object | None = None) -> _FakeThread:
