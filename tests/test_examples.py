@@ -7,6 +7,7 @@ from typing import Any
 import pytest
 
 import examples.app_server_conversation as app_server_conversation
+import examples.app_server_dynamic_tool as app_server_dynamic_tool
 import examples.app_server_stream_events as app_server_stream_events
 import examples.app_server_tool_handler as app_server_tool_handler
 import examples.app_server_websocket_conversation as app_server_websocket_conversation
@@ -53,8 +54,10 @@ class _FakeClient:
         self._thread = thread
         self.on_request_calls: list[tuple[str, object, object | None]] = []
         self.run_text_calls: list[str] = []
+        self.start_thread_calls: list[object | None] = []
 
-    def start_thread(self) -> _FakeThread:
+    def start_thread(self, options: object | None = None) -> _FakeThread:
+        self.start_thread_calls.append(options)
         return self._thread
 
     def run_text(self, prompt: str) -> str:
@@ -144,6 +147,38 @@ def test_app_server_tool_handler_registers_handler_and_prints_result(
         ("item/tool/call", app_server_tool_handler.handle_tool_call, protocol.ItemToolCallRequest)
     ]
     assert capsys.readouterr().out == "Handled response\n"
+
+
+def test_app_server_dynamic_tool_registers_tool_and_prints_result(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    fake_client = _FakeClient(_FakeThread(_FakeStream("Ticket summary")))
+
+    monkeypatch.setattr(
+        app_server_dynamic_tool.AppServerClient,
+        "connect_stdio",
+        classmethod(lambda cls, initialize_options=None: _client_context(fake_client)),
+    )
+
+    app_server_dynamic_tool.main()
+
+    assert fake_client.on_request_calls == [
+        ("item/tool/call", app_server_dynamic_tool.handle_tool_call, protocol.ItemToolCallRequest)
+    ]
+    start_options = fake_client.start_thread_calls[-1]
+    assert start_options is not None
+    assert len(start_options.dynamic_tools) == 1
+    dynamic_tool = start_options.dynamic_tools[0]
+    assert dynamic_tool.name == "lookup_ticket"
+    assert dynamic_tool.description == "Look up a support ticket by id."
+    assert dynamic_tool.inputSchema == {
+        "type": "object",
+        "properties": {"id": {"type": "string"}},
+        "required": ["id"],
+        "additionalProperties": False,
+    }
+    assert capsys.readouterr().out == "Ticket summary\n"
 
 
 def test_app_server_websocket_conversation_requires_env(monkeypatch: pytest.MonkeyPatch) -> None:

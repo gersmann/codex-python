@@ -7,11 +7,12 @@ def test_root_package_exposes_only_high_level_contract() -> None:
     codex = importlib.import_module("codex")
 
     assert codex.Codex.__name__ == "Codex"
+    assert codex.CodexTurnStream.__name__ == "CodexTurnStream"
+    assert codex.Thread.__name__ == "Thread"
+    assert codex.Input.__name__ == "Input"
     assert codex.ThreadStartOptions.__name__ == "ThreadStartOptions"
     assert codex.ThreadResumeOptions.__name__ == "ThreadResumeOptions"
-    assert not hasattr(codex, "Thread")
     assert not hasattr(codex, "ExecTurnStream")
-    assert not hasattr(codex, "Input")
     assert not hasattr(codex, "UserInput")
     assert not hasattr(codex, "AppServerClient")
     assert not hasattr(codex, "AsyncAppServerClient")
@@ -41,3 +42,18 @@ def test_app_server_helpers_share_internal_json_alias() -> None:
 
     assert payloads.JsonObject is internal_types.JsonObject
     assert protocol_helpers.JsonObject is internal_types.JsonObject
+
+
+def test_exported_app_server_option_fields_have_descriptions() -> None:
+    options_module = importlib.import_module("codex.app_server.options")
+    app_server = importlib.import_module("codex.app_server")
+
+    option_types = [
+        getattr(options_module, name)
+        for name in app_server.__all__
+        if name == "AppServerClientInfo" or name.endswith("Options")
+    ]
+
+    for option_type in option_types:
+        for field in option_type.model_fields.values():
+            assert field.description

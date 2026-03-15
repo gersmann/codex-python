@@ -44,12 +44,28 @@ Use `AppServerClient` when you want a deeper integration:
 ## Quickstart: `Codex`
 
 ```python
-from codex import Codex
+from codex import Codex, ThreadStartOptions
 
 client = Codex()
+
+# Simplest one-shot call.
 summary = client.run_text("Diagnose the failing tests and propose a fix")
 print(summary)
+
+# One-shot call with thread-scoped defaults for that run's fresh internal thread.
+summary = client.run_text(
+    "Diagnose the failing tests in this repo",
+    thread_options=ThreadStartOptions(
+        cwd="/repo",
+        model="gpt-5",
+    ),
+)
+print(summary)
 ```
+
+Use `thread_options=` on `run()`, `run_text()`, `run_json()`, and `run_model()` when you want to
+set defaults on the fresh internal thread created for that one-shot call. Use
+`start_thread()` / `resume_thread()` when later runs should share context.
 
 More `Codex` examples: [docs/exec_api.md](docs/exec_api.md)
 

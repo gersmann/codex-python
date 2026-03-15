@@ -87,6 +87,19 @@ def test_options_module_re_exports_app_server_option_types() -> None:
     assert "SupportsIsSet" in options_module.__all__
 
 
+def test_exported_codex_option_fields_have_descriptions() -> None:
+    option_types = [
+        options_module.CodexOptions,
+        options_module.ThreadStartOptions,
+        options_module.ThreadResumeOptions,
+        options_module.TurnOptions,
+    ]
+
+    for option_type in option_types:
+        for field in option_type.model_fields.values():
+            assert field.description
+
+
 def test_codex_caches_stdio_client_and_closes_once(monkeypatch: pytest.MonkeyPatch) -> None:
     fake_client = _FakeAppServerClient()
     captured: list[AppServerProcessOptions] = []

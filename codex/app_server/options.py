@@ -32,9 +32,12 @@ def _validate_params(model: type[BaseModel], payload: dict[str, object]) -> Base
 class AppServerClientInfo(_AppServerOptionsModel):
     """Identity metadata sent during the app-server `initialize` handshake."""
 
-    name: str
-    version: str
-    title: str | None = None
+    name: str = Field(description="Sent as initialize.params.clientInfo.name.")
+    version: str = Field(description="Sent as initialize.params.clientInfo.version.")
+    title: str | None = Field(
+        default=None,
+        description="Sent as initialize.params.clientInfo.title.",
+    )
 
 
 class AppServerInitializeOptions(_AppServerOptionsModel):
@@ -45,11 +48,31 @@ class AppServerInitializeOptions(_AppServerOptionsModel):
             name="codex_python",
             title="codex-python",
             version="dev",
-        )
+        ),
+        description="Metadata sent in initialize.params.clientInfo.",
     )
-    experimental_api: bool = False
-    opt_out_notification_methods: tuple[str, ...] = ()
-    strict_protocol: bool = Field(default=False, exclude=True)
+    experimental_api: bool = Field(
+        default=False,
+        description=(
+            "Sent as initialize.params.capabilities.experimentalApi. "
+            "Opts the connection into experimental app-server methods and fields."
+        ),
+    )
+    opt_out_notification_methods: tuple[str, ...] = Field(
+        default=(),
+        description=(
+            "Sent as initialize.params.capabilities.optOutNotificationMethods. "
+            "Exact notification method names to suppress for this connection."
+        ),
+    )
+    strict_protocol: bool = Field(
+        default=False,
+        exclude=True,
+        description=(
+            "SDK-only parsing mode. Not sent on the wire. "
+            "When false, unknown protocol messages can fall back to generic models."
+        ),
+    )
 
     def to_params(self) -> dict[str, object]:
         """Build the JSON-RPC `initialize` params object."""
@@ -73,12 +96,30 @@ class AppServerInitializeOptions(_AppServerOptionsModel):
 class AppServerProcessOptions(_AppServerOptionsModel):
     """Process launch options for stdio-based app-server connections."""
 
-    codex_path_override: str | None = None
-    base_url: str | None = None
-    api_key: str | None = None
-    config: CodexConfigObject | None = None
-    env: dict[str, str] | None = None
-    analytics_default_enabled: bool = False
+    codex_path_override: str | None = Field(
+        default=None,
+        description="Override the codex binary path used for the stdio subprocess.",
+    )
+    base_url: str | None = Field(
+        default=None,
+        description="Inject the upstream base URL for the child app-server process.",
+    )
+    api_key: str | None = Field(
+        default=None,
+        description="Inject the API key for the child app-server process.",
+    )
+    config: CodexConfigObject | None = Field(
+        default=None,
+        description="Launch-time Codex config overrides for the child process.",
+    )
+    env: dict[str, str] | None = Field(
+        default=None,
+        description="Additional environment variables merged into the child process environment.",
+    )
+    analytics_default_enabled: bool = Field(
+        default=False,
+        description="Default analytics setting for the spawned local process.",
+    )
 
 
 class AppServerWebSocketOptions(_AppServerOptionsModel):
@@ -90,11 +131,29 @@ class AppServerWebSocketOptions(_AppServerOptionsModel):
     are rejected so validation stays centralized.
     """
 
-    bearer_token: str | None = None
-    headers: Mapping[str, str] | None = None
-    subprotocols: tuple[str, ...] = ()
-    open_timeout: float | None = None
-    close_timeout: float | None = None
+    bearer_token: str | None = Field(
+        default=None,
+        description="Adds an Authorization: Bearer header to the websocket handshake.",
+    )
+    headers: Mapping[str, str] | None = Field(
+        default=None,
+        description=(
+            "Extra websocket handshake headers. Authorization is rejected here; "
+            "use bearer_token instead."
+        ),
+    )
+    subprotocols: tuple[str, ...] = Field(
+        default=(),
+        description="Websocket subprotocols offered during connection setup.",
+    )
+    open_timeout: float | None = Field(
+        default=None,
+        description="Timeout used while opening the websocket connection.",
+    )
+    close_timeout: float | None = Field(
+        default=None,
+        description="Timeout used while closing the websocket connection.",
+    )
 
     def to_connect_kwargs(self) -> dict[str, object]:
         headers = {} if self.headers is None else dict(self.headers)
@@ -126,16 +185,49 @@ class AppServerTurnOptions(_AppServerOptionsModel):
     strings and deferring failures to the transport boundary.
     """
 
-    approval_policy: protocol.AskForApproval | None = None
-    collaboration_mode: protocol.CollaborationMode | None = None
-    cwd: str | None = None
-    effort: protocol.ReasoningEffort | None = None
-    model: str | None = None
-    output_schema: OutputSchemaInput | None = None
-    personality: protocol.Personality | None = None
-    sandbox_policy: protocol.SandboxPolicy | None = None
-    service_tier: protocol.ServiceTier | None = None
-    summary: protocol.ReasoningSummary | None = None
+    approval_policy: protocol.AskForApproval | None = Field(
+        default=None,
+        description="Sent as turn/start approvalPolicy.",
+    )
+    collaboration_mode: protocol.CollaborationMode | None = Field(
+        default=None,
+        description="Sent as turn/start collaborationMode.",
+    )
+    cwd: str | None = Field(
+        default=None,
+        description="Sent as turn/start cwd.",
+    )
+    effort: protocol.ReasoningEffort | None = Field(
+        default=None,
+        description="Sent as turn/start effort.",
+    )
+    model: str | None = Field(
+        default=None,
+        description="Sent as turn/start model.",
+    )
+    output_schema: OutputSchemaInput | None = Field(
+        default=None,
+        description=(
+            "Sent as turn/start outputSchema after SDK normalization. "
+            "Accepts raw JSON Schema or a Pydantic model class."
+        ),
+    )
+    personality: protocol.Personality | None = Field(
+        default=None,
+        description="Sent as turn/start personality.",
+    )
+    sandbox_policy: protocol.SandboxPolicy | None = Field(
+        default=None,
+        description="Sent as turn/start sandboxPolicy.",
+    )
+    service_tier: protocol.ServiceTier | None = Field(
+        default=None,
+        description="Sent as turn/start serviceTier.",
+    )
+    summary: protocol.ReasoningSummary | None = Field(
+        default=None,
+        description="Sent as turn/start summary.",
+    )
 
     @field_serializer("output_schema", when_used="unless-none")
     def _serialize_output_schema(self, value: OutputSchemaInput) -> object:
@@ -153,22 +245,82 @@ class AppServerTurnOptions(_AppServerOptionsModel):
 class AppServerThreadStartOptions(_AppServerOptionsModel):
     """High-level options for creating a new app-server thread."""
 
-    approval_policy: protocol.AskForApproval | None = None
-    base_instructions: str | None = None
-    config: CodexConfigObject | None = None
-    cwd: str | None = None
-    developer_instructions: str | None = None
-    dynamic_tools: list[protocol.DynamicToolSpec] | None = None
-    ephemeral: bool | None = None
-    experimental_raw_events: bool | None = None
-    mock_experimental_field: str | None = None
-    model: str | None = None
-    model_provider: str | None = None
-    persist_extended_history: bool | None = None
-    personality: protocol.Personality | None = None
-    sandbox: protocol.SandboxMode | None = None
-    service_name: str | None = None
-    service_tier: protocol.ServiceTier | None = None
+    approval_policy: protocol.AskForApproval | None = Field(
+        default=None,
+        description="Sent as thread/start approvalPolicy.",
+    )
+    base_instructions: str | None = Field(
+        default=None,
+        description="Sent as thread/start baseInstructions.",
+    )
+    config: CodexConfigObject | None = Field(
+        default=None,
+        description="Sent as thread/start config.",
+    )
+    cwd: str | None = Field(
+        default=None,
+        description="Sent as thread/start cwd.",
+    )
+    developer_instructions: str | None = Field(
+        default=None,
+        description="Sent as thread/start developerInstructions.",
+    )
+    dynamic_tools: list[protocol.DynamicToolSpec] | None = Field(
+        default=None,
+        description="Sent as thread/start dynamicTools. The public app-server docs mark this as experimental.",
+    )
+    ephemeral: bool | None = Field(
+        default=None,
+        description="Sent as thread/start ephemeral.",
+    )
+    experimental_raw_events: bool | None = Field(
+        default=None,
+        description=(
+            "Sent as thread/start experimentalRawEvents. "
+            "Present in the generated protocol; not described in the public app-server docs."
+        ),
+    )
+    mock_experimental_field: str | None = Field(
+        default=None,
+        description=(
+            "Sent as thread/start mockExperimentalField. "
+            "Present in the generated protocol; not described in the public app-server docs."
+        ),
+    )
+    model: str | None = Field(
+        default=None,
+        description="Sent as thread/start model.",
+    )
+    model_provider: str | None = Field(
+        default=None,
+        description="Sent as thread/start modelProvider.",
+    )
+    persist_extended_history: bool | None = Field(
+        default=None,
+        description=(
+            "Sent as thread/start persistExtendedHistory. "
+            "Present in the generated protocol; not described in the public app-server docs."
+        ),
+    )
+    personality: protocol.Personality | None = Field(
+        default=None,
+        description="Sent as thread/start personality.",
+    )
+    sandbox: protocol.SandboxMode | None = Field(
+        default=None,
+        description="Sent as thread/start sandbox.",
+    )
+    service_name: str | None = Field(
+        default=None,
+        description=(
+            "Sent as thread/start serviceName. "
+            "The public app-server docs describe this as an optional service label for thread-level metrics."
+        ),
+    )
+    service_tier: protocol.ServiceTier | None = Field(
+        default=None,
+        description="Sent as thread/start serviceTier.",
+    )
 
     def to_params(self) -> protocol.ThreadStartParams:
         return cast(
@@ -180,19 +332,61 @@ class AppServerThreadStartOptions(_AppServerOptionsModel):
 class AppServerThreadResumeOptions(_AppServerOptionsModel):
     """High-level options for resuming an existing app-server thread."""
 
-    approval_policy: protocol.AskForApproval | None = None
-    base_instructions: str | None = None
-    config: CodexConfigObject | None = None
-    cwd: str | None = None
-    developer_instructions: str | None = None
-    history: list[protocol.ResponseItem] | None = None
-    model: str | None = None
-    model_provider: str | None = None
-    path: str | None = None
-    persist_extended_history: bool | None = None
-    personality: protocol.Personality | None = None
-    sandbox: protocol.SandboxMode | None = None
-    service_tier: protocol.ServiceTier | None = None
+    approval_policy: protocol.AskForApproval | None = Field(
+        default=None,
+        description="Sent as thread/resume approvalPolicy.",
+    )
+    base_instructions: str | None = Field(
+        default=None,
+        description="Sent as thread/resume baseInstructions.",
+    )
+    config: CodexConfigObject | None = Field(
+        default=None,
+        description="Sent as thread/resume config.",
+    )
+    cwd: str | None = Field(
+        default=None,
+        description="Sent as thread/resume cwd.",
+    )
+    developer_instructions: str | None = Field(
+        default=None,
+        description="Sent as thread/resume developerInstructions.",
+    )
+    history: list[protocol.ResponseItem] | None = Field(
+        default=None,
+        description="Sent as thread/resume history.",
+    )
+    model: str | None = Field(
+        default=None,
+        description="Sent as thread/resume model.",
+    )
+    model_provider: str | None = Field(
+        default=None,
+        description="Sent as thread/resume modelProvider.",
+    )
+    path: str | None = Field(
+        default=None,
+        description="Sent as thread/resume path.",
+    )
+    persist_extended_history: bool | None = Field(
+        default=None,
+        description=(
+            "Sent as thread/resume persistExtendedHistory. "
+            "Present in the generated protocol; not described in the public app-server docs."
+        ),
+    )
+    personality: protocol.Personality | None = Field(
+        default=None,
+        description="Sent as thread/resume personality.",
+    )
+    sandbox: protocol.SandboxMode | None = Field(
+        default=None,
+        description="Sent as thread/resume sandbox.",
+    )
+    service_tier: protocol.ServiceTier | None = Field(
+        default=None,
+        description="Sent as thread/resume serviceTier.",
+    )
 
     def to_params(self, *, thread_id: str) -> protocol.ThreadResumeParams:
         payload = self._to_payload()
@@ -206,17 +400,53 @@ class AppServerThreadResumeOptions(_AppServerOptionsModel):
 class AppServerThreadForkOptions(_AppServerOptionsModel):
     """High-level options for forking an app-server thread."""
 
-    approval_policy: protocol.AskForApproval | None = None
-    base_instructions: str | None = None
-    config: CodexConfigObject | None = None
-    cwd: str | None = None
-    developer_instructions: str | None = None
-    model: str | None = None
-    model_provider: str | None = None
-    path: str | None = None
-    persist_extended_history: bool | None = None
-    sandbox: protocol.SandboxMode | None = None
-    service_tier: protocol.ServiceTier | None = None
+    approval_policy: protocol.AskForApproval | None = Field(
+        default=None,
+        description="Sent as thread/fork approvalPolicy.",
+    )
+    base_instructions: str | None = Field(
+        default=None,
+        description="Sent as thread/fork baseInstructions.",
+    )
+    config: CodexConfigObject | None = Field(
+        default=None,
+        description="Sent as thread/fork config.",
+    )
+    cwd: str | None = Field(
+        default=None,
+        description="Sent as thread/fork cwd.",
+    )
+    developer_instructions: str | None = Field(
+        default=None,
+        description="Sent as thread/fork developerInstructions.",
+    )
+    model: str | None = Field(
+        default=None,
+        description="Sent as thread/fork model.",
+    )
+    model_provider: str | None = Field(
+        default=None,
+        description="Sent as thread/fork modelProvider.",
+    )
+    path: str | None = Field(
+        default=None,
+        description="Sent as thread/fork path.",
+    )
+    persist_extended_history: bool | None = Field(
+        default=None,
+        description=(
+            "Sent as thread/fork persistExtendedHistory. "
+            "Present in the generated protocol; not described in the public app-server docs."
+        ),
+    )
+    sandbox: protocol.SandboxMode | None = Field(
+        default=None,
+        description="Sent as thread/fork sandbox.",
+    )
+    service_tier: protocol.ServiceTier | None = Field(
+        default=None,
+        description="Sent as thread/fork serviceTier.",
+    )
 
     def to_params(self, *, thread_id: str) -> protocol.ThreadForkParams:
         payload = self._to_payload()
@@ -230,14 +460,41 @@ class AppServerThreadForkOptions(_AppServerOptionsModel):
 class AppServerThreadListOptions(_AppServerOptionsModel):
     """High-level filters for listing stored app-server threads."""
 
-    archived: bool | None = None
-    cursor: str | None = None
-    cwd: str | None = None
-    limit: int | None = None
-    model_providers: list[str] | None = None
-    search_term: str | None = None
-    sort_key: protocol.ThreadSortKey | None = None
-    source_kinds: list[protocol.ThreadSourceKind] | None = None
+    archived: bool | None = Field(
+        default=None,
+        description="Sent as thread/list archived.",
+    )
+    cursor: str | None = Field(
+        default=None,
+        description="Sent as thread/list cursor.",
+    )
+    cwd: str | None = Field(
+        default=None,
+        description="Sent as thread/list cwd.",
+    )
+    limit: int | None = Field(
+        default=None,
+        description="Sent as thread/list limit.",
+    )
+    model_providers: list[str] | None = Field(
+        default=None,
+        description="Sent as thread/list modelProviders.",
+    )
+    search_term: str | None = Field(
+        default=None,
+        description=(
+            "Sent as thread/list searchTerm. "
+            "Present in the generated protocol; not described in the public app-server docs."
+        ),
+    )
+    sort_key: protocol.ThreadSortKey | None = Field(
+        default=None,
+        description="Sent as thread/list sortKey.",
+    )
+    source_kinds: list[protocol.ThreadSourceKind] | None = Field(
+        default=None,
+        description="Sent as thread/list sourceKinds.",
+    )
 
     def to_params(self) -> protocol.ThreadListParams:
         return cast(

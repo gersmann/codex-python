@@ -112,6 +112,10 @@ with AppServerClient.connect_stdio() as client:
 
 The async client exposes the same pattern with async handlers.
 
+For a complete dynamic-tool example that both registers `dynamic_tools` on
+`start_thread()` and handles the resulting `item/tool/call` requests, see
+[`examples/app_server_dynamic_tool.py`](../examples/app_server_dynamic_tool.py).
+
 ## When to use the advanced surface
 
 Prefer the advanced app-server APIs when you need:

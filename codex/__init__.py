@@ -13,11 +13,15 @@ from codex.options import (
     ThreadStartOptions,
     TurnOptions,
 )
+from codex.thread import CodexTurnStream, Input, Thread
 
-__version__ = "1.114.0"
+__version__ = "1.114.1"
 
 __all__ = [
     "Codex",
+    "CodexTurnStream",
+    "Thread",
+    "Input",
     "CodexError",
     "CodexExecError",
     "CodexParseError",
