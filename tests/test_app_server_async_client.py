@@ -5,6 +5,7 @@ import asyncio
 import pytest
 
 from codex.app_server._async_client import AsyncEventsClient, AsyncTurnStream
+from codex.app_server.errors import AppServerProtocolError
 from codex.app_server.models import ReviewResult
 from codex.protocol import types as protocol
 
@@ -307,6 +308,27 @@ def test_async_turn_stream_wait_raises_when_stream_ends_without_terminal_turn() 
         )
 
         with pytest.raises(ValueError, match="No terminal turn is available yet"):
+            await stream.wait()
+
+        assert subscription.closed is True
+
+    asyncio.run(scenario())
+
+
+def test_async_turn_stream_wait_surfaces_subscription_failure() -> None:
+    class _FailingSubscription(_FakeSubscription):
+        async def next(self) -> protocol.ServerNotification:
+            raise AppServerProtocolError("reader boom")
+
+    async def scenario() -> None:
+        subscription = _FailingSubscription()
+        stream = AsyncTurnStream(
+            _FakeThread(),  # type: ignore[arg-type]
+            subscription,  # type: ignore[arg-type]
+            protocol.Turn.model_validate(_turn_payload(status="inProgress")),
+        )
+
+        with pytest.raises(AppServerProtocolError, match="reader boom"):
             await stream.wait()
 
         assert subscription.closed is True

@@ -215,6 +215,24 @@ def test_async_session_subscription_close_discards_buffered_notifications() -> N
     asyncio.run(scenario())
 
 
+def test_async_session_subscription_surfaces_reader_failure() -> None:
+    async def scenario() -> None:
+        transport = _FakeTransport()
+        session = _AsyncSession(transport)
+        await session.start()
+        subscription = session.subscribe_notifications()
+
+        transport.push({"unexpected": "message"})
+
+        with pytest.raises(AppServerProtocolError, match="Unsupported app-server message"):
+            await subscription.next()
+
+        with pytest.raises(AppServerProtocolError, match="Unsupported app-server message"):
+            await session.close()
+
+    asyncio.run(scenario())
+
+
 def test_async_session_request_model_adaptation_wraps_protocol_errors() -> None:
     async def scenario() -> None:
         transport = _FakeTransport()

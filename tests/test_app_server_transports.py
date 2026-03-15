@@ -41,8 +41,11 @@ class _FakeStreamWriter:
 class _FakeStreamReader:
     def __init__(self, chunks: list[bytes]) -> None:
         self._chunks = chunks[:]
+        self.raise_on_readline: Exception | None = None
 
     async def readline(self) -> bytes:
+        if self.raise_on_readline is not None:
+            raise self.raise_on_readline
         if self._chunks:
             return self._chunks.pop(0)
         return b""
@@ -192,6 +195,7 @@ def test_stdio_transport_start_builds_command_and_env(monkeypatch: pytest.Monkey
     async def fake_create_subprocess_exec(*cmd: str, **kwargs: object) -> _FakeProcess:
         captured["cmd"] = list(cmd)
         captured["env"] = kwargs["env"]
+        captured["limit"] = kwargs["limit"]
         return fake_process
 
     monkeypatch.setattr("codex.app_server.transports._resolve_codex_path", lambda _: "/tmp/codex")
@@ -223,6 +227,7 @@ def test_stdio_transport_start_builds_command_and_env(monkeypatch: pytest.Monkey
     ]
     assert captured["env"]["OPENAI_BASE_URL"] == "http://localhost:8080"
     assert captured["env"]["CODEX_API_KEY"] == "test-key"
+    assert captured["limit"] == 4 * 1024 * 1024
 
 
 def test_stdio_transport_start_raises_on_spawn_failure(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -326,6 +331,25 @@ def test_stdio_transport_receive_raises_for_invalid_json() -> None:
     asyncio.run(scenario())
 
 
+def test_stdio_transport_receive_wraps_overlong_line_errors() -> None:
+    async def scenario() -> None:
+        stdout = _FakeStreamReader([])
+        stdout.raise_on_readline = ValueError("Separator is not found, and chunk exceed the limit")
+        transport = AsyncStdioTransport()
+        transport._process = _FakeProcess(
+            stdin=_FakeStreamWriter(),
+            stdout=stdout,
+            stderr=_FakeStreamReader([]),
+        )
+        with pytest.raises(
+            AppServerProtocolError,
+            match=r"stdout line exceeded configured limit of 4194304 bytes",
+        ):
+            await transport.receive()
+
+    asyncio.run(scenario())
+
+
 def test_stdio_transport_receive_raises_for_non_object_payload() -> None:
     async def scenario() -> None:
         transport = AsyncStdioTransport()
@@ -357,6 +381,28 @@ def test_stdio_transport_close_terminates_and_waits() -> None:
         assert process.terminated is True
         assert process.wait_calls >= 1
         assert transport._stderr_lines == ["stderr line"]
+
+    asyncio.run(scenario())
+
+
+def test_stdio_transport_close_surfaces_overlong_stderr_line() -> None:
+    async def scenario() -> None:
+        stderr = _FakeStreamReader([])
+        stderr.raise_on_readline = ValueError("Separator is found, but chunk is longer than limit")
+        process = _FakeProcess(
+            stdin=_FakeStreamWriter(),
+            stdout=_FakeStreamReader([]),
+            stderr=stderr,
+        )
+        transport = AsyncStdioTransport()
+        transport._process = process
+        transport._stderr_task = asyncio.create_task(transport._drain_stderr(process.stderr))
+
+        with pytest.raises(
+            AppServerProtocolError,
+            match=r"stderr line exceeded configured limit of 4194304 bytes",
+        ):
+            await transport.close()
 
     asyncio.run(scenario())
 

@@ -17,6 +17,8 @@ from codex.app_server.errors import (
 )
 from codex.app_server.options import AppServerProcessOptions, AppServerWebSocketOptions
 
+STDIO_STREAM_LIMIT_BYTES = 4 * 1024 * 1024
+
 
 class AsyncMessageTransport(Protocol):
     async def start(self) -> None: ...
@@ -70,6 +72,7 @@ class AsyncStdioTransport:
                 stdin=asyncio.subprocess.PIPE,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
+                limit=STDIO_STREAM_LIMIT_BYTES,
                 env=_build_env(self._options),
             )
         except OSError as exc:
@@ -85,7 +88,7 @@ class AsyncStdioTransport:
 
     async def _drain_stderr(self, stderr: asyncio.StreamReader) -> None:
         while True:
-            line = await stderr.readline()
+            line = await _readline_with_limit_error(stderr, stream_name="stderr")
             if line == b"":
                 break
             self._stderr_lines.append(line.decode("utf-8", errors="replace").rstrip())
@@ -103,7 +106,7 @@ class AsyncStdioTransport:
     async def receive(self) -> JsonObject | None:
         if self._process is None or self._process.stdout is None:
             raise AppServerClosedError("app-server stdio transport is not running")
-        line = await self._process.stdout.readline()
+        line = await _readline_with_limit_error(self._process.stdout, stream_name="stdout")
         if line == b"":
             return None
         try:
@@ -240,3 +243,17 @@ def _exception_types(candidate: object) -> tuple[type[BaseException], ...]:
     if isinstance(candidate, type) and issubclass(candidate, BaseException):
         return (candidate,)
     return ()
+
+
+async def _readline_with_limit_error(
+    stream: asyncio.StreamReader,
+    *,
+    stream_name: str,
+) -> bytes:
+    try:
+        return await stream.readline()
+    except ValueError as exc:
+        raise AppServerProtocolError(
+            "app-server stdio "
+            f"{stream_name} line exceeded configured limit of {STDIO_STREAM_LIMIT_BYTES} bytes"
+        ) from exc

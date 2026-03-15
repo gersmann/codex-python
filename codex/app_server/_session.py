@@ -31,6 +31,7 @@ from codex.protocol import types as protocol
 _ModelT = TypeVar("_ModelT", bound=BaseModel)
 _RequestT = TypeVar("_RequestT", bound=BaseModel)
 _NotificationPredicate = Callable[[Notification], bool]
+_SubscriptionMessage = Notification | Exception | None
 
 
 class _NotificationSink:
@@ -41,7 +42,7 @@ class _NotificationSink:
     ) -> None:
         self.methods = methods
         self.predicate = predicate
-        self.queue: asyncio.Queue[Notification | None] = asyncio.Queue()
+        self.queue: asyncio.Queue[_SubscriptionMessage] = asyncio.Queue()
 
     def matches(self, method: str, notification: Notification) -> bool:
         if self.methods is not None and method not in self.methods:
@@ -52,13 +53,15 @@ class _NotificationSink:
 @dataclass(slots=True)
 class _AsyncNotificationSubscription:
     sink: _NotificationSink
-    queue: asyncio.Queue[Notification | None]
+    queue: asyncio.Queue[_SubscriptionMessage]
     close_callback: Callable[[], None]
 
     async def next(self) -> Notification:
         message = await self.queue.get()
         if message is None:
             raise StopAsyncIteration
+        if isinstance(message, Exception):
+            raise message
         return message
 
     async def close(self) -> None:
@@ -253,7 +256,7 @@ class _AsyncSession:
             self._reader_error = exc
             self._fail_pending(exc)
             for sink in list(self._notification_sinks):
-                await sink.queue.put(None)
+                await sink.queue.put(exc)
 
     async def _await_future(self, future: asyncio.Future[object]) -> object:
         while True:
