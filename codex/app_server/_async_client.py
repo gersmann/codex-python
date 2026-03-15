@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Collection, Mapping
+from collections.abc import Callable, Collection, Mapping
 from typing import TypeVar, cast
 
 from pydantic import BaseModel
@@ -43,6 +43,7 @@ from codex.app_server.transports import (
     AsyncStdioTransport,
     AsyncWebSocketTransport,
 )
+from codex.dynamic_tools import _DynamicToolRuntime, merge_dynamic_tool_specs, resolve_dynamic_tools
 from codex.protocol import types as protocol
 
 _ModelT = TypeVar("_ModelT", bound=BaseModel)
@@ -60,8 +61,9 @@ __all__ = [
 class AsyncRpcClient:
     """Low-level async JSON-RPC access to app-server methods."""
 
-    def __init__(self, session: _AsyncSession) -> None:
+    def __init__(self, session: _AsyncSession, dynamic_tools: _DynamicToolRuntime) -> None:
         self._session = session
+        self._dynamic_tools = dynamic_tools
 
     async def request(
         self,
@@ -92,6 +94,7 @@ class AsyncRpcClient:
         *,
         request_model: type[_RequestT] | None = None,
     ) -> None:
+        self._dynamic_tools.check_manual_handler_registration(method)
         self._session.on_request(method, handler, request_model=request_model)
 
 
@@ -114,7 +117,8 @@ class AsyncAppServerClient:
         initialize_options: AppServerInitializeOptions | None = None,
     ) -> None:
         self._session = _AsyncSession(transport, initialize_options)
-        self.rpc = AsyncRpcClient(self._session)
+        self._dynamic_tools = _DynamicToolRuntime(self._session.on_request)
+        self.rpc = AsyncRpcClient(self._session, self._dynamic_tools)
         self.events = AsyncEventsClient(self._session)
         self.models = AsyncModelsClient(self.rpc)
         self.apps = AsyncAppsClient(self.rpc)
@@ -167,12 +171,19 @@ class AsyncAppServerClient:
     async def start_thread(
         self,
         options: AppServerThreadStartOptions | None = None,
+        *,
+        tools: Collection[Callable[..., object]] | None = None,
     ) -> AsyncAppServerThread:
+        start_options = options or AppServerThreadStartOptions()
+        resolved_tools = resolve_dynamic_tools(list(tools or ()))
+        dynamic_tools = merge_dynamic_tool_specs(start_options.dynamic_tools, resolved_tools)
+        self._dynamic_tools.prepare_activation(resolved_tools)
         result = await self.rpc.request_typed(
             "thread/start",
-            (options or AppServerThreadStartOptions()).to_params(),
+            start_options.model_copy(update={"dynamic_tools": dynamic_tools}).to_params(),
             ThreadResult,
         )
+        self._dynamic_tools.activate(result.thread.id, resolved_tools)
         return AsyncAppServerThread(cast(_ThreadClient, self), result.thread)
 
     async def resume_thread(

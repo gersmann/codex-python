@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from codex._config_types import CodexConfig
 from codex.app_server._async_client import AsyncAppServerClient, AsyncRpcClient
 from codex.app_server._async_threads import AsyncAppServerThread, AsyncTurnStream
 from codex.app_server._sync_client import AppServerClient, RpcClient
@@ -23,6 +24,7 @@ from codex.app_server.options import (
     AppServerTurnOptions,
     AppServerWebSocketOptions,
 )
+from codex.dynamic_tools import dynamic_tool
 
 __all__ = [
     "AsyncAppServerClient",
@@ -30,6 +32,7 @@ __all__ = [
     "AsyncRpcClient",
     "AsyncTurnStream",
     "AppServerClient",
+    "dynamic_tool",
     "AppServerThread",
     "RpcClient",
     "TurnStream",
@@ -40,6 +43,7 @@ __all__ = [
     "AppServerRpcError",
     "AppServerTurnError",
     "AppServerClientInfo",
+    "CodexConfig",
     "AppServerInitializeOptions",
     "AppServerProcessOptions",
     "AppServerWebSocketOptions",

@@ -110,9 +110,10 @@ with AppServerClient.connect_stdio() as client:
     thread.run_text("Use the configured dynamic tool if needed.")
 ```
 
-The async client exposes the same pattern with async handlers.
+The async client exposes the same pattern with async handlers. If you prefer the
+annotation-driven flow, use `@dynamic_tool` plus `tools=` on `start_thread()`.
 
-For a complete dynamic-tool example that both registers `dynamic_tools` on
+For a complete decorator-driven dynamic-tool example that activates tools on
 `start_thread()` and handles the resulting `item/tool/call` requests, see
 [`examples/app_server_dynamic_tool.py`](../examples/app_server_dynamic_tool.py).
 

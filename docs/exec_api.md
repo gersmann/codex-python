@@ -68,6 +68,29 @@ print(payload["answer"])
 
 If you want typed validation directly, use `client.run_model("Return JSON matching the schema", Summary)`.
 
+## Dynamic tools
+
+Use `@dynamic_tool` plus `tools=` when a run should expose annotation-driven dynamic tools on the
+fresh thread created for that call.
+
+```python
+from codex import Codex, dynamic_tool
+
+
+@dynamic_tool
+def lookup_ticket(id: str) -> str:
+    """Look up a support ticket by id."""
+    return f"Ticket {id}: Login requests time out in eu-west-1."
+
+
+client = Codex()
+result = client.run_text(
+    "Use the lookup_ticket dynamic tool for ticket 123 and summarize the result.",
+    tools=[lookup_ticket],
+)
+print(result)
+```
+
 ## Inputs
 
 `Thread.run()` accepts either:

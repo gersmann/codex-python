@@ -3,11 +3,13 @@ from __future__ import annotations
 import pytest
 from pydantic import BaseModel
 
+import codex
 import codex.codex as codex_module
 import codex.options as options_module
 import codex.thread as thread_module
 from codex._turn_options import with_model_output_schema
 from codex.app_server.options import (
+    AppServerInitializeOptions,
     AppServerProcessOptions,
     AppServerThreadResumeOptions,
     AppServerThreadStartOptions,
@@ -34,7 +36,7 @@ class _FakeAccountClient:
 class _FakeAppServerClient:
     def __init__(self) -> None:
         self.close_calls = 0
-        self.start_calls: list[AppServerThreadStartOptions | None] = []
+        self.start_calls: list[tuple[AppServerThreadStartOptions | None, object | None]] = []
         self.resume_calls: list[tuple[str, AppServerThreadResumeOptions | None]] = []
         self.account = _FakeAccountClient()
 
@@ -44,8 +46,10 @@ class _FakeAppServerClient:
     def start_thread(
         self,
         options: AppServerThreadStartOptions | None = None,
+        *,
+        tools: object | None = None,
     ) -> _FakeAppServerThread:
-        self.start_calls.append(options)
+        self.start_calls.append((options, tools))
         return _FakeAppServerThread("thr-start")
 
     def resume_thread(
@@ -83,8 +87,13 @@ def test_options_module_re_exports_app_server_option_types() -> None:
     )
     assert isinstance(options_module.TurnOptions().to_app_server_options(), AppServerTurnOptions)
     assert "CancelSignal" in options_module.__all__
+    assert "CodexConfig" in options_module.__all__
     assert "SupportsAborted" in options_module.__all__
     assert "SupportsIsSet" in options_module.__all__
+
+
+def test_root_package_exports_dynamic_tool() -> None:
+    assert codex.dynamic_tool.__name__ == "dynamic_tool"
 
 
 def test_exported_codex_option_fields_have_descriptions() -> None:
@@ -98,6 +107,28 @@ def test_exported_codex_option_fields_have_descriptions() -> None:
     for option_type in option_types:
         for field in option_type.model_fields.values():
             assert field.description
+
+    for field in options_module.CodexConfig.model_fields.values():
+        assert field.description
+
+
+def test_codex_and_app_server_options_coerce_config_dicts_to_typed_model() -> None:
+    codex_options = options_module.CodexOptions(config={"profile": "dev", "web_search": "cached"})
+    thread_options = options_module.ThreadStartOptions(config={"skip_git_repo_check": True})
+
+    assert isinstance(codex_options.config, options_module.CodexConfig)
+    assert codex_options.config is not None
+    assert codex_options.config.profile == "dev"
+    assert codex_options.config.web_search == "cached"
+    assert codex_options.config.model_extra == {}
+
+    app_options = codex_options.to_app_server_options()
+    assert app_options.config == codex_options.config
+
+    app_thread_options = thread_options.to_app_server_options()
+    assert isinstance(app_thread_options.config, options_module.CodexConfig)
+    assert app_thread_options.config is not None
+    assert app_thread_options.config.model_extra == {"skip_git_repo_check": True}
 
 
 def test_codex_caches_stdio_client_and_closes_once(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -173,18 +204,21 @@ def test_thread_ensure_thread_uses_start_and_resume_options() -> None:
     fake_client = _FakeAppServerClient()
 
     start_options = AppServerThreadStartOptions(model="gpt-5")
-    start_thread = thread_module.Thread(lambda: fake_client, start_options=start_options)
+    start_thread = thread_module.Thread(
+        lambda **_: fake_client,
+        start_options=start_options,
+    )
 
     started = start_thread._ensure_thread()
 
     assert started.id == "thr-start"
     assert start_thread.id == "thr-start"
-    assert fake_client.start_calls == [start_options]
+    assert fake_client.start_calls == [(start_options, None)]
     assert fake_client.resume_calls == []
 
     resume_options = AppServerThreadResumeOptions(personality=protocol.Personality("friendly"))
     resumed_thread = thread_module.Thread(
-        lambda: fake_client,
+        lambda **_: fake_client,
         resume_options=resume_options,
         thread_id="thr-existing",
     )
@@ -194,6 +228,68 @@ def test_thread_ensure_thread_uses_start_and_resume_options() -> None:
     assert resumed.id == "thr-existing"
     assert resumed_thread.id == "thr-existing"
     assert fake_client.resume_calls == [("thr-existing", resume_options)]
+
+
+def test_codex_start_thread_passes_annotation_driven_tools_through(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    fake_client = _FakeAppServerClient()
+    captured: dict[str, object] = {}
+
+    def fake_connect_stdio(
+        cls: type[object],
+        process_options: AppServerProcessOptions | None = None,
+        initialize_options: object | None = None,
+    ) -> _FakeAppServerClient:
+        _ = (cls, process_options)
+        captured["initialize_options"] = initialize_options
+        return fake_client
+
+    monkeypatch.setattr(
+        "codex.app_server.AppServerClient.connect_stdio",
+        classmethod(fake_connect_stdio),
+    )
+
+    @codex.dynamic_tool
+    def lookup_ticket(id: str) -> str:
+        """Look up a support ticket by id."""
+        return id
+
+    thread = codex_module.Codex().start_thread(tools=[lookup_ticket])
+
+    assert thread.id == "thr-start"
+    assert fake_client.start_calls == [(AppServerThreadStartOptions(), [lookup_ticket])]
+    assert captured["initialize_options"] == AppServerInitializeOptions(experimental_api=True)
+
+
+def test_codex_rejects_dynamic_tools_after_non_experimental_client_is_initialized(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    fake_client = _FakeAppServerClient()
+
+    def fake_connect_stdio(
+        cls: type[object],
+        process_options: AppServerProcessOptions | None = None,
+        initialize_options: object | None = None,
+    ) -> _FakeAppServerClient:
+        _ = (cls, process_options, initialize_options)
+        return fake_client
+
+    monkeypatch.setattr(
+        "codex.app_server.AppServerClient.connect_stdio",
+        classmethod(fake_connect_stdio),
+    )
+
+    client = codex_module.Codex()
+    client.start_thread()
+
+    @codex.dynamic_tool
+    def lookup_ticket(id: str) -> str:
+        """Look up a support ticket by id."""
+        return id
+
+    with pytest.raises(CodexError, match="Dynamic tools require experimentalApi"):
+        client.start_thread(tools=[lookup_ticket])
 
 
 def test_thread_signal_helpers_validate_supported_signal_shapes() -> None:

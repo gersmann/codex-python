@@ -10,6 +10,8 @@ def test_root_package_exposes_only_high_level_contract() -> None:
     assert codex.CodexTurnStream.__name__ == "CodexTurnStream"
     assert codex.Thread.__name__ == "Thread"
     assert codex.Input.__name__ == "Input"
+    assert codex.CodexConfig.__name__ == "CodexConfig"
+    assert callable(codex.dynamic_tool)
     assert codex.ThreadStartOptions.__name__ == "ThreadStartOptions"
     assert codex.ThreadResumeOptions.__name__ == "ThreadResumeOptions"
     assert not hasattr(codex, "ExecTurnStream")
@@ -29,6 +31,8 @@ def test_app_server_package_exposes_supported_surface_only() -> None:
     assert app_server.AppServerClient.__name__ == "AppServerClient"
     assert app_server.AsyncAppServerClient.__name__ == "AsyncAppServerClient"
     assert app_server.AppServerClientInfo.__name__ == "AppServerClientInfo"
+    assert app_server.CodexConfig.__name__ == "CodexConfig"
+    assert callable(app_server.dynamic_tool)
     assert not hasattr(app_server, "GenericNotification")
     assert not hasattr(app_server, "GenericServerRequest")
     assert not hasattr(app_server, "AsyncStdioTransport")
@@ -47,6 +51,7 @@ def test_app_server_helpers_share_internal_json_alias() -> None:
 def test_exported_app_server_option_fields_have_descriptions() -> None:
     options_module = importlib.import_module("codex.app_server.options")
     app_server = importlib.import_module("codex.app_server")
+    config_module = importlib.import_module("codex._config_types")
 
     option_types = [
         getattr(options_module, name)
@@ -57,3 +62,6 @@ def test_exported_app_server_option_fields_have_descriptions() -> None:
     for option_type in option_types:
         for field in option_type.model_fields.values():
             assert field.description
+
+    for field in config_module.CodexConfig.model_fields.values():
+        assert field.description

@@ -8,7 +8,7 @@ from typing import cast
 from pydantic import BaseModel, ConfigDict, Field, field_serializer
 from pydantic.alias_generators import to_camel
 
-from codex._config_types import CodexConfigObject
+from codex._config_types import CodexConfig
 from codex.output_schema import OutputSchemaInput, normalize_output_schema
 from codex.protocol import types as protocol
 
@@ -108,7 +108,7 @@ class AppServerProcessOptions(_AppServerOptionsModel):
         default=None,
         description="Inject the API key for the child app-server process.",
     )
-    config: CodexConfigObject | None = Field(
+    config: CodexConfig | None = Field(
         default=None,
         description="Launch-time Codex config overrides for the child process.",
     )
@@ -253,9 +253,9 @@ class AppServerThreadStartOptions(_AppServerOptionsModel):
         default=None,
         description="Sent as thread/start baseInstructions.",
     )
-    config: CodexConfigObject | None = Field(
+    config: CodexConfig | None = Field(
         default=None,
-        description="Sent as thread/start config.",
+        description="Sent as thread/start config. Accepts the typed CodexConfig model or a plain dict.",
     )
     cwd: str | None = Field(
         default=None,
@@ -340,9 +340,9 @@ class AppServerThreadResumeOptions(_AppServerOptionsModel):
         default=None,
         description="Sent as thread/resume baseInstructions.",
     )
-    config: CodexConfigObject | None = Field(
+    config: CodexConfig | None = Field(
         default=None,
-        description="Sent as thread/resume config.",
+        description="Sent as thread/resume config. Accepts the typed CodexConfig model or a plain dict.",
     )
     cwd: str | None = Field(
         default=None,
@@ -408,9 +408,9 @@ class AppServerThreadForkOptions(_AppServerOptionsModel):
         default=None,
         description="Sent as thread/fork baseInstructions.",
     )
-    config: CodexConfigObject | None = Field(
+    config: CodexConfig | None = Field(
         default=None,
-        description="Sent as thread/fork config.",
+        description="Sent as thread/fork config. Accepts the typed CodexConfig model or a plain dict.",
     )
     cwd: str | None = Field(
         default=None,

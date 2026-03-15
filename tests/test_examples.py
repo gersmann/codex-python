@@ -12,6 +12,7 @@ import examples.app_server_stream_events as app_server_stream_events
 import examples.app_server_tool_handler as app_server_tool_handler
 import examples.app_server_websocket_conversation as app_server_websocket_conversation
 import examples.basic_conversation as basic_conversation
+import examples.basic_dynamic_tool as basic_dynamic_tool
 from codex.protocol import types as protocol
 
 
@@ -54,10 +55,15 @@ class _FakeClient:
         self._thread = thread
         self.on_request_calls: list[tuple[str, object, object | None]] = []
         self.run_text_calls: list[str] = []
-        self.start_thread_calls: list[object | None] = []
+        self.start_thread_calls: list[tuple[object | None, object | None]] = []
 
-    def start_thread(self, options: object | None = None) -> _FakeThread:
-        self.start_thread_calls.append(options)
+    def start_thread(
+        self,
+        options: object | None = None,
+        *,
+        tools: object | None = None,
+    ) -> _FakeThread:
+        self.start_thread_calls.append((options, tools))
         return self._thread
 
     def run_text(self, prompt: str) -> str:
@@ -163,21 +169,12 @@ def test_app_server_dynamic_tool_registers_tool_and_prints_result(
 
     app_server_dynamic_tool.main()
 
-    assert fake_client.on_request_calls == [
-        ("item/tool/call", app_server_dynamic_tool.handle_tool_call, protocol.ItemToolCallRequest)
-    ]
-    start_options = fake_client.start_thread_calls[-1]
-    assert start_options is not None
-    assert len(start_options.dynamic_tools) == 1
-    dynamic_tool = start_options.dynamic_tools[0]
-    assert dynamic_tool.name == "lookup_ticket"
-    assert dynamic_tool.description == "Look up a support ticket by id."
-    assert dynamic_tool.inputSchema == {
-        "type": "object",
-        "properties": {"id": {"type": "string"}},
-        "required": ["id"],
-        "additionalProperties": False,
-    }
+    start_options, tools = fake_client.start_thread_calls[-1]
+    assert start_options is None
+    assert tools is not None
+    assert len(tools) == 1
+    dynamic_tool = tools[0]
+    assert dynamic_tool.__name__ == "lookup_ticket"
     assert capsys.readouterr().out == "Ticket summary\n"
 
 
@@ -245,3 +242,38 @@ def test_basic_conversation_main_prints_summary(
     assert fake_codex.run_text_calls == ["Briefly summarize this repository's purpose."]
     assert fake_thread.run_text_calls == ["Briefly summarize this repository's purpose."]
     assert capsys.readouterr().out == "Basic summary\n"
+
+
+def test_basic_dynamic_tool_main_passes_tools_and_prints_summary(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    captured: dict[str, object] = {}
+
+    class _FakeCodex:
+        def run_text(
+            self,
+            prompt: str,
+            *,
+            tools: object | None = None,
+        ) -> str:
+            captured["prompt"] = prompt
+            captured["tools"] = tools
+            return "Ticket summary"
+
+    monkeypatch.setattr(
+        basic_dynamic_tool,
+        "Codex",
+        lambda: _FakeCodex(),
+    )
+
+    basic_dynamic_tool.main()
+
+    assert captured["prompt"] == (
+        "Use the lookup_ticket dynamic tool for ticket 123 and summarize the result."
+    )
+    tools = captured["tools"]
+    assert tools is not None
+    assert len(tools) == 1
+    assert tools[0].__name__ == "lookup_ticket"
+    assert capsys.readouterr().out == "Ticket summary\n"
