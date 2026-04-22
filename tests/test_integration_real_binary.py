@@ -17,6 +17,7 @@ from codex.app_server.options import (
 from codex.protocol import types as protocol
 
 _STREAM_TIMEOUT_SECONDS = 90.0
+_COMMAND_UNDER_TEST = "git diff --no-color HEAD~1...HEAD"
 
 
 def _integration_binary_and_env(tmp_path: Path) -> tuple[Path, str, dict[str, str]]:
@@ -146,14 +147,15 @@ def test_streamed_git_command_events_with_real_codex_binary(tmp_path: Path) -> N
             )
             stream = await thread.run(
                 (
-                    'Run `/usr/bin/zsh -lc "git diff --no-color HEAD~1...HEAD"` exactly once. '
-                    "After the command completes, reply with the single word OK."
+                    f'Use the shell tool to run `/bin/sh -lc "{_COMMAND_UNDER_TEST}"` exactly '
+                    "once. After the command completes, reply with the single word OK."
                 ),
                 AppServerTurnOptions(effort=protocol.ReasoningEffort("low")),
             )
 
             saw_command_start = False
             saw_command_completion = False
+            observed_events: list[str] = []
 
             while True:
                 try:
@@ -163,22 +165,30 @@ def test_streamed_git_command_events_with_real_codex_binary(tmp_path: Path) -> N
                 except StopAsyncIteration:
                     break
 
+                method = getattr(getattr(event, "method", None), "root", type(event).__name__)
                 if isinstance(
                     event,
                     protocol.ItemStartedNotificationModel | protocol.ItemCompletedNotificationModel,
                 ):
                     item = event.params.item.root
+                    observed_events.append(
+                        f"{method}: {type(item).__name__}: "
+                        f"command={getattr(item, 'command', None)!r}"
+                    )
                     if not isinstance(item, protocol.CommandExecutionThreadItem):
                         continue
-                    if "git diff --no-color HEAD~1...HEAD" not in item.command:
+                    if _COMMAND_UNDER_TEST not in item.command:
                         continue
                     if isinstance(event, protocol.ItemStartedNotificationModel):
                         saw_command_start = True
                     if isinstance(event, protocol.ItemCompletedNotificationModel):
                         saw_command_completion = True
+                else:
+                    observed_events.append(f"{method}: {type(event).__name__}")
 
-            assert saw_command_start is True
-            assert saw_command_completion is True
+            event_summary = "\n".join(observed_events)
+            assert saw_command_start is True, event_summary
+            assert saw_command_completion is True, event_summary
             assert stream.final_turn is not None
             assert stream.final_turn.status.root == "completed"
         finally:
