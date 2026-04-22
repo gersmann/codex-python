@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import subprocess  # nosec B404
+import sys
 import tempfile
 from pathlib import Path
 
@@ -99,9 +100,14 @@ def generate_protocol_models(*, schema_path: Path, output_path: Path) -> None:
     )
 
 
-def postprocess_protocol_models() -> None:
+def build_postprocess_command(*, output_path: Path) -> list[str]:
+    return [sys.executable, "scripts/postprocess_protocol_types.py", str(output_path)]
+
+
+def postprocess_protocol_models(output_path: Path) -> None:
     run_stage(
-        "postprocess generated protocol types", ["python", "scripts/postprocess_protocol_types.py"]
+        "postprocess generated protocol types",
+        build_postprocess_command(output_path=output_path),
     )
 
 
@@ -119,7 +125,7 @@ def main() -> int:
         )
         generate_protocol_models(schema_path=schema_path, output_path=output_path)
 
-    postprocess_protocol_models()
+    postprocess_protocol_models(output_path)
     return 0
 
 

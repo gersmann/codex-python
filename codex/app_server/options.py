@@ -189,6 +189,10 @@ class AppServerTurnOptions(_AppServerOptionsModel):
         default=None,
         description="Sent as turn/start approvalPolicy.",
     )
+    approvals_reviewer: protocol.ApprovalsReviewer | None = Field(
+        default=None,
+        description="Sent as turn/start approvalsReviewer.",
+    )
     collaboration_mode: protocol.CollaborationMode | None = Field(
         default=None,
         description="Sent as turn/start collaborationMode.",
@@ -215,6 +219,10 @@ class AppServerTurnOptions(_AppServerOptionsModel):
     personality: protocol.Personality | None = Field(
         default=None,
         description="Sent as turn/start personality.",
+    )
+    responsesapi_client_metadata: dict[str, object] | None = Field(
+        default=None,
+        description="Sent as turn/start responsesapiClientMetadata.",
     )
     sandbox_policy: protocol.SandboxPolicy | None = Field(
         default=None,
@@ -248,6 +256,10 @@ class AppServerThreadStartOptions(_AppServerOptionsModel):
     approval_policy: protocol.AskForApproval | None = Field(
         default=None,
         description="Sent as thread/start approvalPolicy.",
+    )
+    approvals_reviewer: protocol.ApprovalsReviewer | None = Field(
+        default=None,
+        description="Sent as thread/start approvalsReviewer.",
     )
     base_instructions: str | None = Field(
         default=None,
@@ -321,6 +333,10 @@ class AppServerThreadStartOptions(_AppServerOptionsModel):
         default=None,
         description="Sent as thread/start serviceTier.",
     )
+    session_start_source: protocol.ThreadStartSource | None = Field(
+        default=None,
+        description="Sent as thread/start sessionStartSource.",
+    )
 
     def to_params(self) -> protocol.ThreadStartParams:
         return cast(
@@ -335,6 +351,10 @@ class AppServerThreadResumeOptions(_AppServerOptionsModel):
     approval_policy: protocol.AskForApproval | None = Field(
         default=None,
         description="Sent as thread/resume approvalPolicy.",
+    )
+    approvals_reviewer: protocol.ApprovalsReviewer | None = Field(
+        default=None,
+        description="Sent as thread/resume approvalsReviewer.",
     )
     base_instructions: str | None = Field(
         default=None,
@@ -404,6 +424,10 @@ class AppServerThreadForkOptions(_AppServerOptionsModel):
         default=None,
         description="Sent as thread/fork approvalPolicy.",
     )
+    approvals_reviewer: protocol.ApprovalsReviewer | None = Field(
+        default=None,
+        description="Sent as thread/fork approvalsReviewer.",
+    )
     base_instructions: str | None = Field(
         default=None,
         description="Sent as thread/fork baseInstructions.",
@@ -419,6 +443,10 @@ class AppServerThreadForkOptions(_AppServerOptionsModel):
     developer_instructions: str | None = Field(
         default=None,
         description="Sent as thread/fork developerInstructions.",
+    )
+    ephemeral: bool | None = Field(
+        default=None,
+        description="Sent as thread/fork ephemeral.",
     )
     model: str | None = Field(
         default=None,

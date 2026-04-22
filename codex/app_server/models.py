@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 from pydantic import ConfigDict as PydanticConfigDict
@@ -98,8 +98,33 @@ class AppListResult(AppServerResultModel):
     next_cursor: str | None = None
 
 
+class SkillInterface(AppServerResultModel):
+    display_name: str | None = None
+    short_description: str | None = None
+    icon_small: str | None = None
+    icon_large: str | None = None
+    brand_color: str | None = None
+    default_prompt: str | None = None
+
+
+class SkillInfo(AppServerResultModel):
+    name: str
+    description: str
+    enabled: bool
+    path: str
+    scope: str
+    interface: SkillInterface | None = None
+    short_description: str | None = None
+
+
+class SkillsListEntry(AppServerResultModel):
+    cwd: str
+    skills: list[SkillInfo]
+    errors: list[str] = Field(default_factory=list)
+
+
 class SkillsListResult(AppServerResultModel):
-    data: list[protocol.SkillsListEntry]
+    data: list[SkillsListEntry]
 
 
 class SkillsConfigWriteResult(AppServerResultModel):
@@ -192,11 +217,11 @@ class ConfigRequirementsReadResult(AppServerResultModel):
 
 
 class McpServerStatus(AppServerResultModel):
-    auth_status: protocol.McpAuthStatus
+    auth_status: str
     name: str
-    resource_templates: list[protocol.ResourceTemplate]
-    resources: list[protocol.Resource]
-    tools: dict[str, protocol.Tool]
+    resource_templates: list[dict[str, Any]]
+    resources: list[dict[str, Any]]
+    tools: dict[str, dict[str, Any]]
 
 
 class McpServerStatusListResult(AppServerResultModel):

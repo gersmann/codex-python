@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import Callable, Coroutine, Sequence
+from collections.abc import Callable, Coroutine, Mapping, Sequence
 from typing import Any, Protocol
 
 from codex.app_server._sync_support import _SyncRunner
@@ -25,6 +25,7 @@ from codex.app_server.models import (
     ModelInfo,
     ModelListResult,
     SkillsConfigWriteResult,
+    SkillsListEntry,
     SkillsListResult,
     WindowsSandboxSetupStartResult,
 )
@@ -76,7 +77,7 @@ class _AsyncSkillsClientLike(Protocol):
         cwds: Sequence[str] | None = None,
         force_reload: bool | None = None,
         per_cwd_extra_user_roots: Sequence[protocol.SkillsListExtraRootsForCwd] | None = None,
-    ) -> list[protocol.SkillsListEntry]: ...
+    ) -> list[SkillsListEntry]: ...
 
     async def list_page(
         self,
@@ -184,9 +185,35 @@ class _AsyncCommandClientLike(Protocol):
         *,
         command: Sequence[str],
         cwd: str | None = None,
+        disable_output_cap: bool | None = None,
+        disable_timeout: bool | None = None,
+        env: Mapping[str, object | None] | None = None,
+        output_bytes_cap: int | None = None,
+        process_id: str | None = None,
         sandbox_policy: protocol.SandboxPolicy | None = None,
+        size: protocol.CommandExecTerminalSize | None = None,
+        stream_stdin: bool | None = None,
+        stream_stdout_stderr: bool | None = None,
         timeout_ms: int | None = None,
+        tty: bool | None = None,
     ) -> CommandExecResult: ...
+
+    async def write(
+        self,
+        *,
+        process_id: str,
+        close_stdin: bool | None = None,
+        delta_base64: str | None = None,
+    ) -> EmptyResult: ...
+
+    async def resize(
+        self,
+        *,
+        process_id: str,
+        size: protocol.CommandExecTerminalSize,
+    ) -> EmptyResult: ...
+
+    async def terminate(self, *, process_id: str) -> EmptyResult: ...
 
 
 class _AsyncExternalAgentConfigClientLike(Protocol):
@@ -312,7 +339,7 @@ class _SkillsClient(_SyncRunner):
         cwds: Sequence[str] | None = None,
         force_reload: bool | None = None,
         per_cwd_extra_user_roots: Sequence[protocol.SkillsListExtraRootsForCwd] | None = None,
-    ) -> list[protocol.SkillsListEntry]:
+    ) -> list[SkillsListEntry]:
         return self._run(
             self._async_client.list(
                 cwds=cwds,
@@ -529,19 +556,63 @@ class _CommandClient(_SyncRunner):
         *,
         command: Sequence[str],
         cwd: str | None = None,
+        disable_output_cap: bool | None = None,
+        disable_timeout: bool | None = None,
+        env: Mapping[str, object | None] | None = None,
+        output_bytes_cap: int | None = None,
+        process_id: str | None = None,
         sandbox_policy: protocol.SandboxPolicy | None = None,
+        size: protocol.CommandExecTerminalSize | None = None,
+        stream_stdin: bool | None = None,
+        stream_stdout_stderr: bool | None = None,
         timeout_ms: int | None = None,
+        tty: bool | None = None,
     ) -> CommandExecResult:
         return self._run(
             self._async_client.execute(
                 command=command,
                 cwd=cwd,
+                disable_output_cap=disable_output_cap,
+                disable_timeout=disable_timeout,
+                env=env,
+                output_bytes_cap=output_bytes_cap,
+                process_id=process_id,
                 sandbox_policy=sandbox_policy,
+                size=size,
+                stream_stdin=stream_stdin,
+                stream_stdout_stderr=stream_stdout_stderr,
                 timeout_ms=timeout_ms,
+                tty=tty,
             )
         )
 
     exec = execute
+
+    def write(
+        self,
+        *,
+        process_id: str,
+        close_stdin: bool | None = None,
+        delta_base64: str | None = None,
+    ) -> EmptyResult:
+        return self._run(
+            self._async_client.write(
+                process_id=process_id,
+                close_stdin=close_stdin,
+                delta_base64=delta_base64,
+            )
+        )
+
+    def resize(
+        self,
+        *,
+        process_id: str,
+        size: protocol.CommandExecTerminalSize,
+    ) -> EmptyResult:
+        return self._run(self._async_client.resize(process_id=process_id, size=size))
+
+    def terminate(self, *, process_id: str) -> EmptyResult:
+        return self._run(self._async_client.terminate(process_id=process_id))
 
 
 class _ExternalAgentConfigClient(_SyncRunner):

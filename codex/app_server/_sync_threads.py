@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable, Collection, Coroutine
+from collections.abc import Callable, Collection, Coroutine, Mapping
 from typing import Any, Protocol, TypeVar
 
 from pydantic import BaseModel
@@ -45,7 +45,12 @@ class _AsyncTurnStreamLike(Protocol):
 
     def raise_for_terminal_status(self) -> None: ...
 
-    async def steer(self, input: TurnInput) -> TurnIdResult: ...
+    async def steer(
+        self,
+        input: TurnInput,
+        *,
+        responsesapi_client_metadata: Mapping[str, object] | None = None,
+    ) -> TurnIdResult: ...
 
     async def interrupt(self) -> EmptyResult: ...
 
@@ -217,8 +222,18 @@ class TurnStream(_SyncRunner):
     def raise_for_terminal_status(self) -> None:
         self._async_stream.raise_for_terminal_status()
 
-    def steer(self, input: TurnInput) -> TurnIdResult:
-        return self._run(self._async_stream.steer(input))
+    def steer(
+        self,
+        input: TurnInput,
+        *,
+        responsesapi_client_metadata: Mapping[str, object] | None = None,
+    ) -> TurnIdResult:
+        return self._run(
+            self._async_stream.steer(
+                input,
+                responsesapi_client_metadata=responsesapi_client_metadata,
+            )
+        )
 
     def interrupt(self) -> EmptyResult:
         return self._run(self._async_stream.interrupt())

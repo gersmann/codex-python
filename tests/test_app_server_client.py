@@ -23,6 +23,7 @@ from codex.app_server import (
     AppServerRpcError,
     AppServerThreadForkOptions,
     AppServerThreadListOptions,
+    AppServerThreadResumeOptions,
     AppServerThreadStartOptions,
     AppServerTurnError,
     AppServerTurnOptions,
@@ -69,6 +70,25 @@ def _agent_message_item(text: str, item_id: str = "item-1") -> JsonObject:
         "phase": "final_answer",
         "text": text,
     }
+
+
+def _hook_run_payload(*, status: str = "running") -> JsonObject:
+    payload: JsonObject = {
+        "id": "hook-1",
+        "displayOrder": 0,
+        "entries": [],
+        "eventName": "preToolUse",
+        "executionMode": "sync",
+        "handlerType": "command",
+        "scope": "turn",
+        "sourcePath": "/repo/.codex/hooks/pre_tool.py",
+        "startedAt": 1730910000,
+        "status": status,
+    }
+    if status != "running":
+        payload["completedAt"] = 1730910001
+        payload["durationMs"] = 1000
+    return payload
 
 
 class SummaryModel(BaseModel):
@@ -488,7 +508,7 @@ def test_async_client_start_thread_returns_thread_object() -> None:
         }
         assert thread.id == "thr-1"
         assert isinstance(thread.snapshot, protocol.Thread)
-        assert thread.snapshot.cwd == "/repo"
+        assert thread.snapshot.cwd.root == "/repo"
 
         await client.close()
 
@@ -498,10 +518,12 @@ def test_async_client_start_thread_returns_thread_object() -> None:
 def test_app_server_thread_start_options_serialize_with_camel_case_aliases() -> None:
     params = AppServerThreadStartOptions(
         approval_policy=protocol.AskForApproval("never"),
+        approvals_reviewer=protocol.ApprovalsReviewer("guardian_subagent"),
         base_instructions="Follow repo policy",
         experimental_raw_events=True,
         sandbox=protocol.SandboxMode("workspace-write"),
         service_name="pytest-client",
+        session_start_source=protocol.ThreadStartSource("startup"),
     ).to_params()
 
     assert params.model_dump(
@@ -511,18 +533,44 @@ def test_app_server_thread_start_options_serialize_with_camel_case_aliases() -> 
         exclude_defaults=True,
     ) == {
         "approvalPolicy": "never",
+        "approvalsReviewer": "guardian_subagent",
         "baseInstructions": "Follow repo policy",
         "experimentalRawEvents": True,
         "sandbox": "workspace-write",
         "serviceName": "pytest-client",
+        "sessionStartSource": "startup",
+    }
+
+
+def test_app_server_thread_resume_and_fork_options_include_0_122_fields() -> None:
+    resume_params = AppServerThreadResumeOptions(
+        approvals_reviewer=protocol.ApprovalsReviewer("guardian_subagent"),
+    ).to_params(thread_id="thr-1")
+    fork_params = AppServerThreadForkOptions(
+        approvals_reviewer=protocol.ApprovalsReviewer("guardian_subagent"),
+        ephemeral=True,
+    ).to_params(thread_id="thr-1")
+
+    assert resume_params.model_dump(mode="python", by_alias=True, exclude_none=True) == {
+        "approvalsReviewer": "guardian_subagent",
+        "persistExtendedHistory": False,
+        "threadId": "thr-1",
+    }
+    assert fork_params.model_dump(mode="python", by_alias=True, exclude_none=True) == {
+        "approvalsReviewer": "guardian_subagent",
+        "ephemeral": True,
+        "persistExtendedHistory": False,
+        "threadId": "thr-1",
     }
 
 
 def test_app_server_turn_and_list_options_use_protocol_owned_types() -> None:
     turn_params = AppServerTurnOptions(
         approval_policy=protocol.AskForApproval("on-request"),
+        approvals_reviewer=protocol.ApprovalsReviewer("guardian_subagent"),
         effort=protocol.ReasoningEffort("none"),
         personality=protocol.Personality("friendly"),
+        responsesapi_client_metadata={"trace_id": "trace-1"},
         service_tier=protocol.ServiceTier("fast"),
         summary=protocol.ReasoningSummary("concise"),
     ).to_params(
@@ -536,9 +584,11 @@ def test_app_server_turn_and_list_options_use_protocol_owned_types() -> None:
 
     assert turn_params.model_dump(mode="python", by_alias=True, exclude_none=True) == {
         "approvalPolicy": "on-request",
+        "approvalsReviewer": "guardian_subagent",
         "effort": "none",
         "input": [{"type": "text", "text": "Summarize this repo.", "text_elements": []}],
         "personality": "friendly",
+        "responsesapiClientMetadata": {"trace_id": "trace-1"},
         "serviceTier": "fast",
         "summary": "concise",
         "threadId": "thr-1",
@@ -559,17 +609,41 @@ def test_async_turn_stream_yields_typed_events_and_aggregates_final_text() -> No
             assert message["params"]["input"] == [{"type": "text", "text": "Summarize this repo."}]
             return {"id": message["id"], "result": {"turn": _turn_payload()}}
 
+        def steer_turn(message: JsonObject) -> JsonObject:
+            assert message["params"] == {
+                "threadId": "thr-1",
+                "expectedTurnId": "turn-1",
+                "input": [{"type": "text", "text": "Add detail."}],
+                "responsesapiClientMetadata": {"trace_id": "trace-2"},
+            }
+            return {"id": message["id"], "result": {"turnId": "turn-1"}}
+
         transport.responses["turn/start"] = start_turn
+        transport.responses["turn/steer"] = steer_turn
         client = AsyncAppServerClient(transport)
         await client.start()
 
         thread = await client.start_thread()
         stream = await thread.run("Summarize this repo.")
+        steered = await stream.steer(
+            "Add detail.",
+            responsesapi_client_metadata={"trace_id": "trace-2"},
+        )
 
         transport.push(
             {
                 "method": "turn/started",
                 "params": {"threadId": "thr-1", "turn": _turn_payload()},
+            }
+        )
+        transport.push(
+            {
+                "method": "hook/started",
+                "params": {
+                    "threadId": "thr-1",
+                    "turnId": "turn-1",
+                    "run": _hook_run_payload(),
+                },
             }
         )
         transport.push(
@@ -595,6 +669,16 @@ def test_async_turn_stream_yields_typed_events_and_aggregates_final_text() -> No
         )
         transport.push(
             {
+                "method": "hook/completed",
+                "params": {
+                    "threadId": "thr-1",
+                    "turnId": "turn-1",
+                    "run": _hook_run_payload(status="completed"),
+                },
+            }
+        )
+        transport.push(
+            {
                 "method": "turn/completed",
                 "params": {
                     "threadId": "thr-1",
@@ -607,12 +691,15 @@ def test_async_turn_stream_yields_typed_events_and_aggregates_final_text() -> No
 
         assert [type(event) for event in events] == [
             protocol.TurnStartedNotificationModel,
+            protocol.HookStartedNotificationModel,
             protocol.ItemAgentMessageDeltaNotification,
             protocol.ItemCompletedNotificationModel,
+            protocol.HookCompletedNotificationModel,
             protocol.TurnCompletedNotificationModel,
         ]
-        assert events[1].params.delta == "Repository summary"
-        assert isinstance(events[2].params.item.root, protocol.AgentMessageThreadItem)
+        assert events[2].params.delta == "Repository summary"
+        assert isinstance(events[3].params.item.root, protocol.AgentMessageThreadItem)
+        assert steered.turn_id == "turn-1"
         assert stream.final_text == "Repository summary"
         assert stream.final_message is not None
         assert stream.final_message.text == "Repository summary"
@@ -1247,7 +1334,16 @@ def test_async_client_exposes_typed_rpc_domain_clients() -> None:
                                     "name": "skill-creator",
                                     "description": "Create a skill",
                                     "enabled": True,
+                                    "interface": {
+                                        "displayName": "Skill Creator",
+                                        "shortDescription": "Create or update skills",
+                                        "iconSmall": None,
+                                        "iconLarge": None,
+                                        "brandColor": None,
+                                        "defaultPrompt": None,
+                                    },
                                     "path": "/repo/.codex/skills/skill-creator/SKILL.md",
+                                    "shortDescription": "Create or update skills",
                                     "scope": "repo",
                                 }
                             ],
@@ -1626,6 +1722,9 @@ def test_async_client_exposes_typed_rpc_domain_clients() -> None:
         assert apps[0].id == "demo-app"
         assert app_page.data[0].id == "demo-app"
         assert skills[0].cwd == "/repo"
+        assert skills[0].skills[0].interface is not None
+        assert skills[0].skills[0].interface.display_name == "Skill Creator"
+        assert skills[0].skills[0].short_description == "Create or update skills"
         assert skills_result.data[0].cwd == "/repo"
         assert skill_config.effective_enabled is False
         assert account.account is not None
@@ -1687,6 +1786,87 @@ def test_async_rpc_supports_raw_and_typed_calls_for_unsupported_methods() -> Non
 
         with pytest.raises(ValidationError, match="unsupported_flag"):
             AppServerTurnOptions(unsupported_flag=True)  # type: ignore[call-arg]
+
+        await client.close()
+
+    asyncio.run(scenario())
+
+
+def test_async_command_client_exposes_0_122_exec_controls() -> None:
+    async def scenario() -> None:
+        transport = ScriptedTransport()
+
+        def command_exec(message: JsonObject) -> JsonObject:
+            assert message["params"] == {
+                "command": ["bash"],
+                "cwd": "/repo",
+                "disableTimeout": True,
+                "env": {"TERM": "xterm-256color"},
+                "outputBytesCap": 4096,
+                "processId": "proc-1",
+                "size": {"cols": 80, "rows": 24},
+                "streamStdin": True,
+                "streamStdoutStderr": True,
+                "tty": True,
+            }
+            return {
+                "id": message["id"],
+                "result": {"exitCode": 0, "stdout": "", "stderr": ""},
+            }
+
+        def command_write(message: JsonObject) -> JsonObject:
+            assert message["params"] == {
+                "processId": "proc-1",
+                "deltaBase64": "aGVsbG8K",
+                "closeStdin": True,
+            }
+            return {"id": message["id"], "result": {}}
+
+        def command_resize(message: JsonObject) -> JsonObject:
+            assert message["params"] == {
+                "processId": "proc-1",
+                "size": {"cols": 100, "rows": 30},
+            }
+            return {"id": message["id"], "result": {}}
+
+        def command_terminate(message: JsonObject) -> JsonObject:
+            assert message["params"] == {"processId": "proc-1"}
+            return {"id": message["id"], "result": {}}
+
+        transport.responses["command/exec"] = command_exec
+        transport.responses["command/exec/write"] = command_write
+        transport.responses["command/exec/resize"] = command_resize
+        transport.responses["command/exec/terminate"] = command_terminate
+        client = AsyncAppServerClient(transport)
+        await client.start()
+
+        result = await client.command.execute(
+            command=["bash"],
+            cwd="/repo",
+            disable_timeout=True,
+            env={"TERM": "xterm-256color"},
+            output_bytes_cap=4096,
+            process_id="proc-1",
+            size=protocol.CommandExecTerminalSize(cols=80, rows=24),
+            stream_stdin=True,
+            stream_stdout_stderr=True,
+            tty=True,
+        )
+        wrote = await client.command.write(
+            process_id="proc-1",
+            delta_base64="aGVsbG8K",
+            close_stdin=True,
+        )
+        resized = await client.command.resize(
+            process_id="proc-1",
+            size=protocol.CommandExecTerminalSize(cols=100, rows=30),
+        )
+        terminated = await client.command.terminate(process_id="proc-1")
+
+        assert result.exit_code == 0
+        assert wrote == EmptyResult()
+        assert resized == EmptyResult()
+        assert terminated == EmptyResult()
 
         await client.close()
 
@@ -2309,9 +2489,28 @@ def test_sync_client_exposes_typed_rpc_domain_clients_and_events() -> None:
         assert tuple(inspect.signature(client.command.execute).parameters) == (
             "command",
             "cwd",
+            "disable_output_cap",
+            "disable_timeout",
+            "env",
+            "output_bytes_cap",
+            "process_id",
             "sandbox_policy",
+            "size",
+            "stream_stdin",
+            "stream_stdout_stderr",
             "timeout_ms",
+            "tty",
         )
+        assert tuple(inspect.signature(client.command.write).parameters) == (
+            "process_id",
+            "close_stdin",
+            "delta_base64",
+        )
+        assert tuple(inspect.signature(client.command.resize).parameters) == (
+            "process_id",
+            "size",
+        )
+        assert tuple(inspect.signature(client.command.terminate).parameters) == ("process_id",)
         assert tuple(inspect.signature(client.account.login_chatgpt_tokens).parameters) == (
             "access_token",
             "chatgpt_account_id",
