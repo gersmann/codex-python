@@ -3,7 +3,6 @@ from __future__ import annotations
 import asyncio
 import base64
 import os
-import subprocess
 from pathlib import Path
 
 import pytest
@@ -13,7 +12,7 @@ from codex.app_server import AsyncAppServerClient
 from codex.app_server.options import AppServerProcessOptions
 from codex.protocol import types as protocol
 
-_COMMAND_UNDER_TEST = "git diff --no-color HEAD~1...HEAD"
+_COMMAND_OUTPUT_UNDER_TEST = "codex-python-integration-output"
 
 
 def _integration_binary_and_env(tmp_path: Path) -> tuple[Path, str, dict[str, str]]:
@@ -55,32 +54,6 @@ def _integration_binary_and_env(tmp_path: Path) -> tuple[Path, str, dict[str, st
     return binary, api_key, child_env
 
 
-def _create_git_repo(path: Path) -> Path:
-    path.mkdir()
-    _git(path, "init")
-    _git(path, "config", "user.email", "codex-python-tests@example.com")
-    _git(path, "config", "user.name", "Codex Python Tests")
-
-    tracked_file = path / "notes.txt"
-    tracked_file.write_text("one\n", encoding="utf-8")
-    _git(path, "add", "notes.txt")
-    _git(path, "commit", "-m", "initial")
-
-    tracked_file.write_text("two\nthree\n", encoding="utf-8")
-    _git(path, "commit", "-am", "second")
-    return path
-
-
-def _git(repo: Path, *args: str) -> None:
-    subprocess.run(
-        ["git", *args],
-        cwd=repo,
-        check=True,
-        capture_output=True,
-        text=True,
-    )
-
-
 def test_run_with_real_codex_binary_and_api_key(tmp_path: Path) -> None:
     binary, api_key, child_env = _integration_binary_and_env(tmp_path)
 
@@ -118,7 +91,6 @@ def test_run_with_real_codex_binary_and_api_key(tmp_path: Path) -> None:
 
 def test_streamed_command_exec_events_with_real_codex_binary(tmp_path: Path) -> None:
     binary, _api_key, child_env = _integration_binary_and_env(tmp_path)
-    repo = _create_git_repo(tmp_path / "repo")
 
     async def scenario() -> None:
         client = await AsyncAppServerClient.connect_stdio(
@@ -132,8 +104,8 @@ def test_streamed_command_exec_events_with_real_codex_binary(tmp_path: Path) -> 
             subscription = client.events.subscribe({"command/exec/outputDelta"})
             command_task = asyncio.create_task(
                 client.command.execute(
-                    command=["/bin/sh", "-lc", _COMMAND_UNDER_TEST],
-                    cwd=str(repo),
+                    command=["/bin/sh", "-c", f"printf {_COMMAND_OUTPUT_UNDER_TEST}"],
+                    cwd=str(tmp_path),
                     process_id=process_id,
                     stream_stdout_stderr=True,
                     timeout_ms=5000,
@@ -141,6 +113,7 @@ def test_streamed_command_exec_events_with_real_codex_binary(tmp_path: Path) -> 
             )
 
             stdout_chunks: list[str] = []
+            stderr_chunks: list[str] = []
             observed_events: list[str] = []
 
             while True:
@@ -157,20 +130,28 @@ def test_streamed_command_exec_events_with_real_codex_binary(tmp_path: Path) -> 
                     continue
                 if event.params.processId != process_id:
                     continue
-                if event.params.stream.root != "stdout":
-                    continue
-                stdout_chunks.append(base64.b64decode(event.params.deltaBase64).decode())
+                output_chunk = base64.b64decode(event.params.deltaBase64).decode()
+                if event.params.stream.root == "stdout":
+                    stdout_chunks.append(output_chunk)
+                if event.params.stream.root == "stderr":
+                    stderr_chunks.append(output_chunk)
 
             result = await command_task
             await subscription.close()
             event_summary = "\n".join(observed_events)
             streamed_stdout = "".join(stdout_chunks)
-            assert result.exit_code == 0
+            streamed_stderr = "".join(stderr_chunks)
+            failure_context = (
+                f"result={result!r}\n"
+                f"streamed_stdout={streamed_stdout!r}\n"
+                f"streamed_stderr={streamed_stderr!r}\n"
+                f"{event_summary}"
+            )
+            assert result.exit_code == 0, failure_context
             assert result.stderr == ""
             assert result.stdout == ""
-            assert "-one" in streamed_stdout, event_summary
-            assert "+two" in streamed_stdout, event_summary
-            assert "+three" in streamed_stdout, event_summary
+            assert streamed_stdout == _COMMAND_OUTPUT_UNDER_TEST, failure_context
+            assert streamed_stderr == "", failure_context
         finally:
             await client.close()
 
