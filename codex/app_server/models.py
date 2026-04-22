@@ -206,10 +206,12 @@ class ConfigWriteResult(AppServerResultModel):
 
 class ConfigRequirements(AppServerResultModel):
     allowed_approval_policies: list[protocol.AskForApproval] | None = None
+    allowed_approvals_reviewers: list[protocol.ApprovalsReviewer] | None = None
     allowed_sandbox_modes: list[protocol.SandboxMode] | None = None
-    allowed_web_search_modes: list[Literal["disabled", "cached", "live"]] | None = None
-    enforce_residency: Literal["us"] | None = None
-    feature_requirements: dict[str, bool] | None = None
+    allowed_web_search_modes: list[protocol.WebSearchMode] | None = None
+    enforce_residency: protocol.ResidencyRequirement | None = None
+    feature_requirements: dict[str, object] | None = None
+    network: protocol.NetworkRequirements | None = None
 
 
 class ConfigRequirementsReadResult(AppServerResultModel):

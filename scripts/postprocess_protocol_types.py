@@ -37,6 +37,12 @@ ROOT_MODEL_DEFAULT_REPLACEMENTS = {
     "CommandExecutionSource": ("agent", 'CommandExecutionSource("agent")'),
     "HookSource": ("unknown", 'HookSource("unknown")'),
 }
+ROOT_MODEL_LIST_DEFAULT_REPLACEMENTS = {
+    "InputModality": (
+        ("text", "image"),
+        '[InputModality("text"), InputModality("image")]',
+    ),
+}
 
 
 @dataclass(frozen=True)
@@ -107,6 +113,16 @@ def normalize_root_model_defaults(text: str) -> str:
             rf"(\b\w+:\s*Annotated\[{model_name} \| None, Field\(validate_default=True\)\]\s*=\s*)[\"']{literal_value}[\"']",
             rf"\1{replacement}",
             text,
+        )
+    for model_name, (literal_values, replacement) in ROOT_MODEL_LIST_DEFAULT_REPLACEMENTS.items():
+        literal_pattern = r"\s*,\s*".join(
+            rf"[\"']{literal_value}[\"']" for literal_value in literal_values
+        )
+        text = re.sub(
+            rf"(\b\w+:\s*Annotated\[list\[{model_name}\] \| None, Field\(validate_default=True\)\]\s*=\s*)\[\s*{literal_pattern}\s*,?\s*\]",
+            rf"\1{replacement}",
+            text,
+            flags=re.S,
         )
     return text
 

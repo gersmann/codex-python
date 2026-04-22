@@ -1493,8 +1493,17 @@ def test_async_client_exposes_typed_rpc_domain_clients() -> None:
                 "result": {
                     "requirements": {
                         "allowedApprovalPolicies": ["on-request", "never"],
+                        "allowedApprovalsReviewers": ["user"],
                         "allowedSandboxModes": ["read-only", "workspace-write"],
-                        "featureRequirements": {"personality": True},
+                        "allowedWebSearchModes": ["disabled", "live"],
+                        "enforceResidency": "us",
+                        "featureRequirements": {"personality": {"required": True}},
+                        "network": {
+                            "enabled": True,
+                            "allowedDomains": ["api.openai.com"],
+                            "deniedDomains": ["example.invalid"],
+                            "managedAllowedDomainsOnly": True,
+                        },
                     }
                 },
             }
@@ -1772,6 +1781,23 @@ def test_async_client_exposes_typed_rpc_domain_clients() -> None:
             "read-only",
             "workspace-write",
         ]
+        assert requirements.requirements.allowed_approvals_reviewers is not None
+        assert [
+            reviewer.root for reviewer in requirements.requirements.allowed_approvals_reviewers
+        ] == ["user"]
+        assert requirements.requirements.allowed_web_search_modes is not None
+        assert [mode.root for mode in requirements.requirements.allowed_web_search_modes] == [
+            "disabled",
+            "live",
+        ]
+        assert requirements.requirements.enforce_residency is not None
+        assert requirements.requirements.enforce_residency.root == "us"
+        assert requirements.requirements.feature_requirements == {"personality": {"required": True}}
+        assert requirements.requirements.network is not None
+        assert requirements.requirements.network.enabled is True
+        assert requirements.requirements.network.allowedDomains == ["api.openai.com"]
+        assert requirements.requirements.network.deniedDomains == ["example.invalid"]
+        assert requirements.requirements.network.managedAllowedDomainsOnly is True
         assert reload_result == EmptyResult()
         assert oauth_result.authorization_url == "https://example.com/oauth"
         assert mcp_status[0].name == "github"

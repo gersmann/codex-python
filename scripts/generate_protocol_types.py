@@ -4,19 +4,23 @@
 from __future__ import annotations
 
 import argparse
+import ast
 import re
 import subprocess  # nosec B404
 import sys
 import tempfile
+from dataclasses import dataclass
 from pathlib import Path
 
 SUBPROCESS_TIMEOUT_SECONDS = 300
-EXTRA_PROTOCOL_SCHEMA_FILES = (
-    # Response-only schemas are not reachable from the ClientRequest/
-    # ServerRequest/ServerNotification envelope, but they are part of the
-    # app-server protocol and are used by the SDK's typed RPC result models.
-    "v2/ListMcpServerStatusResponse.json",
-)
+DATAMODEL_CODE_GENERATOR_PACKAGE = "datamodel-code-generator==0.56.1"
+EXTRA_PROTOCOL_RESPONSE_SCHEMA_GLOB = "v2/*Response.json"
+
+
+@dataclass(frozen=True)
+class ModelDefinition:
+    name: str
+    text: str
 
 
 def parse_args() -> argparse.Namespace:
@@ -68,7 +72,7 @@ def build_datamodel_codegen_command(*, schema_path: Path, output_path: Path) -> 
     return [
         "uvx",
         "--from",
-        "datamodel-code-generator",
+        DATAMODEL_CODE_GENERATOR_PACKAGE,
         "datamodel-codegen",
         "--input",
         str(schema_path),
@@ -82,6 +86,7 @@ def build_datamodel_codegen_command(*, schema_path: Path, output_path: Path) -> 
         "--use-title-as-name",
         "--enum-field-as-literal",
         "all",
+        "--use-double-quotes",
         "--output",
         str(output_path),
     ]
@@ -107,19 +112,43 @@ def generate_protocol_models(*, schema_path: Path, output_path: Path) -> None:
     )
 
 
-def extract_generated_model_definitions(text: str) -> str:
+def extra_protocol_schema_paths(schema_dir: Path) -> list[Path]:
+    return sorted(schema_dir.glob(EXTRA_PROTOCOL_RESPONSE_SCHEMA_GLOB))
+
+
+def generated_model_definitions(text: str) -> list[ModelDefinition]:
+    tree = ast.parse(text)
     lines = text.splitlines()
-    for index, line in enumerate(lines):
-        if line.startswith("class "):
-            return "\n".join(lines[index:]).strip() + "\n"
+    definitions = [
+        ModelDefinition(
+            name=node.name,
+            text="\n".join(lines[node.lineno - 1 : node.end_lineno]).strip(),
+        )
+        for node in tree.body
+        if isinstance(node, ast.ClassDef) and node.end_lineno is not None
+    ]
+    if definitions:
+        return definitions
     raise ValueError("generated model file does not contain any class definitions")
 
 
-def append_generated_model_definitions(*, target_path: Path, generated_path: Path) -> None:
+def class_names(text: str) -> set[str]:
+    return {match.group(1) for match in re.finditer(r"^class\s+(\w+)\b", text, flags=re.M)}
+
+
+def append_generated_model_definitions(*, target_path: Path, generated_path: Path) -> int:
     target = target_path.read_text(encoding="utf-8")
-    definitions = extract_generated_model_definitions(
-        generated_path.read_text(encoding="utf-8")
-    ).rstrip()
+    existing_names = class_names(target)
+    new_definitions = [
+        definition
+        for definition in generated_model_definitions(generated_path.read_text(encoding="utf-8"))
+        if definition.name not in existing_names
+    ]
+    if not new_definitions:
+        return 0
+    for definition in new_definitions:
+        existing_names.add(definition.name)
+
     target_lines = target.splitlines()
     insert_at = next(
         (
@@ -133,24 +162,35 @@ def append_generated_model_definitions(*, target_path: Path, generated_path: Pat
     updated = (
         "\n".join(target_lines[:insert_at]).rstrip()
         + "\n\n"
-        + definitions
+        + "\n\n".join(definition.text for definition in new_definitions)
         + "\n\n"
         + "\n".join(target_lines[insert_at:]).lstrip()
     ).rstrip()
     target_path.write_text(updated + "\n", encoding="utf-8")
+    return len(new_definitions)
 
 
 def append_extra_protocol_models(*, schema_dir: Path, output_path: Path) -> None:
+    schema_paths = extra_protocol_schema_paths(schema_dir)
+    if not schema_paths:
+        raise FileNotFoundError(
+            f"no response schemas matched {EXTRA_PROTOCOL_RESPONSE_SCHEMA_GLOB!r} in {schema_dir}"
+        )
+
     with tempfile.TemporaryDirectory(prefix="codex-extra-protocol-models-") as temp_dir:
         temp_path = Path(temp_dir)
-        for relative_schema_path in EXTRA_PROTOCOL_SCHEMA_FILES:
-            schema_path = schema_dir / relative_schema_path
+        for schema_path in schema_paths:
             generated_path = temp_path / f"{schema_path.stem}.py"
             generate_protocol_models(schema_path=schema_path, output_path=generated_path)
-            append_generated_model_definitions(
+            appended = append_generated_model_definitions(
                 target_path=output_path,
                 generated_path=generated_path,
             )
+            if appended:
+                print(
+                    "[protocol-gen] appended "
+                    f"{appended} models from {schema_path.relative_to(schema_dir)}"
+                )
 
 
 def build_postprocess_command(*, output_path: Path) -> list[str]:
