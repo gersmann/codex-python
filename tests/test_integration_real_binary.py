@@ -100,13 +100,14 @@ def test_streamed_command_exec_events_with_real_codex_binary(tmp_path: Path) -> 
             )
         )
         try:
-            process_id = "codex-python-integration-git-diff"
+            process_id = "codex-python-integration-command-stream"
             subscription = client.events.subscribe({"command/exec/outputDelta"})
             command_task = asyncio.create_task(
                 client.command.execute(
                     command=["/bin/sh", "-c", f"printf {_COMMAND_OUTPUT_UNDER_TEST}"],
                     cwd=str(tmp_path),
                     process_id=process_id,
+                    sandbox_policy=protocol.DangerFullAccessSandboxPolicy(type="dangerFullAccess"),
                     stream_stdout_stderr=True,
                     timeout_ms=5000,
                 )
