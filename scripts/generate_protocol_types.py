@@ -4,12 +4,19 @@
 from __future__ import annotations
 
 import argparse
+import re
 import subprocess  # nosec B404
 import sys
 import tempfile
 from pathlib import Path
 
 SUBPROCESS_TIMEOUT_SECONDS = 300
+EXTRA_PROTOCOL_SCHEMA_FILES = (
+    # Response-only schemas are not reachable from the ClientRequest/
+    # ServerRequest/ServerNotification envelope, but they are part of the
+    # app-server protocol and are used by the SDK's typed RPC result models.
+    "v2/ListMcpServerStatusResponse.json",
+)
 
 
 def parse_args() -> argparse.Namespace:
@@ -100,6 +107,52 @@ def generate_protocol_models(*, schema_path: Path, output_path: Path) -> None:
     )
 
 
+def extract_generated_model_definitions(text: str) -> str:
+    lines = text.splitlines()
+    for index, line in enumerate(lines):
+        if line.startswith("class "):
+            return "\n".join(lines[index:]).strip() + "\n"
+    raise ValueError("generated model file does not contain any class definitions")
+
+
+def append_generated_model_definitions(*, target_path: Path, generated_path: Path) -> None:
+    target = target_path.read_text(encoding="utf-8")
+    definitions = extract_generated_model_definitions(
+        generated_path.read_text(encoding="utf-8")
+    ).rstrip()
+    target_lines = target.splitlines()
+    insert_at = next(
+        (
+            index
+            for index, line in enumerate(target_lines)
+            if re.match(r"^\w+\.model_rebuild\(\)\s*$", line)
+        ),
+        len(target_lines),
+    )
+
+    updated = (
+        "\n".join(target_lines[:insert_at]).rstrip()
+        + "\n\n"
+        + definitions
+        + "\n\n"
+        + "\n".join(target_lines[insert_at:]).lstrip()
+    ).rstrip()
+    target_path.write_text(updated + "\n", encoding="utf-8")
+
+
+def append_extra_protocol_models(*, schema_dir: Path, output_path: Path) -> None:
+    with tempfile.TemporaryDirectory(prefix="codex-extra-protocol-models-") as temp_dir:
+        temp_path = Path(temp_dir)
+        for relative_schema_path in EXTRA_PROTOCOL_SCHEMA_FILES:
+            schema_path = schema_dir / relative_schema_path
+            generated_path = temp_path / f"{schema_path.stem}.py"
+            generate_protocol_models(schema_path=schema_path, output_path=generated_path)
+            append_generated_model_definitions(
+                target_path=output_path,
+                generated_path=generated_path,
+            )
+
+
 def build_postprocess_command(*, output_path: Path) -> list[str]:
     return [sys.executable, "scripts/postprocess_protocol_types.py", str(output_path)]
 
@@ -124,6 +177,7 @@ def main() -> int:
             experimental=args.experimental,
         )
         generate_protocol_models(schema_path=schema_path, output_path=output_path)
+        append_extra_protocol_models(schema_dir=schema_dir, output_path=output_path)
 
     postprocess_protocol_models(output_path)
     return 0

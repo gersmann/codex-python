@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any, Literal
+from typing import Literal
 
 from pydantic import BaseModel, Field
 from pydantic import ConfigDict as PydanticConfigDict
@@ -217,11 +217,11 @@ class ConfigRequirementsReadResult(AppServerResultModel):
 
 
 class McpServerStatus(AppServerResultModel):
-    auth_status: str
+    auth_status: protocol.McpAuthStatus
     name: str
-    resource_templates: list[dict[str, Any]]
-    resources: list[dict[str, Any]]
-    tools: dict[str, dict[str, Any]]
+    resource_templates: list[protocol.ResourceTemplate]
+    resources: list[protocol.Resource]
+    tools: dict[str, protocol.Tool]
 
 
 class McpServerStatusListResult(AppServerResultModel):

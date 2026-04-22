@@ -1523,9 +1523,37 @@ def test_async_client_exposes_typed_rpc_domain_clients() -> None:
                         {
                             "name": "github",
                             "authStatus": "oAuth",
-                            "tools": {},
-                            "resources": [],
-                            "resourceTemplates": [],
+                            "tools": {
+                                "repo_status": {
+                                    "_meta": {"origin": "pytest"},
+                                    "annotations": {"readOnlyHint": True},
+                                    "description": "Read repository status",
+                                    "inputSchema": {"type": "object", "properties": {}},
+                                    "name": "repo_status",
+                                    "outputSchema": {"type": "object"},
+                                    "title": "Repo status",
+                                }
+                            },
+                            "resources": [
+                                {
+                                    "_meta": {"origin": "pytest"},
+                                    "description": "Repository README",
+                                    "mimeType": "text/markdown",
+                                    "name": "readme",
+                                    "size": 12,
+                                    "title": "README",
+                                    "uri": "file:///repo/README.md",
+                                }
+                            ],
+                            "resourceTemplates": [
+                                {
+                                    "description": "Repository files",
+                                    "mimeType": "text/plain",
+                                    "name": "repo_files",
+                                    "title": "Repository files",
+                                    "uriTemplate": "file:///repo/{path}",
+                                }
+                            ],
                         }
                     ],
                     "nextCursor": None,
@@ -1747,6 +1775,21 @@ def test_async_client_exposes_typed_rpc_domain_clients() -> None:
         assert reload_result == EmptyResult()
         assert oauth_result.authorization_url == "https://example.com/oauth"
         assert mcp_status[0].name == "github"
+        assert isinstance(mcp_status[0].auth_status, protocol.McpAuthStatus)
+        assert mcp_status[0].auth_status.root == "oAuth"
+        assert isinstance(mcp_status[0].tools["repo_status"], protocol.Tool)
+        assert mcp_status[0].tools["repo_status"].field_meta == {"origin": "pytest"}
+        assert mcp_status[0].tools["repo_status"].inputSchema == {
+            "type": "object",
+            "properties": {},
+        }
+        assert mcp_status[0].tools["repo_status"].outputSchema == {"type": "object"}
+        assert isinstance(mcp_status[0].resources[0], protocol.Resource)
+        assert mcp_status[0].resources[0].field_meta == {"origin": "pytest"}
+        assert mcp_status[0].resources[0].mimeType == "text/markdown"
+        assert mcp_status[0].resources[0].uri == "file:///repo/README.md"
+        assert isinstance(mcp_status[0].resource_templates[0], protocol.ResourceTemplate)
+        assert mcp_status[0].resource_templates[0].uriTemplate == "file:///repo/{path}"
         assert mcp_status_page.data[0].name == "github"
         assert mcp_status_alias[0].name == "github"
         assert mcp_status_page_alias.data[0].name == "github"
