@@ -1,18 +1,12 @@
 from __future__ import annotations
 
-import asyncio
-import base64
 import os
 from pathlib import Path
 
 import pytest
 
 from codex import Codex, CodexOptions, ThreadStartOptions, TurnOptions
-from codex.app_server import AsyncAppServerClient
-from codex.app_server.options import AppServerProcessOptions
 from codex.protocol import types as protocol
-
-_COMMAND_OUTPUT_UNDER_TEST = "codex-python-integration-output"
 
 
 def _integration_binary_and_env(tmp_path: Path) -> tuple[Path, str, dict[str, str]]:
@@ -89,71 +83,41 @@ def test_run_with_real_codex_binary_and_api_key(tmp_path: Path) -> None:
         assert result == {"answer": "OK"}
 
 
-def test_streamed_command_exec_events_with_real_codex_binary(tmp_path: Path) -> None:
-    binary, _api_key, child_env = _integration_binary_and_env(tmp_path)
+def test_streamed_turn_events_with_real_codex_binary(tmp_path: Path) -> None:
+    binary, api_key, child_env = _integration_binary_and_env(tmp_path)
 
-    async def scenario() -> None:
-        client = await AsyncAppServerClient.connect_stdio(
-            AppServerProcessOptions(
-                codex_path_override=str(binary),
-                env=child_env,
+    schema = {
+        "type": "object",
+        "properties": {"answer": {"type": "string", "enum": ["OK"]}},
+        "required": ["answer"],
+        "additionalProperties": False,
+    }
+
+    with Codex(
+        CodexOptions(
+            codex_path_override=str(binary),
+            api_key=api_key,
+            env=child_env,
+        )
+    ) as client:
+        thread = client.start_thread(
+            ThreadStartOptions(
+                model="gpt-5-mini",
+                config={
+                    "skip_git_repo_check": True,
+                    "web_search": "disabled",
+                },
             )
         )
-        try:
-            process_id = "codex-python-integration-command-stream"
-            subscription = client.events.subscribe({"command/exec/outputDelta"})
-            command_task = asyncio.create_task(
-                client.command.execute(
-                    command=["/bin/sh", "-c", f"printf {_COMMAND_OUTPUT_UNDER_TEST}"],
-                    cwd=str(tmp_path),
-                    process_id=process_id,
-                    sandbox_policy=protocol.DangerFullAccessSandboxPolicy(type="dangerFullAccess"),
-                    stream_stdout_stderr=True,
-                    timeout_ms=5000,
-                )
-            )
+        stream = thread.run(
+            'Respond with JSON containing {"answer":"OK"}.',
+            TurnOptions(output_schema=schema, effort=protocol.ReasoningEffort("low")),
+        )
+        events = list(stream)
 
-            stdout_chunks: list[str] = []
-            stderr_chunks: list[str] = []
-            observed_events: list[str] = []
-
-            while True:
-                try:
-                    event = await asyncio.wait_for(subscription.next(), timeout=0.2)
-                except TimeoutError:
-                    if command_task.done():
-                        break
-                    continue
-
-                method = getattr(getattr(event, "method", None), "root", type(event).__name__)
-                observed_events.append(f"{method}: {type(event).__name__}")
-                if not isinstance(event, protocol.CommandExecOutputDeltaNotificationModel):
-                    continue
-                if event.params.processId != process_id:
-                    continue
-                output_chunk = base64.b64decode(event.params.deltaBase64).decode()
-                if event.params.stream.root == "stdout":
-                    stdout_chunks.append(output_chunk)
-                if event.params.stream.root == "stderr":
-                    stderr_chunks.append(output_chunk)
-
-            result = await command_task
-            await subscription.close()
-            event_summary = "\n".join(observed_events)
-            streamed_stdout = "".join(stdout_chunks)
-            streamed_stderr = "".join(stderr_chunks)
-            failure_context = (
-                f"result={result!r}\n"
-                f"streamed_stdout={streamed_stdout!r}\n"
-                f"streamed_stderr={streamed_stderr!r}\n"
-                f"{event_summary}"
-            )
-            assert result.exit_code == 0, failure_context
-            assert result.stderr == ""
-            assert result.stdout == ""
-            assert streamed_stdout == _COMMAND_OUTPUT_UNDER_TEST, failure_context
-            assert streamed_stderr == "", failure_context
-        finally:
-            await client.close()
-
-    asyncio.run(scenario())
+        assert thread.id is not None
+        assert any(isinstance(event, protocol.TurnStartedNotificationModel) for event in events)
+        assert any(isinstance(event, protocol.TurnCompletedNotificationModel) for event in events)
+        assert stream.final_turn is not None
+        assert stream.final_turn.status.root == "completed"
+        assert stream.final_json() == {"answer": "OK"}
