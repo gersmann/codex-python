@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import base64
 import os
 import subprocess
 from pathlib import Path
@@ -9,14 +10,9 @@ import pytest
 
 from codex import Codex, CodexOptions, ThreadStartOptions, TurnOptions
 from codex.app_server import AsyncAppServerClient
-from codex.app_server.options import (
-    AppServerProcessOptions,
-    AppServerThreadStartOptions,
-    AppServerTurnOptions,
-)
+from codex.app_server.options import AppServerProcessOptions
 from codex.protocol import types as protocol
 
-_STREAM_TIMEOUT_SECONDS = 90.0
 _COMMAND_UNDER_TEST = "git diff --no-color HEAD~1...HEAD"
 
 
@@ -120,8 +116,8 @@ def test_run_with_real_codex_binary_and_api_key(tmp_path: Path) -> None:
         assert result == {"answer": "OK"}
 
 
-def test_streamed_git_command_events_with_real_codex_binary(tmp_path: Path) -> None:
-    binary, api_key, child_env = _integration_binary_and_env(tmp_path)
+def test_streamed_command_exec_events_with_real_codex_binary(tmp_path: Path) -> None:
+    binary, _api_key, child_env = _integration_binary_and_env(tmp_path)
     repo = _create_git_repo(tmp_path / "repo")
 
     async def scenario() -> None:
@@ -132,65 +128,49 @@ def test_streamed_git_command_events_with_real_codex_binary(tmp_path: Path) -> N
             )
         )
         try:
-            await client.account.login_api_key(api_key=api_key)
-            thread = await client.start_thread(
-                AppServerThreadStartOptions(
-                    model="gpt-5-mini",
+            process_id = "codex-python-integration-git-diff"
+            subscription = client.events.subscribe({"command/exec/outputDelta"})
+            command_task = asyncio.create_task(
+                client.command.execute(
+                    command=["/bin/sh", "-lc", _COMMAND_UNDER_TEST],
                     cwd=str(repo),
-                    approval_policy=protocol.AskForApproval("never"),
-                    sandbox=protocol.SandboxMode("workspace-write"),
-                    config={
-                        "skip_git_repo_check": True,
-                        "web_search": "disabled",
-                    },
+                    process_id=process_id,
+                    stream_stdout_stderr=True,
+                    timeout_ms=5000,
                 )
             )
-            stream = await thread.run(
-                (
-                    f'Use the shell tool to run `/bin/sh -lc "{_COMMAND_UNDER_TEST}"` exactly '
-                    "once. After the command completes, reply with the single word OK."
-                ),
-                AppServerTurnOptions(effort=protocol.ReasoningEffort("low")),
-            )
 
-            saw_command_start = False
-            saw_command_completion = False
+            stdout_chunks: list[str] = []
             observed_events: list[str] = []
 
             while True:
                 try:
-                    event = await asyncio.wait_for(
-                        stream.__anext__(), timeout=_STREAM_TIMEOUT_SECONDS
-                    )
-                except StopAsyncIteration:
-                    break
+                    event = await asyncio.wait_for(subscription.next(), timeout=0.2)
+                except TimeoutError:
+                    if command_task.done():
+                        break
+                    continue
 
                 method = getattr(getattr(event, "method", None), "root", type(event).__name__)
-                if isinstance(
-                    event,
-                    protocol.ItemStartedNotificationModel | protocol.ItemCompletedNotificationModel,
-                ):
-                    item = event.params.item.root
-                    observed_events.append(
-                        f"{method}: {type(item).__name__}: "
-                        f"command={getattr(item, 'command', None)!r}"
-                    )
-                    if not isinstance(item, protocol.CommandExecutionThreadItem):
-                        continue
-                    if _COMMAND_UNDER_TEST not in item.command:
-                        continue
-                    if isinstance(event, protocol.ItemStartedNotificationModel):
-                        saw_command_start = True
-                    if isinstance(event, protocol.ItemCompletedNotificationModel):
-                        saw_command_completion = True
-                else:
-                    observed_events.append(f"{method}: {type(event).__name__}")
+                observed_events.append(f"{method}: {type(event).__name__}")
+                if not isinstance(event, protocol.CommandExecOutputDeltaNotificationModel):
+                    continue
+                if event.params.processId != process_id:
+                    continue
+                if event.params.stream.root != "stdout":
+                    continue
+                stdout_chunks.append(base64.b64decode(event.params.deltaBase64).decode())
 
+            result = await command_task
+            await subscription.close()
             event_summary = "\n".join(observed_events)
-            assert saw_command_start is True, event_summary
-            assert saw_command_completion is True, event_summary
-            assert stream.final_turn is not None
-            assert stream.final_turn.status.root == "completed"
+            streamed_stdout = "".join(stdout_chunks)
+            assert result.exit_code == 0
+            assert result.stderr == ""
+            assert result.stdout == ""
+            assert "-one" in streamed_stdout, event_summary
+            assert "+two" in streamed_stdout, event_summary
+            assert "+three" in streamed_stdout, event_summary
         finally:
             await client.close()
 
