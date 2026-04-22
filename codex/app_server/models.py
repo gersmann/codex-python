@@ -71,6 +71,7 @@ DEFAULT_INPUT_MODALITIES: tuple[Literal["text", "image"], Literal["text", "image
 
 
 class ModelInfo(AppServerResultModel):
+    additional_speed_tiers: list[str] | None = Field(default_factory=list)
     availability_nux: ModelAvailabilityNux | None = None
     default_reasoning_effort: protocol.ReasoningEffort
     description: str
@@ -110,6 +111,7 @@ class SkillInterface(AppServerResultModel):
 class SkillInfo(AppServerResultModel):
     name: str
     description: str
+    dependencies: protocol.SkillDependencies | None = None
     enabled: bool
     path: str
     scope: str
@@ -120,7 +122,7 @@ class SkillInfo(AppServerResultModel):
 class SkillsListEntry(AppServerResultModel):
     cwd: str
     skills: list[SkillInfo]
-    errors: list[str] = Field(default_factory=list)
+    errors: list[protocol.SkillErrorInfo] = Field(default_factory=list)
 
 
 class SkillsListResult(AppServerResultModel):

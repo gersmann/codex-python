@@ -107,6 +107,7 @@ def _model_list_payload() -> JsonObject:
                 "id": "gpt-5.4",
                 "model": "gpt-5.4",
                 "displayName": "GPT-5.4",
+                "additionalSpeedTiers": ["flex"],
                 "description": "Primary model",
                 "hidden": False,
                 "defaultReasoningEffort": "medium",
@@ -578,6 +579,7 @@ def test_app_server_turn_and_list_options_use_protocol_owned_types() -> None:
         input=[{"type": "text", "text": "Summarize this repo."}],
     )
     list_params = AppServerThreadListOptions(
+        sort_direction=protocol.SortDirection("asc"),
         sort_key=protocol.ThreadSortKey("updated_at"),
         source_kinds=[protocol.ThreadSourceKind("appServer")],
     ).to_params()
@@ -594,6 +596,7 @@ def test_app_server_turn_and_list_options_use_protocol_owned_types() -> None:
         "threadId": "thr-1",
     }
     assert list_params.model_dump(mode="python", by_alias=True, exclude_none=True) == {
+        "sortDirection": "asc",
         "sortKey": "updated_at",
         "sourceKinds": ["appServer"],
     }
@@ -1334,6 +1337,9 @@ def test_async_client_exposes_typed_rpc_domain_clients() -> None:
                                     "name": "skill-creator",
                                     "description": "Create a skill",
                                     "enabled": True,
+                                    "dependencies": {
+                                        "tools": [{"type": "cli", "value": "git"}],
+                                    },
                                     "interface": {
                                         "displayName": "Skill Creator",
                                         "shortDescription": "Create or update skills",
@@ -1347,7 +1353,12 @@ def test_async_client_exposes_typed_rpc_domain_clients() -> None:
                                     "scope": "repo",
                                 }
                             ],
-                            "errors": [],
+                            "errors": [
+                                {
+                                    "message": "missing dependency",
+                                    "path": "/repo/.codex/skills/broken/SKILL.md",
+                                }
+                            ],
                         }
                     ]
                 },
@@ -1755,10 +1766,16 @@ def test_async_client_exposes_typed_rpc_domain_clients() -> None:
         windows_setup = await client.windows_sandbox.setup_start(mode="elevated", cwd="C:/repo")
 
         assert models[0].display_name == "GPT-5.4"
+        assert models[0].additional_speed_tiers == ["flex"]
         assert model_page.data[0].display_name == "GPT-5.4"
+        assert model_page.data[0].additional_speed_tiers == ["flex"]
         assert apps[0].id == "demo-app"
         assert app_page.data[0].id == "demo-app"
         assert skills[0].cwd == "/repo"
+        assert skills[0].errors[0].message == "missing dependency"
+        assert skills[0].errors[0].path == "/repo/.codex/skills/broken/SKILL.md"
+        assert skills[0].skills[0].dependencies is not None
+        assert skills[0].skills[0].dependencies.tools[0].value == "git"
         assert skills[0].skills[0].interface is not None
         assert skills[0].skills[0].interface.display_name == "Skill Creator"
         assert skills[0].skills[0].short_description == "Create or update skills"

@@ -519,6 +519,10 @@ class AppServerThreadListOptions(_AppServerOptionsModel):
         default=None,
         description="Sent as thread/list sortKey.",
     )
+    sort_direction: protocol.SortDirection | None = Field(
+        default=None,
+        description="Sent as thread/list sortDirection.",
+    )
     source_kinds: list[protocol.ThreadSourceKind] | None = Field(
         default=None,
         description="Sent as thread/list sourceKinds.",
