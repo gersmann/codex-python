@@ -206,14 +206,14 @@ class _AsyncCommandClientLike(Protocol):
         delta_base64: str | None = None,
     ) -> EmptyResult: ...
 
-    async def resize(
+    async def resize_terminal(
         self,
         *,
         process_id: str,
         size: protocol.CommandExecTerminalSize,
     ) -> EmptyResult: ...
 
-    async def terminate(self, *, process_id: str) -> EmptyResult: ...
+    async def terminate_process(self, *, process_id: str) -> EmptyResult: ...
 
 
 class _AsyncExternalAgentConfigClientLike(Protocol):
@@ -609,16 +609,26 @@ class _CommandClient(_SyncRunner):
             )
         )
 
-    def resize(
+    def resize_terminal(
         self,
         *,
         process_id: str,
         size: protocol.CommandExecTerminalSize,
     ) -> EmptyResult:
-        return self._run(self._async_client.resize(process_id=process_id, size=size))
+        """Resize the terminal attached to a running `command/exec` process.
 
-    def terminate(self, *, process_id: str) -> EmptyResult:
-        return self._run(self._async_client.terminate(process_id=process_id))
+        This wraps the app-server `command/exec/resize` request and sends the
+        new terminal dimensions as `cols` and `rows`.
+        """
+        return self._run(self._async_client.resize_terminal(process_id=process_id, size=size))
+
+    def terminate_process(self, *, process_id: str) -> EmptyResult:
+        """Terminate a running `command/exec` process.
+
+        This wraps the app-server `command/exec/terminate` request for the
+        client-supplied process id.
+        """
+        return self._run(self._async_client.terminate_process(process_id=process_id))
 
 
 class _ExternalAgentConfigClient(_SyncRunner):

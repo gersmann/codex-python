@@ -1943,11 +1943,11 @@ def test_async_command_client_exposes_0_122_exec_controls() -> None:
             delta_base64="aGVsbG8K",
             close_stdin=True,
         )
-        resized = await client.command.resize(
+        resized = await client.command.resize_terminal(
             process_id="proc-1",
             size=protocol.CommandExecTerminalSize(cols=100, rows=30),
         )
-        terminated = await client.command.terminate(process_id="proc-1")
+        terminated = await client.command.terminate_process(process_id="proc-1")
 
         assert result.exit_code == 0
         assert wrote == EmptyResult()
@@ -2595,11 +2595,19 @@ def test_sync_client_exposes_typed_rpc_domain_clients_and_events() -> None:
         assert client.command.write_stdin.__doc__ is not None
         assert "command/exec/write" in client.command.write_stdin.__doc__
         assert "stdin" in client.command.write_stdin.__doc__
-        assert tuple(inspect.signature(client.command.resize).parameters) == (
+        assert tuple(inspect.signature(client.command.resize_terminal).parameters) == (
             "process_id",
             "size",
         )
-        assert tuple(inspect.signature(client.command.terminate).parameters) == ("process_id",)
+        assert client.command.resize_terminal.__doc__ is not None
+        assert "command/exec/resize" in client.command.resize_terminal.__doc__
+        assert "terminal" in client.command.resize_terminal.__doc__
+        assert tuple(inspect.signature(client.command.terminate_process).parameters) == (
+            "process_id",
+        )
+        assert client.command.terminate_process.__doc__ is not None
+        assert "command/exec/terminate" in client.command.terminate_process.__doc__
+        assert "process" in client.command.terminate_process.__doc__
         assert tuple(inspect.signature(client.account.login_chatgpt_tokens).parameters) == (
             "access_token",
             "chatgpt_account_id",

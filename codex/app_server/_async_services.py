@@ -377,16 +377,26 @@ class AsyncCommandClient(_AsyncServiceClient):
         )
         return await self._rpc.request_typed("command/exec/write", params, EmptyResult)
 
-    async def resize(
+    async def resize_terminal(
         self,
         *,
         process_id: str,
         size: protocol.CommandExecTerminalSize,
     ) -> EmptyResult:
+        """Resize the terminal attached to a running `command/exec` process.
+
+        This wraps the app-server `command/exec/resize` request and sends the
+        new terminal dimensions as `cols` and `rows`.
+        """
         params = protocol.CommandExecResizeParams(processId=process_id, size=size)
         return await self._rpc.request_typed("command/exec/resize", params, EmptyResult)
 
-    async def terminate(self, *, process_id: str) -> EmptyResult:
+    async def terminate_process(self, *, process_id: str) -> EmptyResult:
+        """Terminate a running `command/exec` process.
+
+        This wraps the app-server `command/exec/terminate` request for the
+        client-supplied process id.
+        """
         params = protocol.CommandExecTerminateParams(processId=process_id)
         return await self._rpc.request_typed("command/exec/terminate", params, EmptyResult)
 
