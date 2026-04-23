@@ -357,13 +357,19 @@ class AsyncCommandClient(_AsyncServiceClient):
 
     exec = execute
 
-    async def write(
+    async def write_stdin(
         self,
         *,
         process_id: str,
         close_stdin: bool | None = None,
         delta_base64: str | None = None,
     ) -> EmptyResult:
+        """Write stdin bytes to a running `command/exec` process or close stdin.
+
+        This wraps the app-server `command/exec/write` request. `delta_base64`
+        is optional base64-encoded stdin data; `close_stdin` closes the
+        process stdin after the optional write.
+        """
         params = protocol.CommandExecWriteParams(
             closeStdin=close_stdin,
             deltaBase64=delta_base64,

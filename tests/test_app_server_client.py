@@ -1938,7 +1938,7 @@ def test_async_command_client_exposes_0_122_exec_controls() -> None:
             stream_stdout_stderr=True,
             tty=True,
         )
-        wrote = await client.command.write(
+        wrote = await client.command.write_stdin(
             process_id="proc-1",
             delta_base64="aGVsbG8K",
             close_stdin=True,
@@ -2587,11 +2587,14 @@ def test_sync_client_exposes_typed_rpc_domain_clients_and_events() -> None:
             "timeout_ms",
             "tty",
         )
-        assert tuple(inspect.signature(client.command.write).parameters) == (
+        assert tuple(inspect.signature(client.command.write_stdin).parameters) == (
             "process_id",
             "close_stdin",
             "delta_base64",
         )
+        assert client.command.write_stdin.__doc__ is not None
+        assert "command/exec/write" in client.command.write_stdin.__doc__
+        assert "stdin" in client.command.write_stdin.__doc__
         assert tuple(inspect.signature(client.command.resize).parameters) == (
             "process_id",
             "size",

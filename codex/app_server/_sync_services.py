@@ -198,7 +198,7 @@ class _AsyncCommandClientLike(Protocol):
         tty: bool | None = None,
     ) -> CommandExecResult: ...
 
-    async def write(
+    async def write_stdin(
         self,
         *,
         process_id: str,
@@ -588,15 +588,21 @@ class _CommandClient(_SyncRunner):
 
     exec = execute
 
-    def write(
+    def write_stdin(
         self,
         *,
         process_id: str,
         close_stdin: bool | None = None,
         delta_base64: str | None = None,
     ) -> EmptyResult:
+        """Write stdin bytes to a running `command/exec` process or close stdin.
+
+        This wraps the app-server `command/exec/write` request. `delta_base64`
+        is optional base64-encoded stdin data; `close_stdin` closes the
+        process stdin after the optional write.
+        """
         return self._run(
-            self._async_client.write(
+            self._async_client.write_stdin(
                 process_id=process_id,
                 close_stdin=close_stdin,
                 delta_base64=delta_base64,
