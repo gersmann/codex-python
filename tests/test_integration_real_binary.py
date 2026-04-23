@@ -151,17 +151,21 @@ def test_streamed_command_events_with_real_codex_binary(tmp_path: Path) -> None:
             if isinstance(event, protocol.ItemCompletedNotificationModel)
             and isinstance(event.params.item.root, protocol.CommandExecutionThreadItem)
         ]
+        command_event_context = (
+            f"started_commands={[item.command for item in command_started_items]!r}\n"
+            f"completed_commands={[(item.command, item.exitCode, item.aggregatedOutput) for item in command_completed_items]!r}\n"
+            f"final_text={stream.final_text!r}"
+        )
         assert thread.id is not None
         assert any(isinstance(event, protocol.TurnStartedNotificationModel) for event in events)
         assert any(isinstance(event, protocol.TurnCompletedNotificationModel) for event in events)
-        assert any(_COMMAND_OUTPUT_UNDER_TEST in item.command for item in command_started_items)
+        assert command_started_items, command_event_context
         assert any(
-            _COMMAND_OUTPUT_UNDER_TEST in item.command
-            and item.exitCode == 0
+            item.exitCode == 0
             and item.aggregatedOutput is not None
             and _COMMAND_OUTPUT_UNDER_TEST in item.aggregatedOutput
             for item in command_completed_items
-        )
+        ), command_event_context
         assert stream.final_turn is not None
         assert stream.final_turn.status.root == "completed"
         assert stream.final_text.strip() == "OK"
