@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import secrets
 import subprocess
 from pathlib import Path
 
@@ -8,8 +9,6 @@ import pytest
 
 from codex import Codex, CodexOptions, ThreadStartOptions, TurnOptions
 from codex.protocol import types as protocol
-
-_COMMAND_OUTPUT_UNDER_TEST = "codex-python-command-stream"
 
 
 def _integration_binary_and_env(tmp_path: Path) -> tuple[Path, str, dict[str, str]]:
@@ -112,6 +111,8 @@ def test_run_with_real_codex_binary_and_api_key(tmp_path: Path) -> None:
 def test_streamed_command_events_with_real_codex_binary(tmp_path: Path) -> None:
     binary, api_key, child_env = _integration_binary_and_env(tmp_path)
     repo = _create_git_repo(tmp_path / "repo")
+    command_output = f"codex-python-command-stream-{secrets.token_hex(8)}"
+    (repo / ".secret-token").write_text(f"{command_output}\n", encoding="utf-8")
 
     with Codex(
         CodexOptions(
@@ -133,8 +134,8 @@ def test_streamed_command_events_with_real_codex_binary(tmp_path: Path) -> None:
             )
         )
         stream = thread.run(
-            "Run a shell command exactly once to print "
-            f"{_COMMAND_OUTPUT_UNDER_TEST!r}. After the command completes, reply OK.",
+            "Read the file .secret-token using exactly one shell command, then reply with only "
+            "the file contents. Do not add punctuation, explanations, or extra text.",
             TurnOptions(effort=protocol.ReasoningEffort("low")),
         )
         events = list(stream)
@@ -152,6 +153,7 @@ def test_streamed_command_events_with_real_codex_binary(tmp_path: Path) -> None:
             and isinstance(event.params.item.root, protocol.CommandExecutionThreadItem)
         ]
         command_event_context = (
+            f"expected_output={command_output!r}\n"
             f"started_commands={[item.command for item in command_started_items]!r}\n"
             f"completed_commands={[(item.command, item.exitCode, item.aggregatedOutput) for item in command_completed_items]!r}\n"
             f"final_text={stream.final_text!r}"
@@ -163,9 +165,9 @@ def test_streamed_command_events_with_real_codex_binary(tmp_path: Path) -> None:
         assert any(
             item.exitCode == 0
             and item.aggregatedOutput is not None
-            and _COMMAND_OUTPUT_UNDER_TEST in item.aggregatedOutput
+            and item.aggregatedOutput.strip() == command_output
             for item in command_completed_items
         ), command_event_context
         assert stream.final_turn is not None
         assert stream.final_turn.status.root == "completed"
-        assert stream.final_text.strip() == "OK"
+        assert stream.final_text.strip() == command_output, command_event_context
