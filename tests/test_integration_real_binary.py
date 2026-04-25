@@ -126,7 +126,7 @@ def test_streamed_command_events_with_real_codex_binary(tmp_path: Path) -> None:
                 model="gpt-5-mini",
                 approval_policy=protocol.AskForApproval("never"),
                 cwd=str(repo),
-                sandbox=protocol.SandboxMode("workspace-write"),
+                sandbox=protocol.SandboxMode("danger-full-access"),
                 config={
                     "skip_git_repo_check": True,
                     "web_search": "disabled",
