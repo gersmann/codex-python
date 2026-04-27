@@ -177,7 +177,8 @@ jobs:
             linux-aarch64,
             linux-musl-x86_64,
             linux-musl-aarch64,
-            macos-universal2,
+            macos-aarch64,
+            macos-x86_64,
             windows-amd64,
             windows-arm64,
           ]
@@ -198,10 +199,16 @@ jobs:
             os: ubuntu-latest
             python-interpreter: "3.12"
             codex-targets: aarch64-unknown-linux-musl
-          - platform: macos-universal2
+          - platform: macos-aarch64
             os: macos-14
             python-interpreter: 3.12
-            codex-targets: x86_64-apple-darwin,aarch64-apple-darwin
+            codex-targets: aarch64-apple-darwin
+            rust-target: aarch64-apple-darwin
+          - platform: macos-x86_64
+            os: macos-13
+            python-interpreter: 3.12
+            codex-targets: x86_64-apple-darwin
+            rust-target: x86_64-apple-darwin
           - platform: windows-amd64
             os: windows-latest
             python-interpreter: 3.12
@@ -232,7 +239,7 @@ jobs:
           pip install zstandard
 
       - name: Install build backend (host)
-        if: ${{ matrix.platform == 'macos-universal2' || matrix.platform == 'windows-amd64' || matrix.platform == 'windows-arm64' }}
+        if: ${{ startsWith(matrix.platform, 'macos-') || matrix.platform == 'windows-amd64' || matrix.platform == 'windows-arm64' }}
         run: |
           pip install build maturin
 
@@ -322,13 +329,13 @@ jobs:
             apk add --no-cache curl perl perl-text-template >/dev/null 2>&1 || true
           args: --release -i python3.12 -o dist
 
-      - name: Build macOS universal2 wheel
-        if: ${{ matrix.platform == 'macos-universal2' }}
+      - name: Build macOS wheel
+        if: ${{ startsWith(matrix.platform, 'macos-') }}
         run: |
           python -m pip install --upgrade pip
           pip install maturin
-          rustup target add x86_64-apple-darwin aarch64-apple-darwin
-          maturin build --release -i python -o dist --target universal2-apple-darwin
+          rustup target add "${{ matrix.rust-target }}"
+          maturin build --release -i python -o dist --target "${{ matrix.rust-target }}"
 
       - name: Build Windows wheel
         if: ${{ matrix.platform == 'windows-amd64' }}
@@ -416,6 +423,19 @@ jobs:
             exit 1
           fi
           echo "Found ${#files[@]} files:" && ls -al dist
+
+      - name: Verify PyPI file size limit
+        shell: bash
+        run: |
+          set -euo pipefail
+          max_bytes=$((100 * 1024 * 1024))
+          for file in dist/*.whl dist/*.tar.gz; do
+            size=$(wc -c < "$file")
+            if [ "$size" -gt "$max_bytes" ]; then
+              echo "$file is $size bytes, exceeding PyPI's 100 MB file limit" >&2
+              exit 1
+            fi
+          done
 
       - name: Publish to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
