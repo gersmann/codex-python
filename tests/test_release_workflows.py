@@ -9,6 +9,7 @@ def test_binary_fetch_workflows_default_to_pinned_codex_release() -> None:
     for workflow_path in (
         Path(".github/workflows/ci.yml"),
         Path(".github/workflows/release-published.yml"),
+        Path(".github/workflows/codex-autoreview.yml"),
     ):
         workflow = workflow_path.read_text()
 
@@ -37,4 +38,15 @@ def test_release_workflow_rejects_pypi_oversized_files_before_publish() -> None:
     assert "pypa/gh-action-pypi-publish" in workflow
     assert workflow.index("Verify PyPI file size limit") < workflow.index(
         "pypa/gh-action-pypi-publish"
+    )
+
+
+def test_autoreview_workflow_fetches_codex_binary_before_action() -> None:
+    workflow = Path(".github/workflows/codex-autoreview.yml").read_text()
+
+    assert workflow.count("Fetch bundled codex binary") == 2
+    assert workflow.count("--target-triple x86_64-unknown-linux-musl") == 2
+    assert workflow.count("test -x codex/vendor/x86_64-unknown-linux-musl/codex/codex") == 2
+    assert workflow.index("Fetch bundled codex binary") < workflow.index(
+        "gersmann/codex-review-action@v1"
     )
