@@ -71,6 +71,7 @@ DEFAULT_INPUT_MODALITIES: tuple[Literal["text", "image"], Literal["text", "image
 
 
 class ModelInfo(AppServerResultModel):
+    additional_speed_tiers: list[str] | None = Field(default_factory=list)
     availability_nux: ModelAvailabilityNux | None = None
     default_reasoning_effort: protocol.ReasoningEffort
     description: str
@@ -98,8 +99,34 @@ class AppListResult(AppServerResultModel):
     next_cursor: str | None = None
 
 
+class SkillInterface(AppServerResultModel):
+    display_name: str | None = None
+    short_description: str | None = None
+    icon_small: str | None = None
+    icon_large: str | None = None
+    brand_color: str | None = None
+    default_prompt: str | None = None
+
+
+class SkillInfo(AppServerResultModel):
+    name: str
+    description: str
+    dependencies: protocol.SkillDependencies | None = None
+    enabled: bool
+    path: str
+    scope: str
+    interface: SkillInterface | None = None
+    short_description: str | None = None
+
+
+class SkillsListEntry(AppServerResultModel):
+    cwd: str
+    skills: list[SkillInfo]
+    errors: list[protocol.SkillErrorInfo] = Field(default_factory=list)
+
+
 class SkillsListResult(AppServerResultModel):
-    data: list[protocol.SkillsListEntry]
+    data: list[SkillsListEntry]
 
 
 class SkillsConfigWriteResult(AppServerResultModel):
@@ -181,10 +208,12 @@ class ConfigWriteResult(AppServerResultModel):
 
 class ConfigRequirements(AppServerResultModel):
     allowed_approval_policies: list[protocol.AskForApproval] | None = None
+    allowed_approvals_reviewers: list[protocol.ApprovalsReviewer] | None = None
     allowed_sandbox_modes: list[protocol.SandboxMode] | None = None
-    allowed_web_search_modes: list[Literal["disabled", "cached", "live"]] | None = None
-    enforce_residency: Literal["us"] | None = None
-    feature_requirements: dict[str, bool] | None = None
+    allowed_web_search_modes: list[protocol.WebSearchMode] | None = None
+    enforce_residency: protocol.ResidencyRequirement | None = None
+    feature_requirements: dict[str, object] | None = None
+    network: protocol.NetworkRequirements | None = None
 
 
 class ConfigRequirementsReadResult(AppServerResultModel):

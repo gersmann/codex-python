@@ -1,22 +1,14 @@
 from __future__ import annotations
 
-import asyncio
 import os
+import secrets
 import subprocess
 from pathlib import Path
 
 import pytest
 
 from codex import Codex, CodexOptions, ThreadStartOptions, TurnOptions
-from codex.app_server import AsyncAppServerClient
-from codex.app_server.options import (
-    AppServerProcessOptions,
-    AppServerThreadStartOptions,
-    AppServerTurnOptions,
-)
 from codex.protocol import types as protocol
-
-_STREAM_TIMEOUT_SECONDS = 90.0
 
 
 def _integration_binary_and_env(tmp_path: Path) -> tuple[Path, str, dict[str, str]]:
@@ -68,9 +60,6 @@ def _create_git_repo(path: Path) -> Path:
     tracked_file.write_text("one\n", encoding="utf-8")
     _git(path, "add", "notes.txt")
     _git(path, "commit", "-m", "initial")
-
-    tracked_file.write_text("two\nthree\n", encoding="utf-8")
-    _git(path, "commit", "-am", "second")
     return path
 
 
@@ -119,69 +108,66 @@ def test_run_with_real_codex_binary_and_api_key(tmp_path: Path) -> None:
         assert result == {"answer": "OK"}
 
 
-def test_streamed_git_command_events_with_real_codex_binary(tmp_path: Path) -> None:
+def test_streamed_command_events_with_real_codex_binary(tmp_path: Path) -> None:
     binary, api_key, child_env = _integration_binary_and_env(tmp_path)
     repo = _create_git_repo(tmp_path / "repo")
+    command_output = f"codex-python-command-stream-{secrets.token_hex(8)}"
+    (repo / ".secret-token").write_text(f"{command_output}\n", encoding="utf-8")
 
-    async def scenario() -> None:
-        client = await AsyncAppServerClient.connect_stdio(
-            AppServerProcessOptions(
-                codex_path_override=str(binary),
-                env=child_env,
+    with Codex(
+        CodexOptions(
+            codex_path_override=str(binary),
+            api_key=api_key,
+            env=child_env,
+        )
+    ) as client:
+        thread = client.start_thread(
+            ThreadStartOptions(
+                model="gpt-5-mini",
+                approval_policy=protocol.AskForApproval("never"),
+                cwd=str(repo),
+                sandbox=protocol.SandboxMode("danger-full-access"),
+                config={
+                    "skip_git_repo_check": True,
+                    "web_search": "disabled",
+                },
             )
         )
-        try:
-            await client.account.login_api_key(api_key=api_key)
-            thread = await client.start_thread(
-                AppServerThreadStartOptions(
-                    model="gpt-5-mini",
-                    cwd=str(repo),
-                    approval_policy=protocol.AskForApproval("never"),
-                    sandbox=protocol.SandboxMode("workspace-write"),
-                    config={
-                        "skip_git_repo_check": True,
-                        "web_search": "disabled",
-                    },
-                )
-            )
-            stream = await thread.run(
-                (
-                    'Run `/usr/bin/zsh -lc "git diff --no-color HEAD~1...HEAD"` exactly once. '
-                    "After the command completes, reply with the single word OK."
-                ),
-                AppServerTurnOptions(effort=protocol.ReasoningEffort("low")),
-            )
+        stream = thread.run(
+            "Read the file .secret-token using exactly one shell command, then reply with only "
+            "the file contents. Do not add punctuation, explanations, or extra text.",
+            TurnOptions(effort=protocol.ReasoningEffort("low")),
+        )
+        events = list(stream)
 
-            saw_command_start = False
-            saw_command_completion = False
-
-            while True:
-                try:
-                    event = await asyncio.wait_for(
-                        stream.__anext__(), timeout=_STREAM_TIMEOUT_SECONDS
-                    )
-                except StopAsyncIteration:
-                    break
-
-                if isinstance(
-                    event,
-                    protocol.ItemStartedNotificationModel | protocol.ItemCompletedNotificationModel,
-                ):
-                    item = event.params.item.root
-                    if not isinstance(item, protocol.CommandExecutionThreadItem):
-                        continue
-                    if "git diff --no-color HEAD~1...HEAD" not in item.command:
-                        continue
-                    if isinstance(event, protocol.ItemStartedNotificationModel):
-                        saw_command_start = True
-                    if isinstance(event, protocol.ItemCompletedNotificationModel):
-                        saw_command_completion = True
-
-            assert saw_command_start is True
-            assert saw_command_completion is True
-            assert stream.final_turn is not None
-            assert stream.final_turn.status.root == "completed"
-        finally:
-            await client.close()
-
-    asyncio.run(scenario())
+        command_started_items = [
+            event.params.item.root
+            for event in events
+            if isinstance(event, protocol.ItemStartedNotificationModel)
+            and isinstance(event.params.item.root, protocol.CommandExecutionThreadItem)
+        ]
+        command_completed_items = [
+            event.params.item.root
+            for event in events
+            if isinstance(event, protocol.ItemCompletedNotificationModel)
+            and isinstance(event.params.item.root, protocol.CommandExecutionThreadItem)
+        ]
+        command_event_context = (
+            f"expected_output={command_output!r}\n"
+            f"started_commands={[item.command for item in command_started_items]!r}\n"
+            f"completed_commands={[(item.command, item.exitCode, item.aggregatedOutput) for item in command_completed_items]!r}\n"
+            f"final_text={stream.final_text!r}"
+        )
+        assert thread.id is not None
+        assert any(isinstance(event, protocol.TurnStartedNotificationModel) for event in events)
+        assert any(isinstance(event, protocol.TurnCompletedNotificationModel) for event in events)
+        assert command_started_items, command_event_context
+        assert any(
+            item.exitCode == 0
+            and item.aggregatedOutput is not None
+            and item.aggregatedOutput.strip() == command_output
+            for item in command_completed_items
+        ), command_event_context
+        assert stream.final_turn is not None
+        assert stream.final_turn.status.root == "completed"
+        assert stream.final_text.strip() == command_output, command_event_context

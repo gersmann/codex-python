@@ -96,6 +96,32 @@ def test_parse_server_request_allows_generic_unknown_methods_in_non_strict_mode(
     assert request_id(parsed) == "req-1"
 
 
+def test_parse_server_request_handles_permissions_approval_request() -> None:
+    parsed = parse_server_request(
+        {
+            "id": "req-1",
+            "method": "item/permissions/requestApproval",
+            "params": {
+                "threadId": "thr-1",
+                "turnId": "turn-1",
+                "itemId": "item-1",
+                "permissions": {
+                    "network": {"enabled": True},
+                    "fileSystem": {"read": ["/repo"], "write": ["/tmp/out"]},
+                },
+                "reason": "Tool requested additional access.",
+            },
+        },
+        strict=True,
+    )
+
+    assert isinstance(parsed, protocol.ItemPermissionsRequestApprovalRequest)
+    assert method_name(parsed) == "item/permissions/requestApproval"
+    assert request_id(parsed) == "req-1"
+    assert parsed.params.permissions.network is not None
+    assert parsed.params.permissions.network.enabled is True
+
+
 def test_parse_server_request_rejects_invalid_shapes() -> None:
     with pytest.raises(AppServerProtocolError, match="custom/request"):
         parse_server_request(

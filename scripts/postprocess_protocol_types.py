@@ -12,12 +12,13 @@ Pipeline contract:
 
 from __future__ import annotations
 
+import argparse
+import os
 import re
-from collections.abc import Callable
+import tempfile
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
-
-from codex._file_utils import atomic_write_text
 
 DEFAULT_PROTOCOL_TYPES_PATH = Path("codex/protocol/types.py")
 UNION_WRAPPER_NAMES = (
@@ -30,12 +31,37 @@ UNION_WRAPPER_NAMES = (
 RENAME_MAP = {
     "Record3Cstring2Cnever3E": "EmptyObject",
 }
+ROOT_MODEL_DEFAULT_REPLACEMENTS = {
+    "PermissionGrantScope": ("turn", 'PermissionGrantScope("turn")'),
+    "NetworkAccess": ("restricted", 'NetworkAccess("restricted")'),
+    "CommandExecutionSource": ("agent", 'CommandExecutionSource("agent")'),
+    "HookSource": ("unknown", 'HookSource("unknown")'),
+}
+ROOT_MODEL_LIST_DEFAULT_REPLACEMENTS = {
+    "InputModality": (
+        ("text", "image"),
+        '[InputModality("text"), InputModality("image")]',
+    ),
+}
 
 
 @dataclass(frozen=True)
 class TransformPass:
     name: str
     transform: Callable[[str], str]
+
+
+def atomic_write_text(path: Path, text: str, *, encoding: str = "utf-8") -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd, temp_path_str = tempfile.mkstemp(prefix=f".{path.name}.", dir=path.parent)
+    temp_path = Path(temp_path_str)
+    try:
+        with os.fdopen(fd, "w", encoding=encoding) as handle:
+            handle.write(text)
+        temp_path.replace(path)
+    except Exception:
+        temp_path.unlink(missing_ok=True)
+        raise
 
 
 def rewrite_recursive_jsonvalue_forward_refs(text: str) -> str:
@@ -81,6 +107,45 @@ def rename_generated_aliases(text: str) -> str:
     return text
 
 
+def normalize_root_model_defaults(text: str) -> str:
+    for model_name, (literal_value, replacement) in ROOT_MODEL_DEFAULT_REPLACEMENTS.items():
+        text = re.sub(
+            rf"(\b\w+:\s*Annotated\[{model_name} \| None, Field\(validate_default=True\)\]\s*=\s*)[\"']{literal_value}[\"']",
+            rf"\1{replacement}",
+            text,
+        )
+    for model_name, (literal_values, replacement) in ROOT_MODEL_LIST_DEFAULT_REPLACEMENTS.items():
+        literal_pattern = r"\s*,\s*".join(
+            rf"[\"']{literal_value}[\"']" for literal_value in literal_values
+        )
+        text = re.sub(
+            rf"(\b\w+:\s*Annotated\[list\[{model_name}\] \| None, Field\(validate_default=True\)\]\s*=\s*)\[\s*{literal_pattern}\s*,?\s*\]",
+            rf"\1{replacement}",
+            text,
+            flags=re.S,
+        )
+    return text
+
+
+def _replace_read_only_access_default(text: str, field_name: str) -> str:
+    pattern = (
+        rf"(\b{field_name}:\s*Annotated\[ReadOnlyAccess \| None, "
+        r"Field\(validate_default=True\)\]\s*=\s*)"
+        r"\{\s*[\"']type[\"']:\s*[\"']fullAccess[\"']\s*\}"
+    )
+    return re.sub(
+        pattern,
+        r'\1ReadOnlyAccess.model_validate({"type": "fullAccess"})',
+        text,
+        flags=re.S,
+    )
+
+
+def normalize_read_only_access_defaults(text: str) -> str:
+    text = _replace_read_only_access_default(text, "access")
+    return _replace_read_only_access_default(text, "readOnlyAccess")
+
+
 def append_union_wrapper_rebuilds(text: str) -> str:
     trailer: list[str] = []
     for name in UNION_WRAPPER_NAMES:
@@ -118,6 +183,8 @@ POSTPROCESS_PASSES = (
     TransformPass("normalize union RootModel wrappers", normalize_union_rootmodel_wrappers),
     TransformPass("ensure generated file directives", ensure_generated_file_directives),
     TransformPass("rename unreadable generated aliases", rename_generated_aliases),
+    TransformPass("normalize root model defaults", normalize_root_model_defaults),
+    TransformPass("normalize read-only access defaults", normalize_read_only_access_defaults),
     TransformPass("append wrapper model_rebuild calls", append_union_wrapper_rebuilds),
 )
 
@@ -128,8 +195,18 @@ def postprocess_types(text: str) -> tuple[str, int]:
     return deduplicate_model_rebuild_calls(text)
 
 
-def main() -> int:
-    path = DEFAULT_PROTOCOL_TYPES_PATH
+def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Postprocess generated Codex protocol types.")
+    parser.add_argument(
+        "path",
+        nargs="?",
+        default=str(DEFAULT_PROTOCOL_TYPES_PATH),
+        help="Generated protocol types file to postprocess.",
+    )
+    return parser.parse_args(argv)
+
+
+def postprocess_file(path: Path) -> int:
     original_text = path.read_text()
     updated_text, removed_rebuilds = postprocess_types(original_text)
     atomic_write_text(path, updated_text)
@@ -143,6 +220,11 @@ def main() -> int:
     else:
         print(f"Types postprocess: ran passes [{pass_names}]")
     return 0
+
+
+def main(argv: Sequence[str] | None = None) -> int:
+    args = parse_args(argv)
+    return postprocess_file(Path(args.path))
 
 
 if __name__ == "__main__":

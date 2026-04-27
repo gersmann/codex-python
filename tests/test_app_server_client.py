@@ -23,6 +23,7 @@ from codex.app_server import (
     AppServerRpcError,
     AppServerThreadForkOptions,
     AppServerThreadListOptions,
+    AppServerThreadResumeOptions,
     AppServerThreadStartOptions,
     AppServerTurnError,
     AppServerTurnOptions,
@@ -71,6 +72,25 @@ def _agent_message_item(text: str, item_id: str = "item-1") -> JsonObject:
     }
 
 
+def _hook_run_payload(*, status: str = "running") -> JsonObject:
+    payload: JsonObject = {
+        "id": "hook-1",
+        "displayOrder": 0,
+        "entries": [],
+        "eventName": "preToolUse",
+        "executionMode": "sync",
+        "handlerType": "command",
+        "scope": "turn",
+        "sourcePath": "/repo/.codex/hooks/pre_tool.py",
+        "startedAt": 1730910000,
+        "status": status,
+    }
+    if status != "running":
+        payload["completedAt"] = 1730910001
+        payload["durationMs"] = 1000
+    return payload
+
+
 class SummaryModel(BaseModel):
     answer: str
 
@@ -87,6 +107,7 @@ def _model_list_payload() -> JsonObject:
                 "id": "gpt-5.4",
                 "model": "gpt-5.4",
                 "displayName": "GPT-5.4",
+                "additionalSpeedTiers": ["flex"],
                 "description": "Primary model",
                 "hidden": False,
                 "defaultReasoningEffort": "medium",
@@ -488,7 +509,7 @@ def test_async_client_start_thread_returns_thread_object() -> None:
         }
         assert thread.id == "thr-1"
         assert isinstance(thread.snapshot, protocol.Thread)
-        assert thread.snapshot.cwd == "/repo"
+        assert thread.snapshot.cwd.root == "/repo"
 
         await client.close()
 
@@ -498,10 +519,12 @@ def test_async_client_start_thread_returns_thread_object() -> None:
 def test_app_server_thread_start_options_serialize_with_camel_case_aliases() -> None:
     params = AppServerThreadStartOptions(
         approval_policy=protocol.AskForApproval("never"),
+        approvals_reviewer=protocol.ApprovalsReviewer("guardian_subagent"),
         base_instructions="Follow repo policy",
         experimental_raw_events=True,
         sandbox=protocol.SandboxMode("workspace-write"),
         service_name="pytest-client",
+        session_start_source=protocol.ThreadStartSource("startup"),
     ).to_params()
 
     assert params.model_dump(
@@ -511,18 +534,44 @@ def test_app_server_thread_start_options_serialize_with_camel_case_aliases() -> 
         exclude_defaults=True,
     ) == {
         "approvalPolicy": "never",
+        "approvalsReviewer": "guardian_subagent",
         "baseInstructions": "Follow repo policy",
         "experimentalRawEvents": True,
         "sandbox": "workspace-write",
         "serviceName": "pytest-client",
+        "sessionStartSource": "startup",
+    }
+
+
+def test_app_server_thread_resume_and_fork_options_include_0_122_fields() -> None:
+    resume_params = AppServerThreadResumeOptions(
+        approvals_reviewer=protocol.ApprovalsReviewer("guardian_subagent"),
+    ).to_params(thread_id="thr-1")
+    fork_params = AppServerThreadForkOptions(
+        approvals_reviewer=protocol.ApprovalsReviewer("guardian_subagent"),
+        ephemeral=True,
+    ).to_params(thread_id="thr-1")
+
+    assert resume_params.model_dump(mode="python", by_alias=True, exclude_none=True) == {
+        "approvalsReviewer": "guardian_subagent",
+        "persistExtendedHistory": False,
+        "threadId": "thr-1",
+    }
+    assert fork_params.model_dump(mode="python", by_alias=True, exclude_none=True) == {
+        "approvalsReviewer": "guardian_subagent",
+        "ephemeral": True,
+        "persistExtendedHistory": False,
+        "threadId": "thr-1",
     }
 
 
 def test_app_server_turn_and_list_options_use_protocol_owned_types() -> None:
     turn_params = AppServerTurnOptions(
         approval_policy=protocol.AskForApproval("on-request"),
+        approvals_reviewer=protocol.ApprovalsReviewer("guardian_subagent"),
         effort=protocol.ReasoningEffort("none"),
         personality=protocol.Personality("friendly"),
+        responsesapi_client_metadata={"trace_id": "trace-1"},
         service_tier=protocol.ServiceTier("fast"),
         summary=protocol.ReasoningSummary("concise"),
     ).to_params(
@@ -530,20 +579,24 @@ def test_app_server_turn_and_list_options_use_protocol_owned_types() -> None:
         input=[{"type": "text", "text": "Summarize this repo."}],
     )
     list_params = AppServerThreadListOptions(
+        sort_direction=protocol.SortDirection("asc"),
         sort_key=protocol.ThreadSortKey("updated_at"),
         source_kinds=[protocol.ThreadSourceKind("appServer")],
     ).to_params()
 
     assert turn_params.model_dump(mode="python", by_alias=True, exclude_none=True) == {
         "approvalPolicy": "on-request",
+        "approvalsReviewer": "guardian_subagent",
         "effort": "none",
         "input": [{"type": "text", "text": "Summarize this repo.", "text_elements": []}],
         "personality": "friendly",
+        "responsesapiClientMetadata": {"trace_id": "trace-1"},
         "serviceTier": "fast",
         "summary": "concise",
         "threadId": "thr-1",
     }
     assert list_params.model_dump(mode="python", by_alias=True, exclude_none=True) == {
+        "sortDirection": "asc",
         "sortKey": "updated_at",
         "sourceKinds": ["appServer"],
     }
@@ -559,17 +612,41 @@ def test_async_turn_stream_yields_typed_events_and_aggregates_final_text() -> No
             assert message["params"]["input"] == [{"type": "text", "text": "Summarize this repo."}]
             return {"id": message["id"], "result": {"turn": _turn_payload()}}
 
+        def steer_turn(message: JsonObject) -> JsonObject:
+            assert message["params"] == {
+                "threadId": "thr-1",
+                "expectedTurnId": "turn-1",
+                "input": [{"type": "text", "text": "Add detail."}],
+                "responsesapiClientMetadata": {"trace_id": "trace-2"},
+            }
+            return {"id": message["id"], "result": {"turnId": "turn-1"}}
+
         transport.responses["turn/start"] = start_turn
+        transport.responses["turn/steer"] = steer_turn
         client = AsyncAppServerClient(transport)
         await client.start()
 
         thread = await client.start_thread()
         stream = await thread.run("Summarize this repo.")
+        steered = await stream.steer(
+            "Add detail.",
+            responsesapi_client_metadata={"trace_id": "trace-2"},
+        )
 
         transport.push(
             {
                 "method": "turn/started",
                 "params": {"threadId": "thr-1", "turn": _turn_payload()},
+            }
+        )
+        transport.push(
+            {
+                "method": "hook/started",
+                "params": {
+                    "threadId": "thr-1",
+                    "turnId": "turn-1",
+                    "run": _hook_run_payload(),
+                },
             }
         )
         transport.push(
@@ -595,6 +672,16 @@ def test_async_turn_stream_yields_typed_events_and_aggregates_final_text() -> No
         )
         transport.push(
             {
+                "method": "hook/completed",
+                "params": {
+                    "threadId": "thr-1",
+                    "turnId": "turn-1",
+                    "run": _hook_run_payload(status="completed"),
+                },
+            }
+        )
+        transport.push(
+            {
                 "method": "turn/completed",
                 "params": {
                     "threadId": "thr-1",
@@ -607,12 +694,15 @@ def test_async_turn_stream_yields_typed_events_and_aggregates_final_text() -> No
 
         assert [type(event) for event in events] == [
             protocol.TurnStartedNotificationModel,
+            protocol.HookStartedNotificationModel,
             protocol.ItemAgentMessageDeltaNotification,
             protocol.ItemCompletedNotificationModel,
+            protocol.HookCompletedNotificationModel,
             protocol.TurnCompletedNotificationModel,
         ]
-        assert events[1].params.delta == "Repository summary"
-        assert isinstance(events[2].params.item.root, protocol.AgentMessageThreadItem)
+        assert events[2].params.delta == "Repository summary"
+        assert isinstance(events[3].params.item.root, protocol.AgentMessageThreadItem)
+        assert steered.turn_id == "turn-1"
         assert stream.final_text == "Repository summary"
         assert stream.final_message is not None
         assert stream.final_message.text == "Repository summary"
@@ -1247,11 +1337,28 @@ def test_async_client_exposes_typed_rpc_domain_clients() -> None:
                                     "name": "skill-creator",
                                     "description": "Create a skill",
                                     "enabled": True,
+                                    "dependencies": {
+                                        "tools": [{"type": "cli", "value": "git"}],
+                                    },
+                                    "interface": {
+                                        "displayName": "Skill Creator",
+                                        "shortDescription": "Create or update skills",
+                                        "iconSmall": None,
+                                        "iconLarge": None,
+                                        "brandColor": None,
+                                        "defaultPrompt": None,
+                                    },
                                     "path": "/repo/.codex/skills/skill-creator/SKILL.md",
+                                    "shortDescription": "Create or update skills",
                                     "scope": "repo",
                                 }
                             ],
-                            "errors": [],
+                            "errors": [
+                                {
+                                    "message": "missing dependency",
+                                    "path": "/repo/.codex/skills/broken/SKILL.md",
+                                }
+                            ],
                         }
                     ]
                 },
@@ -1397,8 +1504,17 @@ def test_async_client_exposes_typed_rpc_domain_clients() -> None:
                 "result": {
                     "requirements": {
                         "allowedApprovalPolicies": ["on-request", "never"],
+                        "allowedApprovalsReviewers": ["user"],
                         "allowedSandboxModes": ["read-only", "workspace-write"],
-                        "featureRequirements": {"personality": True},
+                        "allowedWebSearchModes": ["disabled", "live"],
+                        "enforceResidency": "us",
+                        "featureRequirements": {"personality": {"required": True}},
+                        "network": {
+                            "enabled": True,
+                            "allowedDomains": ["api.openai.com"],
+                            "deniedDomains": ["example.invalid"],
+                            "managedAllowedDomainsOnly": True,
+                        },
                     }
                 },
             }
@@ -1427,9 +1543,37 @@ def test_async_client_exposes_typed_rpc_domain_clients() -> None:
                         {
                             "name": "github",
                             "authStatus": "oAuth",
-                            "tools": {},
-                            "resources": [],
-                            "resourceTemplates": [],
+                            "tools": {
+                                "repo_status": {
+                                    "_meta": {"origin": "pytest"},
+                                    "annotations": {"readOnlyHint": True},
+                                    "description": "Read repository status",
+                                    "inputSchema": {"type": "object", "properties": {}},
+                                    "name": "repo_status",
+                                    "outputSchema": {"type": "object"},
+                                    "title": "Repo status",
+                                }
+                            },
+                            "resources": [
+                                {
+                                    "_meta": {"origin": "pytest"},
+                                    "description": "Repository README",
+                                    "mimeType": "text/markdown",
+                                    "name": "readme",
+                                    "size": 12,
+                                    "title": "README",
+                                    "uri": "file:///repo/README.md",
+                                }
+                            ],
+                            "resourceTemplates": [
+                                {
+                                    "description": "Repository files",
+                                    "mimeType": "text/plain",
+                                    "name": "repo_files",
+                                    "title": "Repository files",
+                                    "uriTemplate": "file:///repo/{path}",
+                                }
+                            ],
                         }
                     ],
                     "nextCursor": None,
@@ -1622,10 +1766,19 @@ def test_async_client_exposes_typed_rpc_domain_clients() -> None:
         windows_setup = await client.windows_sandbox.setup_start(mode="elevated", cwd="C:/repo")
 
         assert models[0].display_name == "GPT-5.4"
+        assert models[0].additional_speed_tiers == ["flex"]
         assert model_page.data[0].display_name == "GPT-5.4"
+        assert model_page.data[0].additional_speed_tiers == ["flex"]
         assert apps[0].id == "demo-app"
         assert app_page.data[0].id == "demo-app"
         assert skills[0].cwd == "/repo"
+        assert skills[0].errors[0].message == "missing dependency"
+        assert skills[0].errors[0].path == "/repo/.codex/skills/broken/SKILL.md"
+        assert skills[0].skills[0].dependencies is not None
+        assert skills[0].skills[0].dependencies.tools[0].value == "git"
+        assert skills[0].skills[0].interface is not None
+        assert skills[0].skills[0].interface.display_name == "Skill Creator"
+        assert skills[0].skills[0].short_description == "Create or update skills"
         assert skills_result.data[0].cwd == "/repo"
         assert skill_config.effective_enabled is False
         assert account.account is not None
@@ -1645,9 +1798,41 @@ def test_async_client_exposes_typed_rpc_domain_clients() -> None:
             "read-only",
             "workspace-write",
         ]
+        assert requirements.requirements.allowed_approvals_reviewers is not None
+        assert [
+            reviewer.root for reviewer in requirements.requirements.allowed_approvals_reviewers
+        ] == ["user"]
+        assert requirements.requirements.allowed_web_search_modes is not None
+        assert [mode.root for mode in requirements.requirements.allowed_web_search_modes] == [
+            "disabled",
+            "live",
+        ]
+        assert requirements.requirements.enforce_residency is not None
+        assert requirements.requirements.enforce_residency.root == "us"
+        assert requirements.requirements.feature_requirements == {"personality": {"required": True}}
+        assert requirements.requirements.network is not None
+        assert requirements.requirements.network.enabled is True
+        assert requirements.requirements.network.allowedDomains == ["api.openai.com"]
+        assert requirements.requirements.network.deniedDomains == ["example.invalid"]
+        assert requirements.requirements.network.managedAllowedDomainsOnly is True
         assert reload_result == EmptyResult()
         assert oauth_result.authorization_url == "https://example.com/oauth"
         assert mcp_status[0].name == "github"
+        assert isinstance(mcp_status[0].auth_status, protocol.McpAuthStatus)
+        assert mcp_status[0].auth_status.root == "oAuth"
+        assert isinstance(mcp_status[0].tools["repo_status"], protocol.Tool)
+        assert mcp_status[0].tools["repo_status"].field_meta == {"origin": "pytest"}
+        assert mcp_status[0].tools["repo_status"].inputSchema == {
+            "type": "object",
+            "properties": {},
+        }
+        assert mcp_status[0].tools["repo_status"].outputSchema == {"type": "object"}
+        assert isinstance(mcp_status[0].resources[0], protocol.Resource)
+        assert mcp_status[0].resources[0].field_meta == {"origin": "pytest"}
+        assert mcp_status[0].resources[0].mimeType == "text/markdown"
+        assert mcp_status[0].resources[0].uri == "file:///repo/README.md"
+        assert isinstance(mcp_status[0].resource_templates[0], protocol.ResourceTemplate)
+        assert mcp_status[0].resource_templates[0].uriTemplate == "file:///repo/{path}"
         assert mcp_status_page.data[0].name == "github"
         assert mcp_status_alias[0].name == "github"
         assert mcp_status_page_alias.data[0].name == "github"
@@ -1687,6 +1872,87 @@ def test_async_rpc_supports_raw_and_typed_calls_for_unsupported_methods() -> Non
 
         with pytest.raises(ValidationError, match="unsupported_flag"):
             AppServerTurnOptions(unsupported_flag=True)  # type: ignore[call-arg]
+
+        await client.close()
+
+    asyncio.run(scenario())
+
+
+def test_async_command_client_exposes_0_122_exec_controls() -> None:
+    async def scenario() -> None:
+        transport = ScriptedTransport()
+
+        def command_exec(message: JsonObject) -> JsonObject:
+            assert message["params"] == {
+                "command": ["bash"],
+                "cwd": "/repo",
+                "disableTimeout": True,
+                "env": {"TERM": "xterm-256color"},
+                "outputBytesCap": 4096,
+                "processId": "proc-1",
+                "size": {"cols": 80, "rows": 24},
+                "streamStdin": True,
+                "streamStdoutStderr": True,
+                "tty": True,
+            }
+            return {
+                "id": message["id"],
+                "result": {"exitCode": 0, "stdout": "", "stderr": ""},
+            }
+
+        def command_write(message: JsonObject) -> JsonObject:
+            assert message["params"] == {
+                "processId": "proc-1",
+                "deltaBase64": "aGVsbG8K",
+                "closeStdin": True,
+            }
+            return {"id": message["id"], "result": {}}
+
+        def command_resize(message: JsonObject) -> JsonObject:
+            assert message["params"] == {
+                "processId": "proc-1",
+                "size": {"cols": 100, "rows": 30},
+            }
+            return {"id": message["id"], "result": {}}
+
+        def command_terminate(message: JsonObject) -> JsonObject:
+            assert message["params"] == {"processId": "proc-1"}
+            return {"id": message["id"], "result": {}}
+
+        transport.responses["command/exec"] = command_exec
+        transport.responses["command/exec/write"] = command_write
+        transport.responses["command/exec/resize"] = command_resize
+        transport.responses["command/exec/terminate"] = command_terminate
+        client = AsyncAppServerClient(transport)
+        await client.start()
+
+        result = await client.command.execute(
+            command=["bash"],
+            cwd="/repo",
+            disable_timeout=True,
+            env={"TERM": "xterm-256color"},
+            output_bytes_cap=4096,
+            process_id="proc-1",
+            size=protocol.CommandExecTerminalSize(cols=80, rows=24),
+            stream_stdin=True,
+            stream_stdout_stderr=True,
+            tty=True,
+        )
+        wrote = await client.command.write_stdin(
+            process_id="proc-1",
+            delta_base64="aGVsbG8K",
+            close_stdin=True,
+        )
+        resized = await client.command.resize_terminal(
+            process_id="proc-1",
+            size=protocol.CommandExecTerminalSize(cols=100, rows=30),
+        )
+        terminated = await client.command.terminate_process(process_id="proc-1")
+
+        assert result.exit_code == 0
+        assert wrote == EmptyResult()
+        assert resized == EmptyResult()
+        assert terminated == EmptyResult()
 
         await client.close()
 
@@ -2309,9 +2575,39 @@ def test_sync_client_exposes_typed_rpc_domain_clients_and_events() -> None:
         assert tuple(inspect.signature(client.command.execute).parameters) == (
             "command",
             "cwd",
+            "disable_output_cap",
+            "disable_timeout",
+            "env",
+            "output_bytes_cap",
+            "process_id",
             "sandbox_policy",
+            "size",
+            "stream_stdin",
+            "stream_stdout_stderr",
             "timeout_ms",
+            "tty",
         )
+        assert tuple(inspect.signature(client.command.write_stdin).parameters) == (
+            "process_id",
+            "close_stdin",
+            "delta_base64",
+        )
+        assert client.command.write_stdin.__doc__ is not None
+        assert "command/exec/write" in client.command.write_stdin.__doc__
+        assert "stdin" in client.command.write_stdin.__doc__
+        assert tuple(inspect.signature(client.command.resize_terminal).parameters) == (
+            "process_id",
+            "size",
+        )
+        assert client.command.resize_terminal.__doc__ is not None
+        assert "command/exec/resize" in client.command.resize_terminal.__doc__
+        assert "terminal" in client.command.resize_terminal.__doc__
+        assert tuple(inspect.signature(client.command.terminate_process).parameters) == (
+            "process_id",
+        )
+        assert client.command.terminate_process.__doc__ is not None
+        assert "command/exec/terminate" in client.command.terminate_process.__doc__
+        assert "process" in client.command.terminate_process.__doc__
         assert tuple(inspect.signature(client.account.login_chatgpt_tokens).parameters) == (
             "access_token",
             "chatgpt_account_id",

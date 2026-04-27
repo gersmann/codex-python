@@ -41,9 +41,13 @@ _TURN_STREAM_NOTIFICATION_METHODS = {
     "turn/completed",
     "turn/diff/updated",
     "turn/plan/updated",
+    "hook/started",
+    "hook/completed",
     "thread/tokenUsage/updated",
     "item/started",
     "item/completed",
+    "item/autoApprovalReview/started",
+    "item/autoApprovalReview/completed",
     "item/agentMessage/delta",
     "item/plan/delta",
     "item/reasoning/summaryTextDelta",
@@ -235,15 +239,21 @@ class AsyncTurnStream:
         self._require_terminal_turn()
         return self._final_message
 
-    async def steer(self, input: TurnInput) -> TurnIdResult:
+    async def steer(
+        self,
+        input: TurnInput,
+        *,
+        responsesapi_client_metadata: Mapping[str, object] | None = None,
+    ) -> TurnIdResult:
         """Append additional user input to the in-flight turn."""
-        params = protocol.TurnSteerParams.model_validate(
-            {
-                "threadId": self.thread_id,
-                "expectedTurnId": self.turn_id,
-                "input": normalize_turn_input(input),
-            }
-        )
+        payload: dict[str, object] = {
+            "threadId": self.thread_id,
+            "expectedTurnId": self.turn_id,
+            "input": normalize_turn_input(input),
+        }
+        if responsesapi_client_metadata is not None:
+            payload["responsesapiClientMetadata"] = dict(responsesapi_client_metadata)
+        params = protocol.TurnSteerParams.model_validate(payload)
         return await self._thread._client.rpc.request_typed("turn/steer", params, TurnIdResult)
 
     async def interrupt(self) -> EmptyResult:

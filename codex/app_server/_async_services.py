@@ -26,6 +26,7 @@ from codex.app_server.models import (
     ModelInfo,
     ModelListResult,
     SkillsConfigWriteResult,
+    SkillsListEntry,
     SkillsListResult,
     WindowsSandboxSetupStartResult,
 )
@@ -113,7 +114,7 @@ class AsyncSkillsClient(_AsyncServiceClient):
         cwds: Sequence[str] | None = None,
         force_reload: bool | None = None,
         per_cwd_extra_user_roots: Sequence[protocol.SkillsListExtraRootsForCwd] | None = None,
-    ) -> list[protocol.SkillsListEntry]:
+    ) -> list[SkillsListEntry]:
         return (
             await self.list_page(
                 cwds=cwds,
@@ -139,7 +140,10 @@ class AsyncSkillsClient(_AsyncServiceClient):
         return await self._rpc.request_typed("skills/list", params, SkillsListResult)
 
     async def write_config(self, *, path: str, enabled: bool) -> SkillsConfigWriteResult:
-        params = protocol.SkillsConfigWriteParams(path=path, enabled=enabled)
+        params = protocol.SkillsConfigWriteParams(
+            path=protocol.AbsolutePathBuf(path),
+            enabled=enabled,
+        )
         return await self._rpc.request_typed("skills/config/write", params, SkillsConfigWriteResult)
 
 
@@ -322,18 +326,79 @@ class AsyncCommandClient(_AsyncServiceClient):
         *,
         command: Sequence[str],
         cwd: str | None = None,
+        disable_output_cap: bool | None = None,
+        disable_timeout: bool | None = None,
+        env: Mapping[str, object | None] | None = None,
+        output_bytes_cap: int | None = None,
+        process_id: str | None = None,
         sandbox_policy: protocol.SandboxPolicy | None = None,
+        size: protocol.CommandExecTerminalSize | None = None,
+        stream_stdin: bool | None = None,
+        stream_stdout_stderr: bool | None = None,
         timeout_ms: int | None = None,
+        tty: bool | None = None,
     ) -> CommandExecResult:
         params = protocol.CommandExecParams(
             command=list(command),
             cwd=cwd,
+            disableOutputCap=disable_output_cap,
+            disableTimeout=disable_timeout,
+            env=dict(env) if env is not None else None,
+            outputBytesCap=output_bytes_cap,
+            processId=process_id,
             sandboxPolicy=sandbox_policy,
+            size=size,
+            streamStdin=stream_stdin,
+            streamStdoutStderr=stream_stdout_stderr,
             timeoutMs=timeout_ms,
+            tty=tty,
         )
         return await self._rpc.request_typed("command/exec", params, CommandExecResult)
 
     exec = execute
+
+    async def write_stdin(
+        self,
+        *,
+        process_id: str,
+        close_stdin: bool | None = None,
+        delta_base64: str | None = None,
+    ) -> EmptyResult:
+        """Write stdin bytes to a running `command/exec` process or close stdin.
+
+        This wraps the app-server `command/exec/write` request. `delta_base64`
+        is optional base64-encoded stdin data; `close_stdin` closes the
+        process stdin after the optional write.
+        """
+        params = protocol.CommandExecWriteParams(
+            closeStdin=close_stdin,
+            deltaBase64=delta_base64,
+            processId=process_id,
+        )
+        return await self._rpc.request_typed("command/exec/write", params, EmptyResult)
+
+    async def resize_terminal(
+        self,
+        *,
+        process_id: str,
+        size: protocol.CommandExecTerminalSize,
+    ) -> EmptyResult:
+        """Resize the terminal attached to a running `command/exec` process.
+
+        This wraps the app-server `command/exec/resize` request and sends the
+        new terminal dimensions as `cols` and `rows`.
+        """
+        params = protocol.CommandExecResizeParams(processId=process_id, size=size)
+        return await self._rpc.request_typed("command/exec/resize", params, EmptyResult)
+
+    async def terminate_process(self, *, process_id: str) -> EmptyResult:
+        """Terminate a running `command/exec` process.
+
+        This wraps the app-server `command/exec/terminate` request for the
+        client-supplied process id.
+        """
+        params = protocol.CommandExecTerminateParams(processId=process_id)
+        return await self._rpc.request_typed("command/exec/terminate", params, EmptyResult)
 
 
 class AsyncExternalAgentConfigClient(_AsyncServiceClient):
@@ -369,7 +434,10 @@ class AsyncWindowsSandboxClient(_AsyncServiceClient):
         mode: protocol.WindowsSandboxSetupMode,
         cwd: str | None = None,
     ) -> WindowsSandboxSetupStartResult:
-        params = protocol.WindowsSandboxSetupStartParams(cwd=cwd, mode=mode)
+        params = protocol.WindowsSandboxSetupStartParams(
+            cwd=protocol.AbsolutePathBuf(cwd) if cwd is not None else None,
+            mode=mode,
+        )
         return await self._rpc.request_typed(
             "windowsSandbox/setupStart",
             params,

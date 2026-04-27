@@ -69,7 +69,7 @@ jobs:
       - name: Fetch bundled codex binary for integration test
         if: ${{ steps.integration.outputs.enabled == 'true' }}
         env:
-          CODEX_BINARY_RELEASE_TAG: ${{ vars.CODEX_BINARY_RELEASE_TAG || 'latest' }}
+          CODEX_BINARY_RELEASE_TAG: ${{ vars.CODEX_BINARY_RELEASE_TAG || 'rust-v0.122.0' }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
