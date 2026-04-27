@@ -23,6 +23,8 @@ def test_release_workflow_builds_split_macos_wheels() -> None:
     assert "macos-x86_64" in workflow
     assert "codex-targets: aarch64-apple-darwin" in workflow
     assert "codex-targets: x86_64-apple-darwin" in workflow
+    assert "os: macos-15-intel" in workflow
+    assert "os: macos-13" not in workflow
     assert "macos-universal2" not in workflow
     assert "universal2-apple-darwin" not in workflow
 
