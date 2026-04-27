@@ -26,3 +26,16 @@ def test_generated_protocol_types_include_v2_response_models() -> None:
     assert "class Tool(BaseModel)" in content
     assert "class McpServerStatus(BaseModel)" in content
     assert "class ListMcpServerStatusResponse(BaseModel)" in content
+
+
+def test_generated_protocol_types_expose_union_rootmodel_value_aliases() -> None:
+    content = Path("codex/protocol/types.py").read_text(encoding="utf-8")
+
+    assert "type ServerNotificationValue = (" in content
+    assert "type ServerRequestValue = (" in content
+    assert "type ClientRequestValue = (" in content
+    assert (
+        "class ServerNotification(RootModel):\n"
+        "    root: Annotated[\n"
+        "        ServerNotificationValue,"
+    ) in content

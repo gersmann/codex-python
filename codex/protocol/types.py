@@ -5481,17 +5481,22 @@ class ItemPermissionsRequestApprovalRequest(BaseModel):
     params: PermissionsRequestApprovalParams
 
 
+type ServerRequestValue = (
+    ItemCommandExecutionRequestApprovalRequest
+    | ItemFileChangeRequestApprovalRequest
+    | ItemToolRequestUserInputRequest
+    | McpServerElicitationRequestRequest
+    | ItemPermissionsRequestApprovalRequest
+    | ItemToolCallRequest
+    | AccountChatgptAuthTokensRefreshRequest
+    | ApplyPatchApprovalRequest
+    | ExecCommandApprovalRequest
+)
+
+
 class ServerRequest(RootModel):
     root: Annotated[
-        ItemCommandExecutionRequestApprovalRequest
-        | ItemFileChangeRequestApprovalRequest
-        | ItemToolRequestUserInputRequest
-        | McpServerElicitationRequestRequest
-        | ItemPermissionsRequestApprovalRequest
-        | ItemToolCallRequest
-        | AccountChatgptAuthTokensRefreshRequest
-        | ApplyPatchApprovalRequest
-        | ExecCommandApprovalRequest,
+        ServerRequestValue,
         Field(
             description="Request initiated from the server and sent to the client.",
             title="ServerRequest",
@@ -6357,89 +6362,94 @@ class ThreadResumeRequest(BaseModel):
     params: ThreadResumeParams
 
 
+type ClientRequestValue = (
+    InitializeRequest
+    | ThreadStartRequest
+    | ThreadResumeRequest
+    | ThreadForkRequest
+    | ThreadArchiveRequest
+    | ThreadUnsubscribeRequest
+    | ThreadIncrementElicitationRequest
+    | ThreadDecrementElicitationRequest
+    | ThreadNameSetRequest
+    | ThreadMetadataUpdateRequest
+    | ThreadMemoryModeSetRequest
+    | MemoryResetRequest
+    | ThreadUnarchiveRequest
+    | ThreadCompactStartRequest
+    | ThreadShellCommandRequest
+    | ThreadBackgroundTerminalsCleanRequest
+    | ThreadRollbackRequest
+    | ThreadListRequest
+    | ThreadLoadedListRequest
+    | ThreadReadRequest
+    | ThreadTurnsListRequest
+    | ThreadInjectItemsRequest
+    | SkillsListRequest
+    | MarketplaceAddRequest
+    | MarketplaceRemoveRequest
+    | PluginListRequest
+    | PluginReadRequest
+    | AppListRequest
+    | FsReadFileRequest
+    | FsWriteFileRequest
+    | FsCreateDirectoryRequest
+    | FsGetMetadataRequest
+    | FsReadDirectoryRequest
+    | FsRemoveRequest
+    | FsCopyRequest
+    | FsWatchRequest
+    | FsUnwatchRequest
+    | SkillsConfigWriteRequest
+    | PluginInstallRequest
+    | PluginUninstallRequest
+    | TurnStartRequest
+    | TurnSteerRequest
+    | TurnInterruptRequest
+    | ThreadRealtimeStartRequest
+    | ThreadRealtimeAppendAudioRequest
+    | ThreadRealtimeAppendTextRequest
+    | ThreadRealtimeStopRequest
+    | ThreadRealtimeListVoicesRequest
+    | ReviewStartRequest
+    | ModelListRequest
+    | ExperimentalFeatureListRequest
+    | ExperimentalFeatureEnablementSetRequest
+    | CollaborationModeListRequest
+    | MockExperimentalMethodRequest
+    | McpServerOauthLoginRequest
+    | ConfigMcpServerReloadRequest
+    | McpServerStatusListRequest
+    | McpServerResourceReadRequest
+    | McpServerToolCallRequest
+    | WindowsSandboxSetupStartRequest
+    | AccountLoginStartRequest
+    | AccountLoginCancelRequest
+    | AccountLogoutRequest
+    | AccountRateLimitsReadRequest
+    | AccountSendAddCreditsNudgeEmailRequest
+    | FeedbackUploadRequest
+    | CommandExecRequest
+    | CommandExecWriteRequest
+    | CommandExecTerminateRequest
+    | CommandExecResizeRequest
+    | ConfigReadRequest
+    | ExternalAgentConfigDetectRequest
+    | ExternalAgentConfigImportRequest
+    | ConfigValueWriteRequest
+    | ConfigBatchWriteRequest
+    | ConfigRequirementsReadRequest
+    | AccountReadRequest
+    | FuzzyFileSearchRequest
+    | FuzzyFileSearchSessionStartRequest
+    | FuzzyFileSearchSessionUpdateRequest
+    | FuzzyFileSearchSessionStopRequest
+)
+
+
 class ClientRequest(RootModel):
     root: Annotated[
-        InitializeRequest
-        | ThreadStartRequest
-        | ThreadResumeRequest
-        | ThreadForkRequest
-        | ThreadArchiveRequest
-        | ThreadUnsubscribeRequest
-        | ThreadIncrementElicitationRequest
-        | ThreadDecrementElicitationRequest
-        | ThreadNameSetRequest
-        | ThreadMetadataUpdateRequest
-        | ThreadMemoryModeSetRequest
-        | MemoryResetRequest
-        | ThreadUnarchiveRequest
-        | ThreadCompactStartRequest
-        | ThreadShellCommandRequest
-        | ThreadBackgroundTerminalsCleanRequest
-        | ThreadRollbackRequest
-        | ThreadListRequest
-        | ThreadLoadedListRequest
-        | ThreadReadRequest
-        | ThreadTurnsListRequest
-        | ThreadInjectItemsRequest
-        | SkillsListRequest
-        | MarketplaceAddRequest
-        | MarketplaceRemoveRequest
-        | PluginListRequest
-        | PluginReadRequest
-        | AppListRequest
-        | FsReadFileRequest
-        | FsWriteFileRequest
-        | FsCreateDirectoryRequest
-        | FsGetMetadataRequest
-        | FsReadDirectoryRequest
-        | FsRemoveRequest
-        | FsCopyRequest
-        | FsWatchRequest
-        | FsUnwatchRequest
-        | SkillsConfigWriteRequest
-        | PluginInstallRequest
-        | PluginUninstallRequest
-        | TurnStartRequest
-        | TurnSteerRequest
-        | TurnInterruptRequest
-        | ThreadRealtimeStartRequest
-        | ThreadRealtimeAppendAudioRequest
-        | ThreadRealtimeAppendTextRequest
-        | ThreadRealtimeStopRequest
-        | ThreadRealtimeListVoicesRequest
-        | ReviewStartRequest
-        | ModelListRequest
-        | ExperimentalFeatureListRequest
-        | ExperimentalFeatureEnablementSetRequest
-        | CollaborationModeListRequest
-        | MockExperimentalMethodRequest
-        | McpServerOauthLoginRequest
-        | ConfigMcpServerReloadRequest
-        | McpServerStatusListRequest
-        | McpServerResourceReadRequest
-        | McpServerToolCallRequest
-        | WindowsSandboxSetupStartRequest
-        | AccountLoginStartRequest
-        | AccountLoginCancelRequest
-        | AccountLogoutRequest
-        | AccountRateLimitsReadRequest
-        | AccountSendAddCreditsNudgeEmailRequest
-        | FeedbackUploadRequest
-        | CommandExecRequest
-        | CommandExecWriteRequest
-        | CommandExecTerminateRequest
-        | CommandExecResizeRequest
-        | ConfigReadRequest
-        | ExternalAgentConfigDetectRequest
-        | ExternalAgentConfigImportRequest
-        | ConfigValueWriteRequest
-        | ConfigBatchWriteRequest
-        | ConfigRequirementsReadRequest
-        | AccountReadRequest
-        | FuzzyFileSearchRequest
-        | FuzzyFileSearchSessionStartRequest
-        | FuzzyFileSearchSessionUpdateRequest
-        | FuzzyFileSearchSessionStopRequest,
+        ClientRequestValue,
         Field(description="Request from the client to the server.", title="ClientRequest"),
     ]
 
@@ -6479,63 +6489,68 @@ class ThreadStartedNotificationModel(BaseModel):
     params: ThreadStartedNotification
 
 
+type ServerNotificationValue = (
+    ErrorNotificationModel
+    | ThreadStartedNotificationModel
+    | ThreadStatusChangedNotificationModel
+    | ThreadArchivedNotificationModel
+    | ThreadUnarchivedNotificationModel
+    | ThreadClosedNotificationModel
+    | SkillsChangedNotificationModel
+    | ThreadNameUpdatedNotificationModel
+    | ThreadTokenUsageUpdatedNotificationModel
+    | TurnStartedNotificationModel
+    | HookStartedNotificationModel
+    | TurnCompletedNotificationModel
+    | HookCompletedNotificationModel
+    | TurnDiffUpdatedNotificationModel
+    | TurnPlanUpdatedNotificationModel
+    | ItemStartedNotificationModel
+    | ItemAutoApprovalReviewStartedNotification
+    | ItemAutoApprovalReviewCompletedNotification
+    | ItemCompletedNotificationModel
+    | ItemAgentMessageDeltaNotification
+    | ItemPlanDeltaNotification
+    | CommandExecOutputDeltaNotificationModel
+    | ItemCommandExecutionOutputDeltaNotification
+    | ItemCommandExecutionTerminalInteractionNotification
+    | ItemFileChangeOutputDeltaNotification
+    | ServerRequestResolvedNotificationModel
+    | ItemMcpToolCallProgressNotification
+    | McpServerOauthLoginCompletedNotificationModel
+    | McpServerStartupStatusUpdatedNotification
+    | AccountUpdatedNotificationModel
+    | AccountRateLimitsUpdatedNotificationModel
+    | AppListUpdatedNotificationModel
+    | ExternalAgentConfigImportCompletedNotificationModel
+    | FsChangedNotificationModel
+    | ItemReasoningSummaryTextDeltaNotification
+    | ItemReasoningSummaryPartAddedNotification
+    | ItemReasoningTextDeltaNotification
+    | ThreadCompactedNotification
+    | ModelReroutedNotificationModel
+    | WarningNotificationModel
+    | DeprecationNoticeNotificationModel
+    | ConfigWarningNotificationModel
+    | FuzzyFileSearchSessionUpdatedNotification1
+    | FuzzyFileSearchSessionCompletedNotification1
+    | ThreadRealtimeStartedNotificationModel
+    | ThreadRealtimeItemAddedNotificationModel
+    | ThreadRealtimeTranscriptDeltaNotificationModel
+    | ThreadRealtimeTranscriptDoneNotificationModel
+    | ThreadRealtimeOutputAudioDeltaNotificationModel
+    | ThreadRealtimeSdpNotificationModel
+    | ThreadRealtimeErrorNotificationModel
+    | ThreadRealtimeClosedNotificationModel
+    | WindowsWorldWritableWarningNotificationModel
+    | WindowsSandboxSetupCompletedNotificationModel
+    | AccountLoginCompletedNotificationModel
+)
+
+
 class ServerNotification(RootModel):
     root: Annotated[
-        ErrorNotificationModel
-        | ThreadStartedNotificationModel
-        | ThreadStatusChangedNotificationModel
-        | ThreadArchivedNotificationModel
-        | ThreadUnarchivedNotificationModel
-        | ThreadClosedNotificationModel
-        | SkillsChangedNotificationModel
-        | ThreadNameUpdatedNotificationModel
-        | ThreadTokenUsageUpdatedNotificationModel
-        | TurnStartedNotificationModel
-        | HookStartedNotificationModel
-        | TurnCompletedNotificationModel
-        | HookCompletedNotificationModel
-        | TurnDiffUpdatedNotificationModel
-        | TurnPlanUpdatedNotificationModel
-        | ItemStartedNotificationModel
-        | ItemAutoApprovalReviewStartedNotification
-        | ItemAutoApprovalReviewCompletedNotification
-        | ItemCompletedNotificationModel
-        | ItemAgentMessageDeltaNotification
-        | ItemPlanDeltaNotification
-        | CommandExecOutputDeltaNotificationModel
-        | ItemCommandExecutionOutputDeltaNotification
-        | ItemCommandExecutionTerminalInteractionNotification
-        | ItemFileChangeOutputDeltaNotification
-        | ServerRequestResolvedNotificationModel
-        | ItemMcpToolCallProgressNotification
-        | McpServerOauthLoginCompletedNotificationModel
-        | McpServerStartupStatusUpdatedNotification
-        | AccountUpdatedNotificationModel
-        | AccountRateLimitsUpdatedNotificationModel
-        | AppListUpdatedNotificationModel
-        | ExternalAgentConfigImportCompletedNotificationModel
-        | FsChangedNotificationModel
-        | ItemReasoningSummaryTextDeltaNotification
-        | ItemReasoningSummaryPartAddedNotification
-        | ItemReasoningTextDeltaNotification
-        | ThreadCompactedNotification
-        | ModelReroutedNotificationModel
-        | WarningNotificationModel
-        | DeprecationNoticeNotificationModel
-        | ConfigWarningNotificationModel
-        | FuzzyFileSearchSessionUpdatedNotification1
-        | FuzzyFileSearchSessionCompletedNotification1
-        | ThreadRealtimeStartedNotificationModel
-        | ThreadRealtimeItemAddedNotificationModel
-        | ThreadRealtimeTranscriptDeltaNotificationModel
-        | ThreadRealtimeTranscriptDoneNotificationModel
-        | ThreadRealtimeOutputAudioDeltaNotificationModel
-        | ThreadRealtimeSdpNotificationModel
-        | ThreadRealtimeErrorNotificationModel
-        | ThreadRealtimeClosedNotificationModel
-        | WindowsWorldWritableWarningNotificationModel
-        | WindowsSandboxSetupCompletedNotificationModel
-        | AccountLoginCompletedNotificationModel,
+        ServerNotificationValue,
         Field(
             description="Notification sent from the server to the client.",
             title="ServerNotification",

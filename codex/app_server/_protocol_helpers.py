@@ -12,7 +12,8 @@ from codex.app_server.models import GenericNotification, GenericServerRequest
 from codex.protocol import types as protocol
 
 type RequestHandler[RequestT: BaseModel] = Callable[[RequestT], object | Awaitable[object]]
-Notification = BaseModel
+type Notification = protocol.ServerNotificationValue | GenericNotification
+type ServerRequest = protocol.ServerRequestValue | GenericServerRequest
 
 
 def method_name(message: BaseModel) -> str:
@@ -123,7 +124,7 @@ def parse_notification(message: JsonObject, *, strict: bool) -> Notification:
         raise AppServerProtocolError(_notification_error_message(message)) from exc
 
 
-def parse_server_request(message: JsonObject, *, strict: bool) -> BaseModel:
+def parse_server_request(message: JsonObject, *, strict: bool) -> ServerRequest:
     method = message.get("method")
     try:
         return protocol.ServerRequest.model_validate(message).root
