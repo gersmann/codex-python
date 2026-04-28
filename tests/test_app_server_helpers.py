@@ -85,6 +85,14 @@ def test_parse_notification_rejects_unknown_methods_in_strict_mode() -> None:
         parse_notification({"method": "custom/notify", "params": {"ok": True}}, strict=True)
 
 
+def test_parse_notification_rejects_malformed_known_methods_in_non_strict_mode() -> None:
+    with pytest.raises(AppServerProtocolError, match="turn/completed"):
+        parse_notification(
+            {"method": "turn/completed", "params": {"bad": True}},
+            strict=False,
+        )
+
+
 def test_parse_server_request_allows_generic_unknown_methods_in_non_strict_mode() -> None:
     parsed = parse_server_request(
         {"id": "req-1", "method": "custom/request", "params": {"ok": True}},
@@ -94,6 +102,14 @@ def test_parse_server_request_allows_generic_unknown_methods_in_non_strict_mode(
     assert parsed == GenericServerRequest(id="req-1", method="custom/request", params={"ok": True})
     assert method_name(parsed) == "custom/request"
     assert request_id(parsed) == "req-1"
+
+
+def test_parse_server_request_rejects_malformed_known_methods_in_non_strict_mode() -> None:
+    with pytest.raises(AppServerProtocolError, match="item/tool/call"):
+        parse_server_request(
+            {"id": "req-1", "method": "item/tool/call", "params": {"bad": True}},
+            strict=False,
+        )
 
 
 def test_parse_server_request_handles_permissions_approval_request() -> None:

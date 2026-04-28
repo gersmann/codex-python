@@ -12,7 +12,8 @@ from codex.app_server.models import GenericNotification, GenericServerRequest
 from codex.protocol import types as protocol
 
 type RequestHandler[RequestT: BaseModel] = Callable[[RequestT], object | Awaitable[object]]
-Notification = BaseModel
+type Notification = protocol.ServerNotificationValue | GenericNotification
+type ServerRequest = protocol.ServerRequestValue | GenericServerRequest
 
 
 def method_name(message: BaseModel) -> str:
@@ -123,7 +124,7 @@ def parse_notification(message: JsonObject, *, strict: bool) -> Notification:
         raise AppServerProtocolError(_notification_error_message(message)) from exc
 
 
-def parse_server_request(message: JsonObject, *, strict: bool) -> BaseModel:
+def parse_server_request(message: JsonObject, *, strict: bool) -> ServerRequest:
     method = message.get("method")
     try:
         return protocol.ServerRequest.model_validate(message).root
@@ -151,14 +152,19 @@ def _build_known_methods(*, root_model: type[BaseModel]) -> frozenset[str]:
     root_field = getattr(root_model, "model_fields", {}).get("root")
     if root_field is None:
         return frozenset()
+    annotation = _unwrap_type_alias(root_field.annotation)
     methods = {
         method
-        for candidate in get_args(root_field.annotation)
+        for candidate in get_args(annotation)
         if isinstance(candidate, type) and issubclass(candidate, BaseModel)
         for method in [_candidate_method_literal(candidate)]
         if method is not None
     }
     return frozenset(methods)
+
+
+def _unwrap_type_alias(annotation: object) -> object:
+    return getattr(annotation, "__value__", annotation)
 
 
 def _candidate_method_literal(candidate: type[BaseModel]) -> str | None:

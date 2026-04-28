@@ -4,10 +4,11 @@
 Pipeline contract:
 1. Repair recursive forward references emitted by datamodel-code-generator.
 2. Normalize union RootModel wrappers that would fail at class creation time.
-3. Ensure generated-file directives are present.
-4. Rename known unreadable generated aliases.
-5. Append required model_rebuild() calls for wrapper unions.
-6. Deduplicate rebuild calls from repeated runs.
+3. Expose typed value aliases for generated union RootModel wrappers.
+4. Ensure generated-file directives are present.
+5. Rename known unreadable generated aliases.
+6. Append required model_rebuild() calls for wrapper unions.
+7. Deduplicate rebuild calls from repeated runs.
 """
 
 from __future__ import annotations
@@ -82,6 +83,60 @@ def normalize_union_rootmodel_wrappers(text: str) -> str:
         r"\1",
         text,
     )
+
+
+def expose_union_rootmodel_value_aliases(text: str) -> str:
+    for wrapper_name in UNION_WRAPPER_NAMES:
+        alias_name = f"{wrapper_name}Value"
+        if re.search(rf"^type\s+{alias_name}\s*=", text, flags=re.M):
+            continue
+        root_value = _extract_union_root_value(text, wrapper_name)
+        if root_value is None:
+            continue
+        value_start, field_start, value_text = root_value
+        alias_text = _format_root_value_alias(alias_name, value_text)
+        text = text[:value_start] + f"        {alias_name}," + text[field_start:]
+        class_match = re.search(rf"^class\s+{wrapper_name}\(\s*RootModel\s*\):", text, flags=re.M)
+        if class_match is None:
+            continue
+        text = text[: class_match.start()] + alias_text + text[class_match.start() :]
+    return text
+
+
+def _extract_union_root_value(
+    text: str,
+    wrapper_name: str,
+) -> tuple[int, int, str] | None:
+    class_match = re.search(rf"^class\s+{wrapper_name}\(\s*RootModel\s*\):\n", text, flags=re.M)
+    if class_match is None:
+        return None
+    next_class = re.search(r"^class\s+\w+\b", text[class_match.end() :], flags=re.M)
+    class_end = len(text) if next_class is None else class_match.end() + next_class.start()
+    root_prefix = "    root: Annotated[\n"
+    root_start = text.find(root_prefix, class_match.end(), class_end)
+    if root_start == -1:
+        return None
+    value_start = root_start + len(root_prefix)
+    field_start = text.find("\n        Field(", value_start, class_end)
+    if field_start == -1:
+        return None
+    value_text = text[value_start:field_start].rstrip()
+    if not value_text.endswith(","):
+        return None
+    value_text = value_text[:-1].rstrip()
+    if "\n" not in value_text:
+        return None
+    return value_start, field_start, value_text
+
+
+def _format_root_value_alias(alias_name: str, value_text: str) -> str:
+    alias_lines = []
+    for line in value_text.splitlines():
+        if line.startswith("        "):
+            alias_lines.append(f"    {line[8:]}")
+        else:
+            alias_lines.append(f"    {line.lstrip()}")
+    return f"type {alias_name} = (\n" + "\n".join(alias_lines) + "\n)\n\n"
 
 
 def ensure_generated_file_directives(text: str) -> str:
@@ -181,6 +236,7 @@ POSTPROCESS_PASSES = (
         "rewrite recursive JsonValue forward refs", rewrite_recursive_jsonvalue_forward_refs
     ),
     TransformPass("normalize union RootModel wrappers", normalize_union_rootmodel_wrappers),
+    TransformPass("expose union RootModel value aliases", expose_union_rootmodel_value_aliases),
     TransformPass("ensure generated file directives", ensure_generated_file_directives),
     TransformPass("rename unreadable generated aliases", rename_generated_aliases),
     TransformPass("normalize root model defaults", normalize_root_model_defaults),
