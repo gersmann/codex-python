@@ -20,6 +20,7 @@ JsonObject = dict[str, Any]
 def _thread_payload(thread_id: str = "thr-1") -> JsonObject:
     return {
         "id": thread_id,
+        "sessionId": "session-1",
         "preview": "",
         "ephemeral": False,
         "modelProvider": "openai",
@@ -188,6 +189,7 @@ def test_consume_natural_completion() -> None:
                 "params": {
                     "threadId": "thr-1",
                     "turnId": "turn-1",
+                    "completedAtMs": 1_714_000_000_000,
                     "item": _agent_message_item("Natural completion text"),
                 },
             }
@@ -230,6 +232,7 @@ def test_consume_break_on_turn_completed() -> None:
                 "params": {
                     "threadId": "thr-1",
                     "turnId": "turn-1",
+                    "completedAtMs": 1_714_000_000_000,
                     "item": _agent_message_item("Break-on-complete text"),
                 },
             }
@@ -267,6 +270,7 @@ def test_consume_two_turns_same_thread() -> None:
                 "params": {
                     "threadId": "thr-1",
                     "turnId": "turn-1",
+                    "completedAtMs": 1_714_000_000_000,
                     "item": _agent_message_item("First pass text"),
                 },
             }
@@ -289,6 +293,7 @@ def test_consume_two_turns_same_thread() -> None:
                 "params": {
                     "threadId": "thr-1",
                     "turnId": "turn-2",
+                    "completedAtMs": 1_714_000_000_000,
                     "item": _agent_message_item("Second pass text"),
                 },
             }
@@ -351,6 +356,7 @@ def test_turn_completed_not_in_notification_methods_does_not_hang() -> None:
                 "params": {
                     "threadId": "thr-1",
                     "turnId": "turn-1",
+                    "completedAtMs": 1_714_000_000_000,
                     "item": _agent_message_item("Post interaction text"),
                 },
             }

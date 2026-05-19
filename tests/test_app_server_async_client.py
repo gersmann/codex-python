@@ -171,6 +171,7 @@ def test_async_turn_stream_apply_tracks_text_usage_items_and_final_turn() -> Non
             "params": {
                 "threadId": "thr-1",
                 "turnId": "turn-1",
+                "completedAtMs": 1_714_000_000_000,
                 "item": {
                     "id": "item-1",
                     "type": "agentMessage",
@@ -214,6 +215,7 @@ def test_async_turn_stream_apply_replaces_existing_item_state() -> None:
             "params": {
                 "threadId": "thr-1",
                 "turnId": "turn-1",
+                "startedAtMs": 1_714_000_000_000,
                 "item": {
                     "id": "item-1",
                     "type": "agentMessage",
@@ -229,6 +231,7 @@ def test_async_turn_stream_apply_replaces_existing_item_state() -> None:
             "params": {
                 "threadId": "thr-1",
                 "turnId": "turn-1",
+                "completedAtMs": 1_714_000_000_000,
                 "item": {
                     "id": "item-1",
                     "type": "agentMessage",
@@ -360,6 +363,7 @@ def test_async_turn_stream_final_accessors_require_terminal_turn() -> None:
                 "params": {
                     "threadId": "thr-1",
                     "turnId": "turn-1",
+                    "completedAtMs": 1_714_000_000_000,
                     "item": {
                         "id": "item-1",
                         "type": "agentMessage",

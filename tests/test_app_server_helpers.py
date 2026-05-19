@@ -121,11 +121,13 @@ def test_parse_server_request_handles_permissions_approval_request() -> None:
                 "threadId": "thr-1",
                 "turnId": "turn-1",
                 "itemId": "item-1",
+                "cwd": "/repo",
                 "permissions": {
                     "network": {"enabled": True},
                     "fileSystem": {"read": ["/repo"], "write": ["/tmp/out"]},
                 },
                 "reason": "Tool requested additional access.",
+                "startedAtMs": 1_714_000_000_000,
             },
         },
         strict=True,
@@ -181,6 +183,7 @@ def test_extract_helpers_read_item_deltas_and_usage() -> None:
             "params": {
                 "threadId": "thr-1",
                 "turnId": "turn-1",
+                "completedAtMs": 1_714_000_000_000,
                 "item": {
                     "id": "item-1",
                     "type": "agentMessage",
