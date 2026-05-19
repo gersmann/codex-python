@@ -76,7 +76,6 @@ class _AsyncSkillsClientLike(Protocol):
         *,
         cwds: Sequence[str] | None = None,
         force_reload: bool | None = None,
-        per_cwd_extra_user_roots: Sequence[protocol.SkillsListExtraRootsForCwd] | None = None,
     ) -> list[SkillsListEntry]: ...
 
     async def list_page(
@@ -84,7 +83,6 @@ class _AsyncSkillsClientLike(Protocol):
         *,
         cwds: Sequence[str] | None = None,
         force_reload: bool | None = None,
-        per_cwd_extra_user_roots: Sequence[protocol.SkillsListExtraRootsForCwd] | None = None,
     ) -> SkillsListResult: ...
 
     async def write_config(self, *, path: str, enabled: bool) -> SkillsConfigWriteResult: ...
@@ -338,13 +336,11 @@ class _SkillsClient(_SyncRunner):
         *,
         cwds: Sequence[str] | None = None,
         force_reload: bool | None = None,
-        per_cwd_extra_user_roots: Sequence[protocol.SkillsListExtraRootsForCwd] | None = None,
     ) -> list[SkillsListEntry]:
         return self._run(
             self._async_client.list(
                 cwds=cwds,
                 force_reload=force_reload,
-                per_cwd_extra_user_roots=per_cwd_extra_user_roots,
             )
         )
 
@@ -353,13 +349,11 @@ class _SkillsClient(_SyncRunner):
         *,
         cwds: Sequence[str] | None = None,
         force_reload: bool | None = None,
-        per_cwd_extra_user_roots: Sequence[protocol.SkillsListExtraRootsForCwd] | None = None,
     ) -> SkillsListResult:
         return self._run(
             self._async_client.list_page(
                 cwds=cwds,
                 force_reload=force_reload,
-                per_cwd_extra_user_roots=per_cwd_extra_user_roots,
             )
         )
 

@@ -6,9 +6,10 @@ Pipeline contract:
 2. Normalize union RootModel wrappers that would fail at class creation time.
 3. Expose typed value aliases for generated union RootModel wrappers.
 4. Ensure generated-file directives are present.
-5. Rename known unreadable generated aliases.
-6. Append required model_rebuild() calls for wrapper unions.
-7. Deduplicate rebuild calls from repeated runs.
+5. Preserve stable branded protocol identifiers for generated scalar fields.
+6. Rename known unreadable generated aliases.
+7. Append required model_rebuild() calls for wrapper unions.
+8. Deduplicate rebuild calls from repeated runs.
 """
 
 from __future__ import annotations
@@ -37,6 +38,8 @@ ROOT_MODEL_DEFAULT_REPLACEMENTS = {
     "NetworkAccess": ("restricted", 'NetworkAccess("restricted")'),
     "CommandExecutionSource": ("agent", 'CommandExecutionSource("agent")'),
     "HookSource": ("unknown", 'HookSource("unknown")'),
+    "TurnItemsView": ("full", 'TurnItemsView("full")'),
+    "PluginAvailability": ("AVAILABLE", 'PluginAvailability("AVAILABLE")'),
 }
 ROOT_MODEL_LIST_DEFAULT_REPLACEMENTS = {
     "InputModality": (
@@ -156,6 +159,45 @@ def ensure_generated_file_directives(text: str) -> str:
     return "\n".join(lines) + ("\n" if text.endswith("\n") else "")
 
 
+def preserve_stable_scalar_protocol_types(text: str) -> str:
+    if not re.search(r"^(class\s+ServiceTier\b|ServiceTier\s*=)", text, flags=re.M):
+        text = _ensure_typing_import(text, "NewType")
+        text = re.sub(
+            r"^(from pydantic import .+\n\n)",
+            r'\1ServiceTier = NewType("ServiceTier", str)\n\n',
+            text,
+            count=1,
+            flags=re.M,
+        )
+
+    text = text.replace("serviceTier: str | None = None", "serviceTier: ServiceTier | None = None")
+    text = text.replace(
+        "service_tier: str | None = None",
+        "service_tier: ServiceTier | None = None",
+    )
+    return text.replace(
+        "serviceTier: Annotated[\n        str | None,",
+        "serviceTier: Annotated[\n        ServiceTier | None,",
+    )
+
+
+def _ensure_typing_import(text: str, imported_name: str) -> str:
+    import_match = re.search(r"^from typing import (?P<names>.+)$", text, flags=re.M)
+    if import_match is None:
+        return text
+
+    names = [name.strip() for name in import_match.group("names").split(",")]
+    if imported_name in names:
+        return text
+    names.append(imported_name)
+    names = sorted(names)
+    return (
+        text[: import_match.start()]
+        + f"from typing import {', '.join(names)}"
+        + text[import_match.end() :]
+    )
+
+
 def rename_generated_aliases(text: str) -> str:
     for old, new in RENAME_MAP.items():
         text = re.sub(rf"\b{old}\b", new, text)
@@ -169,12 +211,24 @@ def normalize_root_model_defaults(text: str) -> str:
             rf"\1{replacement}",
             text,
         )
+        text = re.sub(
+            rf"(\b\w+:\s*Annotated\[\s*{model_name} \| None,\s*Field\((?:(?!\]\s*=).)*?\),?\s*\]\s*=\s*)[\"']{literal_value}[\"']",
+            rf"\1{replacement}",
+            text,
+            flags=re.S,
+        )
     for model_name, (literal_values, replacement) in ROOT_MODEL_LIST_DEFAULT_REPLACEMENTS.items():
         literal_pattern = r"\s*,\s*".join(
             rf"[\"']{literal_value}[\"']" for literal_value in literal_values
         )
         text = re.sub(
             rf"(\b\w+:\s*Annotated\[list\[{model_name}\] \| None, Field\(validate_default=True\)\]\s*=\s*)\[\s*{literal_pattern}\s*,?\s*\]",
+            rf"\1{replacement}",
+            text,
+            flags=re.S,
+        )
+        text = re.sub(
+            rf"(\b\w+:\s*Annotated\[\s*list\[{model_name}\] \| None,\s*Field\((?:(?!\]\s*=).)*?\),?\s*\]\s*=\s*)\[\s*{literal_pattern}\s*,?\s*\]",
             rf"\1{replacement}",
             text,
             flags=re.S,
@@ -238,6 +292,7 @@ POSTPROCESS_PASSES = (
     TransformPass("normalize union RootModel wrappers", normalize_union_rootmodel_wrappers),
     TransformPass("expose union RootModel value aliases", expose_union_rootmodel_value_aliases),
     TransformPass("ensure generated file directives", ensure_generated_file_directives),
+    TransformPass("preserve stable scalar protocol types", preserve_stable_scalar_protocol_types),
     TransformPass("rename unreadable generated aliases", rename_generated_aliases),
     TransformPass("normalize root model defaults", normalize_root_model_defaults),
     TransformPass("normalize read-only access defaults", normalize_read_only_access_defaults),

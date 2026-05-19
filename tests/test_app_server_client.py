@@ -41,6 +41,7 @@ JsonObject = dict[str, Any]
 def _thread_payload(thread_id: str = "thr-1") -> JsonObject:
     return {
         "id": thread_id,
+        "sessionId": "session-1",
         "preview": "",
         "ephemeral": False,
         "modelProvider": "openai",
@@ -543,7 +544,7 @@ def test_app_server_thread_start_options_serialize_with_camel_case_aliases() -> 
     }
 
 
-def test_app_server_thread_resume_and_fork_options_include_0_122_fields() -> None:
+def test_app_server_thread_resume_and_fork_options_include_current_protocol_fields() -> None:
     resume_params = AppServerThreadResumeOptions(
         approvals_reviewer=protocol.ApprovalsReviewer("guardian_subagent"),
     ).to_params(thread_id="thr-1")
@@ -666,6 +667,7 @@ def test_async_turn_stream_yields_typed_events_and_aggregates_final_text() -> No
                 "params": {
                     "threadId": "thr-1",
                     "turnId": "turn-1",
+                    "completedAtMs": 1_714_000_000_000,
                     "item": _agent_message_item("Repository summary"),
                 },
             }
@@ -751,6 +753,7 @@ def test_async_turn_stream_ignores_unscoped_notifications_in_non_strict_mode() -
                 "params": {
                     "threadId": "thr-other",
                     "turnId": "turn-other",
+                    "completedAtMs": 1_714_000_000_000,
                     "item": _agent_message_item("Ignore me"),
                 },
             }
@@ -762,6 +765,7 @@ def test_async_turn_stream_ignores_unscoped_notifications_in_non_strict_mode() -
                 "params": {
                     "threadId": "thr-1",
                     "turnId": "turn-1",
+                    "completedAtMs": 1_714_000_000_000,
                     "item": _agent_message_item("Repository summary"),
                 },
             }
@@ -959,6 +963,7 @@ def test_async_thread_run_text_json_and_model_helpers() -> None:
                     "params": {
                         "threadId": "thr-1",
                         "turnId": "turn-1",
+                        "completedAtMs": 1_714_000_000_000,
                         "item": _agent_message_item(text),
                     },
                 }
@@ -1322,9 +1327,6 @@ def test_async_client_exposes_typed_rpc_domain_clients() -> None:
             assert message["params"] == {
                 "cwds": ["/repo"],
                 "forceReload": True,
-                "perCwdExtraUserRoots": [
-                    {"cwd": "/repo", "extraUserRoots": ["/shared-skills"]},
-                ],
             }
             return {
                 "id": message["id"],
@@ -1674,22 +1676,10 @@ def test_async_client_exposes_typed_rpc_domain_clients() -> None:
         skills = await client.skills.list(
             cwds=["/repo"],
             force_reload=True,
-            per_cwd_extra_user_roots=[
-                protocol.SkillsListExtraRootsForCwd(
-                    cwd="/repo",
-                    extraUserRoots=["/shared-skills"],
-                )
-            ],
         )
         skills_result = await client.skills.list_page(
             cwds=["/repo"],
             force_reload=True,
-            per_cwd_extra_user_roots=[
-                protocol.SkillsListExtraRootsForCwd(
-                    cwd="/repo",
-                    extraUserRoots=["/shared-skills"],
-                )
-            ],
         )
         skill_config = await client.skills.write_config(
             path="/repo/.codex/skills/skill-creator/SKILL.md",
@@ -1878,7 +1868,7 @@ def test_async_rpc_supports_raw_and_typed_calls_for_unsupported_methods() -> Non
     asyncio.run(scenario())
 
 
-def test_async_command_client_exposes_0_122_exec_controls() -> None:
+def test_async_command_client_exposes_command_exec_controls() -> None:
     async def scenario() -> None:
         transport = ScriptedTransport()
 
@@ -2213,6 +2203,7 @@ def test_sync_client_exposes_oo_thread_and_stream_api() -> None:
                 "params": {
                     "threadId": "thr-1",
                     "turnId": "turn-1",
+                    "completedAtMs": 1_714_000_000_000,
                     "item": _agent_message_item("Synchronous summary"),
                 },
             }
@@ -2256,6 +2247,7 @@ def test_turn_stream_can_parse_final_json_and_model() -> None:
                 "params": {
                     "threadId": "thr-1",
                     "turnId": "turn-1",
+                    "completedAtMs": 1_714_000_000_000,
                     "item": _agent_message_item('{"answer":"structured summary"}'),
                 },
             }
@@ -2297,6 +2289,7 @@ def test_sync_thread_run_text_json_and_model_helpers() -> None:
                     "params": {
                         "threadId": "thr-1",
                         "turnId": "turn-1",
+                        "completedAtMs": 1_714_000_000_000,
                         "item": _agent_message_item(text),
                     },
                 }

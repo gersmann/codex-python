@@ -113,13 +113,11 @@ class AsyncSkillsClient(_AsyncServiceClient):
         *,
         cwds: Sequence[str] | None = None,
         force_reload: bool | None = None,
-        per_cwd_extra_user_roots: Sequence[protocol.SkillsListExtraRootsForCwd] | None = None,
     ) -> list[SkillsListEntry]:
         return (
             await self.list_page(
                 cwds=cwds,
                 force_reload=force_reload,
-                per_cwd_extra_user_roots=per_cwd_extra_user_roots,
             )
         ).data
 
@@ -128,14 +126,10 @@ class AsyncSkillsClient(_AsyncServiceClient):
         *,
         cwds: Sequence[str] | None = None,
         force_reload: bool | None = None,
-        per_cwd_extra_user_roots: Sequence[protocol.SkillsListExtraRootsForCwd] | None = None,
     ) -> SkillsListResult:
         params = protocol.SkillsListParams(
             cwds=list(cwds) if cwds is not None else None,
             forceReload=force_reload,
-            perCwdExtraUserRoots=(
-                list(per_cwd_extra_user_roots) if per_cwd_extra_user_roots is not None else None
-            ),
         )
         return await self._rpc.request_typed("skills/list", params, SkillsListResult)
 
