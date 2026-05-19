@@ -36,6 +36,7 @@ class SummaryModel(BaseModel):
 def _thread_payload(thread_id: str = "thr-1") -> JsonObject:
     return {
         "id": thread_id,
+        "sessionId": "session-1",
         "preview": "",
         "ephemeral": False,
         "modelProvider": "openai",
@@ -112,6 +113,7 @@ def _item_completed_notification(
             "params": {
                 "threadId": thread_id,
                 "turnId": turn_id,
+                "completedAtMs": 1_714_000_000_000,
                 "item": _agent_message_item(text, item_id=item_id),
             },
         }

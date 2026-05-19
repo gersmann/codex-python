@@ -39,3 +39,12 @@ def test_generated_protocol_types_expose_union_rootmodel_value_aliases() -> None
         "    root: Annotated[\n"
         "        ServerNotificationValue,"
     ) in content
+
+
+def test_generated_protocol_types_preserve_service_tier_type() -> None:
+    content = Path("codex/protocol/types.py").read_text(encoding="utf-8")
+
+    assert 'ServiceTier = NewType("ServiceTier", str)' in content
+    assert "serviceTier: ServiceTier | None = None" in content
+    assert "service_tier: ServiceTier | None = None" in content
+    assert "serviceTier: Annotated[\n        ServiceTier | None," in content
