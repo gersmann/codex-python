@@ -323,13 +323,12 @@ def test_consume_two_turns_same_thread() -> None:
         client.close()
 
 
-def test_turn_completed_not_in_notification_methods_does_not_hang() -> None:
+def test_turn_stream_yields_terminal_interaction_and_does_not_hang() -> None:
     """Reproduce review-action handling when terminalInteraction is emitted.
 
-    codex-review-action handles `item/commandExecution/terminalInteraction`, but
-    `_TURN_STREAM_NOTIFICATION_METHODS` does not subscribe to that method.
-    This test verifies such events are effectively dropped for the turn stream and
-    do not cause `wait()` to hang.
+    codex-review-action handles `item/commandExecution/terminalInteraction`;
+    the turn stream should now deliver it as a typed protocol notification and
+    still allow a later `wait()` call to finish.
     """
 
     client, transport = _make_sync_client()
@@ -337,7 +336,6 @@ def test_turn_completed_not_in_notification_methods_does_not_hang() -> None:
         thread = client.start_thread()
         stream = thread.run("Terminal interaction compatibility")
 
-        # This method is intentionally *not* part of turn stream subscribed methods.
         transport.push(
             {
                 "method": "item/commandExecution/terminalInteraction",
@@ -374,8 +372,8 @@ def test_turn_completed_not_in_notification_methods_does_not_hang() -> None:
         task_complete, events = _consume_like_review_action(stream)
 
         assert task_complete is True
-        # If terminalInteraction had been routed to stream, we'd see an extra event.
         assert [type(event) for event in events] == [
+            protocol.ItemCommandExecutionTerminalInteractionNotification,
             protocol.ItemCompletedNotificationModel,
             protocol.TurnCompletedNotificationModel,
         ]

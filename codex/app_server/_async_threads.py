@@ -37,6 +37,7 @@ _ModelT = TypeVar("_ModelT", bound=BaseModel)
 DEFAULT_REVIEW_DELIVERY = protocol.ReviewDelivery("inline")
 
 _TURN_STREAM_NOTIFICATION_METHODS = {
+    "error",
     "turn/started",
     "turn/completed",
     "turn/diff/updated",
@@ -54,6 +55,7 @@ _TURN_STREAM_NOTIFICATION_METHODS = {
     "item/reasoning/summaryPartAdded",
     "item/reasoning/textDelta",
     "item/commandExecution/outputDelta",
+    "item/commandExecution/terminalInteraction",
     "item/fileChange/outputDelta",
     "serverRequest/resolved",
 }
@@ -132,6 +134,7 @@ class AsyncTurnStream:
         self.usage: protocol.ThreadTokenUsage | None = None
         self._item_index: dict[str, int] = {}
         self._text_deltas: list[str] = []
+        self._retryable_error_notifications: list[protocol.ErrorNotificationModel] = []
         self._done = False
         self._closed = False
 
@@ -188,6 +191,16 @@ class AsyncTurnStream:
             raise StopAsyncIteration
         notification = await self._subscription.next()
         self._apply(notification)
+        if isinstance(notification, protocol.ErrorNotificationModel):
+            if not notification.params.willRetry:
+                self._done = True
+                await self.close()
+                error = notification.params.error
+                message = error.message
+                if error.additionalDetails is not None and error.additionalDetails != "":
+                    message = f"{message}: {error.additionalDetails}"
+                raise AppServerTurnError(message)
+            self._retryable_error_notifications.append(notification)
         if isinstance(notification, protocol.TurnCompletedNotificationModel):
             self._done = True
         return notification
@@ -273,6 +286,18 @@ class AsyncTurnStream:
     def text_deltas(self) -> tuple[str, ...]:
         """Return the streamed agent text deltas received so far."""
         return tuple(self._text_deltas)
+
+    @property
+    def retryable_error_notifications(self) -> tuple[protocol.ErrorNotificationModel, ...]:
+        """Return retryable turn error notifications received so far."""
+        return tuple(self._retryable_error_notifications)
+
+    @property
+    def retryable_errors(self) -> tuple[protocol.TurnError, ...]:
+        """Return retryable turn errors received so far."""
+        return tuple(
+            notification.params.error for notification in self._retryable_error_notifications
+        )
 
     def _apply(self, notification: Notification) -> None:
         self._apply_text_delta(notification)

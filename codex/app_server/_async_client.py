@@ -22,7 +22,7 @@ from codex.app_server._async_services import (
 from codex.app_server._async_threads import AsyncAppServerThread as AsyncAppServerThread
 from codex.app_server._async_threads import AsyncTurnStream as AsyncTurnStream
 from codex.app_server._async_threads import _ThreadClient
-from codex.app_server._protocol_helpers import RequestHandler
+from codex.app_server._protocol_helpers import Notification, RequestHandler
 from codex.app_server._session import _AsyncNotificationSubscription, _AsyncSession
 from codex.app_server.models import (
     InitializeResult,
@@ -106,6 +106,35 @@ class AsyncEventsClient:
 
     def subscribe(self, methods: Collection[str] | None = None) -> _AsyncNotificationSubscription:
         return self._session.subscribe_notifications(methods)
+
+    def subscribe_command_exec_output(self, process_id: str) -> _AsyncNotificationSubscription:
+        """Subscribe to `command/exec/outputDelta` notifications for one process id."""
+
+        def predicate(notification: Notification) -> bool:
+            return (
+                isinstance(notification, protocol.CommandExecOutputDeltaNotificationModel)
+                and notification.params.processId == process_id
+            )
+
+        return self._session.subscribe_notifications(
+            {"command/exec/outputDelta"},
+            predicate=predicate,
+        )
+
+    def subscribe_process_events(self, process_handle: str) -> _AsyncNotificationSubscription:
+        """Subscribe to `process/outputDelta` and `process/exited` for one process handle."""
+
+        def predicate(notification: Notification) -> bool:
+            if isinstance(notification, protocol.ProcessOutputDeltaNotificationModel):
+                return notification.params.processHandle == process_handle
+            if isinstance(notification, protocol.ProcessExitedNotificationModel):
+                return notification.params.processHandle == process_handle
+            return False
+
+        return self._session.subscribe_notifications(
+            {"process/outputDelta", "process/exited"},
+            predicate=predicate,
+        )
 
 
 class AsyncAppServerClient:

@@ -5,7 +5,7 @@ import asyncio
 import pytest
 
 from codex.app_server._async_client import AsyncEventsClient, AsyncTurnStream
-from codex.app_server.errors import AppServerProtocolError
+from codex.app_server.errors import AppServerProtocolError, AppServerTurnError
 from codex.app_server.models import ReviewResult
 from codex.protocol import types as protocol
 
@@ -32,6 +32,17 @@ class _FakeSubscription:
 
     def update_predicate(self, predicate: object) -> None:
         self.updated_predicate = predicate
+
+
+class _QueuedSubscription(_FakeSubscription):
+    def __init__(self, notifications: list[protocol.Notification]) -> None:
+        super().__init__()
+        self._notifications = notifications
+
+    async def next(self) -> protocol.Notification:
+        if not self._notifications:
+            raise StopAsyncIteration
+        return self._notifications.pop(0)
 
 
 class _FakeThread:
@@ -74,6 +85,94 @@ def test_async_events_client_subscribe_delegates_to_session() -> None:
 
     assert subscription == "subscription"
     assert session.calls == [(["turn/completed"], None)]
+
+
+def test_async_events_client_subscribe_command_exec_output_filters_by_process_id() -> None:
+    session = _FakeSession()
+    events = AsyncEventsClient(session)  # type: ignore[arg-type]
+
+    subscription = events.subscribe_command_exec_output("proc-1")
+
+    assert subscription == "subscription"
+    methods, predicate = session.calls[0]
+    assert methods == {"command/exec/outputDelta"}
+    assert callable(predicate)
+    matching = protocol.CommandExecOutputDeltaNotificationModel.model_validate(
+        {
+            "method": "command/exec/outputDelta",
+            "params": {
+                "capReached": False,
+                "deltaBase64": "aGVsbG8K",
+                "processId": "proc-1",
+                "stream": "stdout",
+            },
+        }
+    )
+    other_process = protocol.CommandExecOutputDeltaNotificationModel.model_validate(
+        {
+            "method": "command/exec/outputDelta",
+            "params": {
+                "capReached": False,
+                "deltaBase64": "aGVsbG8K",
+                "processId": "proc-2",
+                "stream": "stdout",
+            },
+        }
+    )
+
+    assert predicate(matching) is True
+    assert predicate(other_process) is False
+
+
+def test_async_events_client_subscribe_process_events_filters_by_process_handle() -> None:
+    session = _FakeSession()
+    events = AsyncEventsClient(session)  # type: ignore[arg-type]
+
+    subscription = events.subscribe_process_events("proc-handle-1")
+
+    assert subscription == "subscription"
+    methods, predicate = session.calls[0]
+    assert methods == {"process/outputDelta", "process/exited"}
+    assert callable(predicate)
+    output = protocol.ProcessOutputDeltaNotificationModel.model_validate(
+        {
+            "method": "process/outputDelta",
+            "params": {
+                "capReached": False,
+                "deltaBase64": "aGVsbG8K",
+                "processHandle": "proc-handle-1",
+                "stream": "stdout",
+            },
+        }
+    )
+    exited = protocol.ProcessExitedNotificationModel.model_validate(
+        {
+            "method": "process/exited",
+            "params": {
+                "exitCode": 0,
+                "processHandle": "proc-handle-1",
+                "stderr": "",
+                "stderrCapReached": False,
+                "stdout": "",
+                "stdoutCapReached": False,
+            },
+        }
+    )
+    other_handle = protocol.ProcessOutputDeltaNotificationModel.model_validate(
+        {
+            "method": "process/outputDelta",
+            "params": {
+                "capReached": False,
+                "deltaBase64": "aGVsbG8K",
+                "processHandle": "proc-handle-2",
+                "stream": "stdout",
+            },
+        }
+    )
+
+    assert predicate(output) is True
+    assert predicate(exited) is True
+    assert predicate(other_handle) is False
 
 
 def test_async_turn_stream_scope_predicate_filters_by_thread_and_turn() -> None:
@@ -335,6 +434,102 @@ def test_async_turn_stream_wait_surfaces_subscription_failure() -> None:
             await stream.wait()
 
         assert subscription.closed is True
+
+    asyncio.run(scenario())
+
+
+def test_async_turn_stream_raises_and_closes_on_non_retryable_error_notification() -> None:
+    error_notification = protocol.ErrorNotificationModel.model_validate(
+        {
+            "method": "error",
+            "params": {
+                "threadId": "thr-1",
+                "turnId": "turn-1",
+                "willRetry": False,
+                "error": {
+                    "message": "model unavailable",
+                    "additionalDetails": "try another model",
+                },
+            },
+        }
+    )
+
+    async def scenario() -> None:
+        subscription = _QueuedSubscription([error_notification])
+        stream = AsyncTurnStream(
+            _FakeThread(),  # type: ignore[arg-type]
+            subscription,  # type: ignore[arg-type]
+            protocol.Turn.model_validate(_turn_payload(status="inProgress")),
+        )
+
+        with pytest.raises(AppServerTurnError, match="model unavailable: try another model"):
+            await stream.__anext__()
+
+        assert subscription.closed is True
+
+    asyncio.run(scenario())
+
+
+def test_async_turn_stream_yields_retryable_error_notification() -> None:
+    error_notification = protocol.ErrorNotificationModel.model_validate(
+        {
+            "method": "error",
+            "params": {
+                "threadId": "thr-1",
+                "turnId": "turn-1",
+                "willRetry": True,
+                "error": {"message": "temporary outage"},
+            },
+        }
+    )
+
+    async def scenario() -> None:
+        subscription = _QueuedSubscription([error_notification])
+        stream = AsyncTurnStream(
+            _FakeThread(),  # type: ignore[arg-type]
+            subscription,  # type: ignore[arg-type]
+            protocol.Turn.model_validate(_turn_payload(status="inProgress")),
+        )
+
+        assert await stream.__anext__() == error_notification
+        assert subscription.closed is False
+
+    asyncio.run(scenario())
+
+
+def test_async_turn_stream_wait_preserves_retryable_error_notifications() -> None:
+    error_notification = protocol.ErrorNotificationModel.model_validate(
+        {
+            "method": "error",
+            "params": {
+                "threadId": "thr-1",
+                "turnId": "turn-1",
+                "willRetry": True,
+                "error": {
+                    "message": "temporary outage",
+                    "additionalDetails": "retrying with fallback",
+                },
+            },
+        }
+    )
+    turn_completed = protocol.TurnCompletedNotificationModel.model_validate(
+        {
+            "method": "turn/completed",
+            "params": {"threadId": "thr-1", "turn": _turn_payload(status="completed")},
+        }
+    )
+
+    async def scenario() -> None:
+        subscription = _QueuedSubscription([error_notification, turn_completed])
+        stream = AsyncTurnStream(
+            _FakeThread(),  # type: ignore[arg-type]
+            subscription,  # type: ignore[arg-type]
+            protocol.Turn.model_validate(_turn_payload(status="inProgress")),
+        )
+
+        assert await stream.wait() is stream
+        assert stream.retryable_error_notifications == (error_notification,)
+        assert stream.retryable_errors == (error_notification.params.error,)
 
     asyncio.run(scenario())
 
