@@ -25,6 +25,10 @@ class _AsyncEventsClientLike(Protocol):
         methods: Collection[str] | None = None,
     ) -> _AsyncNotificationSubscription: ...
 
+    def subscribe_command_exec_output(self, process_id: str) -> _AsyncNotificationSubscription: ...
+
+    def subscribe_process_events(self, process_handle: str) -> _AsyncNotificationSubscription: ...
+
 
 class _AsyncTurnStreamLike(Protocol):
     initial_turn: protocol.Turn
@@ -154,6 +158,20 @@ class EventsClient(_SyncRunner):
     def subscribe(self, methods: Collection[str] | None = None) -> NotificationSubscription:
         return NotificationSubscription(
             self._async_events.subscribe(methods),
+            self._run,
+        )
+
+    def subscribe_command_exec_output(self, process_id: str) -> NotificationSubscription:
+        """Subscribe to `command/exec/outputDelta` notifications for one process id."""
+        return NotificationSubscription(
+            self._async_events.subscribe_command_exec_output(process_id),
+            self._run,
+        )
+
+    def subscribe_process_events(self, process_handle: str) -> NotificationSubscription:
+        """Subscribe to `process/outputDelta` and `process/exited` for one process handle."""
+        return NotificationSubscription(
+            self._async_events.subscribe_process_events(process_handle),
             self._run,
         )
 
