@@ -34,6 +34,7 @@ RENAME_MAP = {
     "Record3Cstring2Cnever3E": "EmptyObject",
 }
 ROOT_MODEL_DEFAULT_REPLACEMENTS = {
+    "ConversationTextRole": ("user", 'ConversationTextRole("user")'),
     "PermissionGrantScope": ("turn", 'PermissionGrantScope("turn")'),
     "NetworkAccess": ("restricted", 'NetworkAccess("restricted")'),
     "CommandExecutionSource": ("agent", 'CommandExecutionSource("agent")'),

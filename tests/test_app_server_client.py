@@ -331,6 +331,12 @@ def test_sync_connect_websocket_passes_explicit_options_to_async_client(
         async def setup_start(self, *args: object, **kwargs: object) -> object:
             raise AssertionError("not used")
 
+        async def create_directory(self, *args: object, **kwargs: object) -> object:
+            raise AssertionError("not used")
+
+        async def write_file(self, *args: object, **kwargs: object) -> object:
+            raise AssertionError("not used")
+
     class FakeAsyncClient:
         def __init__(self) -> None:
             fake_service = FakeService()
@@ -344,6 +350,7 @@ def test_sync_connect_websocket_passes_explicit_options_to_async_client(
             self.mcp_servers = fake_service
             self.feedback = fake_service
             self.command = fake_service
+            self.fs = fake_service
             self.external_agent_config = fake_service
             self.windows_sandbox = fake_service
 
@@ -522,10 +529,31 @@ def test_app_server_thread_start_options_serialize_with_camel_case_aliases() -> 
         approval_policy=protocol.AskForApproval("never"),
         approvals_reviewer=protocol.ApprovalsReviewer("guardian_subagent"),
         base_instructions="Follow repo policy",
+        environments=[
+            protocol.TurnEnvironmentParams(
+                cwd=protocol.AbsolutePathBuf("/repo"),
+                environmentId="env-1",
+            )
+        ],
         experimental_raw_events=True,
+        permissions="profile-1",
+        runtime_workspace_roots=[protocol.AbsolutePathBuf("/repo")],
         sandbox=protocol.SandboxMode("workspace-write"),
+        selected_capability_roots=[
+            protocol.SelectedCapabilityRoot(
+                id="root-1",
+                location=protocol.CapabilityRootLocation(
+                    protocol.EnvironmentCapabilityRootLocation(
+                        environmentId="env-1",
+                        path="/repo",
+                        type=protocol.EnvironmentCapabilityRootLocationType("environment"),
+                    )
+                ),
+            )
+        ],
         service_name="pytest-client",
         session_start_source=protocol.ThreadStartSource("startup"),
+        thread_source=protocol.ThreadSource("pytest"),
     ).to_params()
 
     assert params.model_dump(
@@ -537,42 +565,88 @@ def test_app_server_thread_start_options_serialize_with_camel_case_aliases() -> 
         "approvalPolicy": "never",
         "approvalsReviewer": "guardian_subagent",
         "baseInstructions": "Follow repo policy",
+        "environments": [{"cwd": "/repo", "environmentId": "env-1"}],
         "experimentalRawEvents": True,
+        "permissions": "profile-1",
+        "runtimeWorkspaceRoots": ["/repo"],
         "sandbox": "workspace-write",
+        "selectedCapabilityRoots": [
+            {
+                "id": "root-1",
+                "location": {
+                    "environmentId": "env-1",
+                    "path": "/repo",
+                    "type": "environment",
+                },
+            }
+        ],
         "serviceName": "pytest-client",
         "sessionStartSource": "startup",
+        "threadSource": "pytest",
     }
 
 
 def test_app_server_thread_resume_and_fork_options_include_current_protocol_fields() -> None:
     resume_params = AppServerThreadResumeOptions(
         approvals_reviewer=protocol.ApprovalsReviewer("guardian_subagent"),
+        exclude_turns=True,
+        initial_turns_page=protocol.ThreadResumeInitialTurnsPageParams(
+            limit=10,
+            sortDirection=protocol.SortDirection("desc"),
+        ),
+        permissions="profile-1",
+        runtime_workspace_roots=[protocol.AbsolutePathBuf("/repo")],
     ).to_params(thread_id="thr-1")
     fork_params = AppServerThreadForkOptions(
         approvals_reviewer=protocol.ApprovalsReviewer("guardian_subagent"),
         ephemeral=True,
+        exclude_turns=True,
+        permissions="profile-1",
+        runtime_workspace_roots=[protocol.AbsolutePathBuf("/repo")],
+        thread_source=protocol.ThreadSource("pytest"),
     ).to_params(thread_id="thr-1")
 
     assert resume_params.model_dump(mode="python", by_alias=True, exclude_none=True) == {
         "approvalsReviewer": "guardian_subagent",
-        "persistExtendedHistory": False,
+        "excludeTurns": True,
+        "initialTurnsPage": {"limit": 10, "sortDirection": "desc"},
+        "permissions": "profile-1",
+        "runtimeWorkspaceRoots": ["/repo"],
         "threadId": "thr-1",
     }
     assert fork_params.model_dump(mode="python", by_alias=True, exclude_none=True) == {
         "approvalsReviewer": "guardian_subagent",
         "ephemeral": True,
-        "persistExtendedHistory": False,
+        "excludeTurns": True,
+        "permissions": "profile-1",
+        "runtimeWorkspaceRoots": ["/repo"],
         "threadId": "thr-1",
+        "threadSource": "pytest",
     }
 
 
 def test_app_server_turn_and_list_options_use_protocol_owned_types() -> None:
     turn_params = AppServerTurnOptions(
+        additional_context={
+            "fixture": protocol.AdditionalContextEntry(
+                kind=protocol.AdditionalContextKind("application"),
+                value="context",
+            )
+        },
         approval_policy=protocol.AskForApproval("on-request"),
         approvals_reviewer=protocol.ApprovalsReviewer("guardian_subagent"),
+        client_user_message_id="msg-1",
+        environments=[
+            protocol.TurnEnvironmentParams(
+                cwd=protocol.AbsolutePathBuf("/repo"),
+                environmentId="env-1",
+            )
+        ],
         effort=protocol.ReasoningEffort("none"),
         personality=protocol.Personality("friendly"),
+        permissions="profile-1",
         responsesapi_client_metadata={"trace_id": "trace-1"},
+        runtime_workspace_roots=[protocol.AbsolutePathBuf("/repo")],
         service_tier=protocol.ServiceTier("fast"),
         summary=protocol.ReasoningSummary("concise"),
     ).to_params(
@@ -586,12 +660,17 @@ def test_app_server_turn_and_list_options_use_protocol_owned_types() -> None:
     ).to_params()
 
     assert turn_params.model_dump(mode="python", by_alias=True, exclude_none=True) == {
+        "additionalContext": {"fixture": {"kind": "application", "value": "context"}},
         "approvalPolicy": "on-request",
         "approvalsReviewer": "guardian_subagent",
+        "clientUserMessageId": "msg-1",
+        "environments": [{"cwd": "/repo", "environmentId": "env-1"}],
         "effort": "none",
         "input": [{"type": "text", "text": "Summarize this repo.", "text_elements": []}],
         "personality": "friendly",
+        "permissions": "profile-1",
         "responsesapiClientMetadata": {"trace_id": "trace-1"},
+        "runtimeWorkspaceRoots": ["/repo"],
         "serviceTier": "fast",
         "summary": "concise",
         "threadId": "thr-1",
@@ -714,6 +793,66 @@ def test_async_turn_stream_yields_typed_events_and_aggregates_final_text() -> No
         assert stream.final_turn.status.root == "completed"
         assert isinstance(stream.items[0].root, protocol.AgentMessageThreadItem)
 
+        await client.close()
+
+    asyncio.run(scenario())
+
+
+def test_async_thread_run_and_steer_accept_typed_skill_inputs() -> None:
+    async def scenario() -> None:
+        transport = ScriptedTransport()
+        transport.responses["thread/start"] = {"thread": _thread_payload()}
+
+        def start_turn(message: JsonObject) -> JsonObject:
+            assert message["params"]["input"] == [
+                {"type": "text", "text": "$skill-creator\n\nSummarize this repo."},
+                {
+                    "type": "skill",
+                    "name": "skill-creator",
+                    "path": "/repo/.codex/skills/skill-creator/SKILL.md",
+                },
+            ]
+            return {"id": message["id"], "result": {"turn": _turn_payload()}}
+
+        def steer_turn(message: JsonObject) -> JsonObject:
+            assert message["params"]["input"] == [
+                {"type": "text", "text": "$reviewer\n\nAdd review detail."},
+                {
+                    "type": "skill",
+                    "name": "reviewer",
+                    "path": "/repo/.codex/skills/reviewer/SKILL.md",
+                },
+            ]
+            return {"id": message["id"], "result": {"turnId": "turn-1"}}
+
+        transport.responses["turn/start"] = start_turn
+        transport.responses["turn/steer"] = steer_turn
+        client = AsyncAppServerClient(transport)
+        await client.start()
+
+        thread = await client.start_thread()
+        stream = await thread.run(
+            "Summarize this repo.",
+            skills=[
+                client.skills.input(
+                    name="skill-creator",
+                    path="/repo/.codex/skills/skill-creator/SKILL.md",
+                )
+            ],
+        )
+        steered = await stream.steer(
+            "Add review detail.",
+            skills=[
+                client.skills.input(
+                    name="reviewer",
+                    path="/repo/.codex/skills/reviewer/SKILL.md",
+                )
+            ],
+        )
+
+        assert steered.turn_id == "turn-1"
+
+        await stream.close()
         await client.close()
 
     asyncio.run(scenario())
@@ -1604,6 +1743,20 @@ def test_async_client_exposes_typed_rpc_domain_clients() -> None:
                 "result": {"exitCode": 0, "stdout": "clean\n", "stderr": ""},
             }
 
+        def create_directory(message: JsonObject) -> JsonObject:
+            assert message["params"] == {
+                "path": "/repo/.codex/skills/generated",
+                "recursive": True,
+            }
+            return {"id": message["id"], "result": {}}
+
+        def write_file(message: JsonObject) -> JsonObject:
+            assert message["params"] == {
+                "path": "/repo/.codex/skills/generated/SKILL.md",
+                "dataBase64": "IyBHZW5lcmF0ZWQgU2tpbGwK",
+            }
+            return {"id": message["id"], "result": {}}
+
         def detect_external_agent_config(message: JsonObject) -> JsonObject:
             assert message["params"] == {"cwds": ["/repo"], "includeHome": True}
             return {
@@ -1653,6 +1806,8 @@ def test_async_client_exposes_typed_rpc_domain_clients() -> None:
         transport.responses["mcpServerStatus/list"] = list_mcp_status
         transport.responses["feedback/upload"] = upload_feedback
         transport.responses["command/exec"] = command_exec
+        transport.responses["fs/createDirectory"] = create_directory
+        transport.responses["fs/writeFile"] = write_file
         transport.responses["externalAgentConfig/detect"] = detect_external_agent_config
         transport.responses["externalAgentConfig/import"] = import_external_agent_config
         transport.responses["windowsSandbox/setupStart"] = windows_sandbox_setup_start
@@ -1743,6 +1898,20 @@ def test_async_client_exposes_typed_rpc_domain_clients() -> None:
             ),
             timeout_ms=5000,
         )
+        created_dir = await client.fs.create_directory(
+            path="/repo/.codex/skills/generated",
+            recursive=True,
+        )
+        wrote_file = await client.fs.write_file(
+            path="/repo/.codex/skills/generated/SKILL.md",
+            data="# Generated Skill\n",
+        )
+        generated_skill = await client.skills.write_skill(
+            name="generated",
+            directory="/repo/.codex/skills/generated",
+            instructions="# Generated Skill\n",
+            reload_cwds=["/repo"],
+        )
         detected = await client.external_agent_config.detect(cwds=["/repo"], include_home=True)
         import_result = await client.external_agent_config.import_items(
             migration_items=[
@@ -1828,6 +1997,13 @@ def test_async_client_exposes_typed_rpc_domain_clients() -> None:
         assert mcp_status_page_alias.data[0].name == "github"
         assert feedback.thread_id == "thr-feedback"
         assert command.exit_code == 0
+        assert isinstance(created_dir, protocol.FsCreateDirectoryResponse)
+        assert isinstance(wrote_file, protocol.FsWriteFileResponse)
+        assert generated_skill == protocol.SkillUserInput(
+            type=protocol.SkillUserInputType("skill"),
+            name="generated",
+            path="/repo/.codex/skills/generated/SKILL.md",
+        )
         assert detected.items[0].itemType.root == "AGENTS_MD"
         assert import_result == EmptyResult()
         assert windows_setup.started is True
@@ -1879,6 +2055,7 @@ def test_async_command_client_exposes_command_exec_controls() -> None:
                 "disableTimeout": True,
                 "env": {"TERM": "xterm-256color"},
                 "outputBytesCap": 4096,
+                "permissionProfile": "profile-1",
                 "processId": "proc-1",
                 "size": {"cols": 80, "rows": 24},
                 "streamStdin": True,
@@ -1922,6 +2099,7 @@ def test_async_command_client_exposes_command_exec_controls() -> None:
             disable_timeout=True,
             env={"TERM": "xterm-256color"},
             output_bytes_cap=4096,
+            permission_profile="profile-1",
             process_id="proc-1",
             size=protocol.CommandExecTerminalSize(cols=80, rows=24),
             stream_stdin=True,
@@ -2532,6 +2710,24 @@ def test_sync_client_exposes_typed_rpc_domain_clients_and_events() -> None:
             "result": {"exitCode": 0, "stdout": "clean\n", "stderr": ""},
         }
 
+    def create_directory(message: JsonObject) -> JsonObject:
+        assert message["params"] == {
+            "path": "/repo/.codex/skills/generated",
+            "recursive": True,
+        }
+        return {"id": message["id"], "result": {}}
+
+    def write_file(message: JsonObject) -> JsonObject:
+        assert message["params"] == {
+            "path": "/repo/.codex/skills/generated/SKILL.md",
+            "dataBase64": "IyBHZW5lcmF0ZWQgU2tpbGwK",
+        }
+        return {"id": message["id"], "result": {}}
+
+    def list_skills(message: JsonObject) -> JsonObject:
+        assert message["params"] == {"cwds": ["/repo"], "forceReload": True}
+        return {"id": message["id"], "result": {"data": []}}
+
     def config_read(message: JsonObject) -> JsonObject:
         assert message["params"] == {"includeLayers": False}
         return {
@@ -2553,6 +2749,9 @@ def test_sync_client_exposes_typed_rpc_domain_clients_and_events() -> None:
 
     transport.responses["model/list"] = list_models
     transport.responses["command/exec"] = command_exec
+    transport.responses["fs/createDirectory"] = create_directory
+    transport.responses["fs/writeFile"] = write_file
+    transport.responses["skills/list"] = list_skills
     transport.responses["config/read"] = config_read
     transport.responses["account/login/start"] = login_account
     async_client = AsyncAppServerClient(transport)
@@ -2572,6 +2771,7 @@ def test_sync_client_exposes_typed_rpc_domain_clients_and_events() -> None:
             "disable_timeout",
             "env",
             "output_bytes_cap",
+            "permission_profile",
             "process_id",
             "sandbox_policy",
             "size",
@@ -2601,6 +2801,21 @@ def test_sync_client_exposes_typed_rpc_domain_clients_and_events() -> None:
         assert client.command.terminate_process.__doc__ is not None
         assert "command/exec/terminate" in client.command.terminate_process.__doc__
         assert "process" in client.command.terminate_process.__doc__
+        assert tuple(inspect.signature(client.fs.create_directory).parameters) == (
+            "path",
+            "recursive",
+        )
+        assert tuple(inspect.signature(client.fs.write_file).parameters) == (
+            "path",
+            "data",
+            "encoding",
+        )
+        assert tuple(inspect.signature(client.skills.write_skill).parameters) == (
+            "name",
+            "directory",
+            "instructions",
+            "reload_cwds",
+        )
         assert tuple(inspect.signature(client.account.login_chatgpt_tokens).parameters) == (
             "access_token",
             "chatgpt_account_id",
@@ -2609,6 +2824,17 @@ def test_sync_client_exposes_typed_rpc_domain_clients_and_events() -> None:
         models = client.models.list(limit=5)
         model_page = client.models.list_page(limit=5)
         command = client.command.execute(command=["git", "status"], cwd="/repo")
+        created_dir = client.fs.create_directory(path="/repo/.codex/skills/generated")
+        wrote_file = client.fs.write_file(
+            path="/repo/.codex/skills/generated/SKILL.md",
+            data="# Generated Skill\n",
+        )
+        generated_skill = client.skills.write_skill(
+            name="generated",
+            directory="/repo/.codex/skills/generated",
+            instructions="# Generated Skill\n",
+            reload_cwds=["/repo"],
+        )
         config = client.config.read(include_layers=False)
         login = client.account.login_chatgpt_tokens(
             access_token="access",
@@ -2617,6 +2843,12 @@ def test_sync_client_exposes_typed_rpc_domain_clients_and_events() -> None:
         assert models[0].model == "gpt-5.4"
         assert model_page.data[0].model == "gpt-5.4"
         assert command.stdout == "clean\n"
+        assert isinstance(created_dir, protocol.FsCreateDirectoryResponse)
+        assert isinstance(wrote_file, protocol.FsWriteFileResponse)
+        assert generated_skill == client.skills.input(
+            name="generated",
+            path="/repo/.codex/skills/generated/SKILL.md",
+        )
         assert config.config.model == "gpt-5.4"
         assert login.type == "chatgptAuthTokens"
 

@@ -17,7 +17,7 @@ from codex.options import (
 )
 from codex.thread import CodexTurnStream, Input, Thread
 
-__version__ = "1.131.1"
+__version__ = "1.140.0"
 
 __all__ = [
     "Codex",

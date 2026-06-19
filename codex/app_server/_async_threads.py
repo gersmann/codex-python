@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-from collections.abc import Callable, Collection, Mapping
+from collections.abc import Callable, Collection, Mapping, Sequence
 from dataclasses import dataclass
 from typing import Protocol, TypeVar, cast
 
@@ -41,6 +41,7 @@ _TURN_STREAM_NOTIFICATION_METHODS = {
     "turn/started",
     "turn/completed",
     "turn/diff/updated",
+    "turn/moderationMetadata",
     "turn/plan/updated",
     "hook/started",
     "hook/completed",
@@ -257,12 +258,13 @@ class AsyncTurnStream:
         input: TurnInput,
         *,
         responsesapi_client_metadata: Mapping[str, object] | None = None,
+        skills: Sequence[protocol.SkillUserInput] | None = None,
     ) -> TurnIdResult:
         """Append additional user input to the in-flight turn."""
         payload: dict[str, object] = {
             "threadId": self.thread_id,
             "expectedTurnId": self.turn_id,
-            "input": normalize_turn_input(input),
+            "input": normalize_turn_input(input, skills=skills),
         }
         if responsesapi_client_metadata is not None:
             payload["responsesapiClientMetadata"] = dict(responsesapi_client_metadata)
@@ -416,11 +418,13 @@ class AsyncAppServerThread:
         self,
         input: TurnInput,
         options: AppServerTurnOptions | None = None,
+        *,
+        skills: Sequence[protocol.SkillUserInput] | None = None,
     ) -> AsyncTurnStream:
         """Start a turn and return the protocol-native notification stream."""
         payload = (options or AppServerTurnOptions()).to_params(
             thread_id=self.id,
-            input=normalize_turn_input(input),
+            input=normalize_turn_input(input, skills=skills),
         )
         return await AsyncTurnStream.start(self, payload)
 
@@ -428,8 +432,10 @@ class AsyncAppServerThread:
         self,
         input: TurnInput,
         options: AppServerTurnOptions | None = None,
+        *,
+        skills: Sequence[protocol.SkillUserInput] | None = None,
     ) -> str:
-        stream = await self.run(input, options)
+        stream = await self.run(input, options, skills=skills)
         await stream.wait()
         stream.raise_for_terminal_status()
         return stream.final_text
@@ -438,8 +444,10 @@ class AsyncAppServerThread:
         self,
         input: TurnInput,
         options: AppServerTurnOptions | None = None,
+        *,
+        skills: Sequence[protocol.SkillUserInput] | None = None,
     ) -> object:
-        stream = await self.run(input, options)
+        stream = await self.run(input, options, skills=skills)
         await stream.wait()
         stream.raise_for_terminal_status()
         return stream.final_json()
@@ -449,6 +457,8 @@ class AsyncAppServerThread:
         input: TurnInput,
         model_type: type[_ModelT],
         options: AppServerTurnOptions | None = None,
+        *,
+        skills: Sequence[protocol.SkillUserInput] | None = None,
     ) -> _ModelT:
         """Run a turn and validate the final assistant text with `model_type`."""
         stream = await self.run(
@@ -458,6 +468,7 @@ class AsyncAppServerThread:
                 model_type,
                 owner="AppServerThread.run_model()",
             ),
+            skills=skills,
         )
         await stream.wait()
         stream.raise_for_terminal_status()
