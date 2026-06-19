@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable, Collection, Coroutine, Mapping
+from collections.abc import Callable, Collection, Coroutine, Mapping, Sequence
 from typing import Any, Protocol, TypeVar
 
 from pydantic import BaseModel
@@ -54,6 +54,7 @@ class _AsyncTurnStreamLike(Protocol):
         input: TurnInput,
         *,
         responsesapi_client_metadata: Mapping[str, object] | None = None,
+        skills: Sequence[protocol.SkillUserInput] | None = None,
     ) -> TurnIdResult: ...
 
     async def interrupt(self) -> EmptyResult: ...
@@ -74,18 +75,24 @@ class _AsyncThreadLike(Protocol):
         self,
         input: TurnInput,
         options: AppServerTurnOptions | None = None,
+        *,
+        skills: Sequence[protocol.SkillUserInput] | None = None,
     ) -> _AsyncTurnStreamLike: ...
 
     async def run_text(
         self,
         input: TurnInput,
         options: AppServerTurnOptions | None = None,
+        *,
+        skills: Sequence[protocol.SkillUserInput] | None = None,
     ) -> str: ...
 
     async def run_json(
         self,
         input: TurnInput,
         options: AppServerTurnOptions | None = None,
+        *,
+        skills: Sequence[protocol.SkillUserInput] | None = None,
     ) -> object: ...
 
     async def run_model(
@@ -93,6 +100,8 @@ class _AsyncThreadLike(Protocol):
         input: TurnInput,
         model_type: type[_ModelT],
         options: AppServerTurnOptions | None = None,
+        *,
+        skills: Sequence[protocol.SkillUserInput] | None = None,
     ) -> _ModelT: ...
 
     async def review(
@@ -245,11 +254,13 @@ class TurnStream(_SyncRunner):
         input: TurnInput,
         *,
         responsesapi_client_metadata: Mapping[str, object] | None = None,
+        skills: Sequence[protocol.SkillUserInput] | None = None,
     ) -> TurnIdResult:
         return self._run(
             self._async_stream.steer(
                 input,
                 responsesapi_client_metadata=responsesapi_client_metadata,
+                skills=skills,
             )
         )
 
@@ -286,9 +297,11 @@ class AppServerThread(_SyncRunner):
         self,
         input: TurnInput,
         options: AppServerTurnOptions | None = None,
+        *,
+        skills: Sequence[protocol.SkillUserInput] | None = None,
     ) -> TurnStream:
         return TurnStream(
-            self._run(self._async_thread.run(input, options)),
+            self._run(self._async_thread.run(input, options, skills=skills)),
             self._run,
         )
 
@@ -296,23 +309,29 @@ class AppServerThread(_SyncRunner):
         self,
         input: TurnInput,
         options: AppServerTurnOptions | None = None,
+        *,
+        skills: Sequence[protocol.SkillUserInput] | None = None,
     ) -> str:
-        return self._run(self._async_thread.run_text(input, options))
+        return self._run(self._async_thread.run_text(input, options, skills=skills))
 
     def run_json(
         self,
         input: TurnInput,
         options: AppServerTurnOptions | None = None,
+        *,
+        skills: Sequence[protocol.SkillUserInput] | None = None,
     ) -> object:
-        return self._run(self._async_thread.run_json(input, options))
+        return self._run(self._async_thread.run_json(input, options, skills=skills))
 
     def run_model(
         self,
         input: TurnInput,
         model_type: type[_ModelT],
         options: AppServerTurnOptions | None = None,
+        *,
+        skills: Sequence[protocol.SkillUserInput] | None = None,
     ) -> _ModelT:
-        return self._run(self._async_thread.run_model(input, model_type, options))
+        return self._run(self._async_thread.run_model(input, model_type, options, skills=skills))
 
     def review(
         self,

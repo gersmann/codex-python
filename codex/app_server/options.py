@@ -189,9 +189,17 @@ class AppServerTurnOptions(_AppServerOptionsModel):
         default=None,
         description="Sent as turn/start approvalPolicy.",
     )
+    additional_context: dict[str, protocol.AdditionalContextEntry] | None = Field(
+        default=None,
+        description="Sent as turn/start additionalContext.",
+    )
     approvals_reviewer: protocol.ApprovalsReviewer | None = Field(
         default=None,
         description="Sent as turn/start approvalsReviewer.",
+    )
+    client_user_message_id: str | None = Field(
+        default=None,
+        description="Sent as turn/start clientUserMessageId.",
     )
     collaboration_mode: protocol.CollaborationMode | None = Field(
         default=None,
@@ -200,6 +208,10 @@ class AppServerTurnOptions(_AppServerOptionsModel):
     cwd: str | None = Field(
         default=None,
         description="Sent as turn/start cwd.",
+    )
+    environments: list[protocol.TurnEnvironmentParams] | None = Field(
+        default=None,
+        description="Sent as turn/start environments.",
     )
     effort: protocol.ReasoningEffort | None = Field(
         default=None,
@@ -220,9 +232,17 @@ class AppServerTurnOptions(_AppServerOptionsModel):
         default=None,
         description="Sent as turn/start personality.",
     )
+    permissions: str | None = Field(
+        default=None,
+        description="Sent as turn/start permissions.",
+    )
     responsesapi_client_metadata: dict[str, object] | None = Field(
         default=None,
         description="Sent as turn/start responsesapiClientMetadata.",
+    )
+    runtime_workspace_roots: list[protocol.AbsolutePathBuf] | None = Field(
+        default=None,
+        description="Sent as turn/start runtimeWorkspaceRoots.",
     )
     sandbox_policy: protocol.SandboxPolicy | None = Field(
         default=None,
@@ -281,6 +301,10 @@ class AppServerThreadStartOptions(_AppServerOptionsModel):
         default=None,
         description="Sent as thread/start dynamicTools. The public app-server docs mark this as experimental.",
     )
+    environments: list[protocol.TurnEnvironmentParams] | None = Field(
+        default=None,
+        description="Sent as thread/start environments.",
+    )
     ephemeral: bool | None = Field(
         default=None,
         description="Sent as thread/start ephemeral.",
@@ -307,20 +331,25 @@ class AppServerThreadStartOptions(_AppServerOptionsModel):
         default=None,
         description="Sent as thread/start modelProvider.",
     )
-    persist_extended_history: bool | None = Field(
+    permissions: str | None = Field(
         default=None,
-        description=(
-            "Sent as thread/start persistExtendedHistory. "
-            "Present in the generated protocol; not described in the public app-server docs."
-        ),
+        description="Sent as thread/start permissions.",
     )
     personality: protocol.Personality | None = Field(
         default=None,
         description="Sent as thread/start personality.",
     )
+    runtime_workspace_roots: list[protocol.AbsolutePathBuf] | None = Field(
+        default=None,
+        description="Sent as thread/start runtimeWorkspaceRoots.",
+    )
     sandbox: protocol.SandboxMode | None = Field(
         default=None,
         description="Sent as thread/start sandbox.",
+    )
+    selected_capability_roots: list[protocol.SelectedCapabilityRoot] | None = Field(
+        default=None,
+        description="Sent as thread/start selectedCapabilityRoots.",
     )
     service_name: str | None = Field(
         default=None,
@@ -336,6 +365,10 @@ class AppServerThreadStartOptions(_AppServerOptionsModel):
     session_start_source: protocol.ThreadStartSource | None = Field(
         default=None,
         description="Sent as thread/start sessionStartSource.",
+    )
+    thread_source: protocol.ThreadSource | None = Field(
+        default=None,
+        description="Sent as thread/start threadSource.",
     )
 
     def to_params(self) -> protocol.ThreadStartParams:
@@ -372,9 +405,17 @@ class AppServerThreadResumeOptions(_AppServerOptionsModel):
         default=None,
         description="Sent as thread/resume developerInstructions.",
     )
+    exclude_turns: bool | None = Field(
+        default=None,
+        description="Sent as thread/resume excludeTurns.",
+    )
     history: list[protocol.ResponseItem] | None = Field(
         default=None,
         description="Sent as thread/resume history.",
+    )
+    initial_turns_page: protocol.ThreadResumeInitialTurnsPageParams | None = Field(
+        default=None,
+        description="Sent as thread/resume initialTurnsPage.",
     )
     model: str | None = Field(
         default=None,
@@ -388,16 +429,17 @@ class AppServerThreadResumeOptions(_AppServerOptionsModel):
         default=None,
         description="Sent as thread/resume path.",
     )
-    persist_extended_history: bool | None = Field(
+    permissions: str | None = Field(
         default=None,
-        description=(
-            "Sent as thread/resume persistExtendedHistory. "
-            "Present in the generated protocol; not described in the public app-server docs."
-        ),
+        description="Sent as thread/resume permissions.",
     )
     personality: protocol.Personality | None = Field(
         default=None,
         description="Sent as thread/resume personality.",
+    )
+    runtime_workspace_roots: list[protocol.AbsolutePathBuf] | None = Field(
+        default=None,
+        description="Sent as thread/resume runtimeWorkspaceRoots.",
     )
     sandbox: protocol.SandboxMode | None = Field(
         default=None,
@@ -448,6 +490,10 @@ class AppServerThreadForkOptions(_AppServerOptionsModel):
         default=None,
         description="Sent as thread/fork ephemeral.",
     )
+    exclude_turns: bool | None = Field(
+        default=None,
+        description="Sent as thread/fork excludeTurns.",
+    )
     model: str | None = Field(
         default=None,
         description="Sent as thread/fork model.",
@@ -460,12 +506,13 @@ class AppServerThreadForkOptions(_AppServerOptionsModel):
         default=None,
         description="Sent as thread/fork path.",
     )
-    persist_extended_history: bool | None = Field(
+    permissions: str | None = Field(
         default=None,
-        description=(
-            "Sent as thread/fork persistExtendedHistory. "
-            "Present in the generated protocol; not described in the public app-server docs."
-        ),
+        description="Sent as thread/fork permissions.",
+    )
+    runtime_workspace_roots: list[protocol.AbsolutePathBuf] | None = Field(
+        default=None,
+        description="Sent as thread/fork runtimeWorkspaceRoots.",
     )
     sandbox: protocol.SandboxMode | None = Field(
         default=None,
@@ -474,6 +521,10 @@ class AppServerThreadForkOptions(_AppServerOptionsModel):
     service_tier: protocol.ServiceTier | None = Field(
         default=None,
         description="Sent as thread/fork serviceTier.",
+    )
+    thread_source: protocol.ThreadSource | None = Field(
+        default=None,
+        description="Sent as thread/fork threadSource.",
     )
 
     def to_params(self, *, thread_id: str) -> protocol.ThreadForkParams:

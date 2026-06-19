@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+import base64
 from collections.abc import Mapping, Sequence
 from typing import Any, Protocol, TypeVar
 
 from pydantic import BaseModel
 
+from codex.app_server._payloads import skill_input
 from codex.app_server.models import (
     AccountCancelLoginResult,
     AccountRateLimitsResult,
@@ -47,6 +49,16 @@ class _TypedRpcClient(Protocol):
 class _AsyncServiceClient:
     def __init__(self, rpc: _TypedRpcClient) -> None:
         self._rpc = rpc
+
+
+def _skill_markdown_path(directory: str) -> str:
+    if directory == "":
+        raise ValueError("Skill directory cannot be empty.")
+    if directory.endswith("/") or directory.endswith("\\"):
+        return f"{directory}SKILL.md"
+    if "\\" in directory and "/" not in directory:
+        return f"{directory}\\SKILL.md"
+    return f"{directory}/SKILL.md"
 
 
 class AsyncModelsClient(_AsyncServiceClient):
@@ -107,7 +119,50 @@ class AsyncAppsClient(_AsyncServiceClient):
         return await self._rpc.request_typed("app/list", params, AppListResult)
 
 
+class AsyncFsClient(_AsyncServiceClient):
+    async def create_directory(
+        self,
+        *,
+        path: str,
+        recursive: bool | None = True,
+    ) -> protocol.FsCreateDirectoryResponse:
+        params = protocol.FsCreateDirectoryParams(
+            path=protocol.AbsolutePathBuf(path),
+            recursive=recursive,
+        )
+        return await self._rpc.request_typed(
+            "fs/createDirectory",
+            params,
+            protocol.FsCreateDirectoryResponse,
+        )
+
+    async def write_file(
+        self,
+        *,
+        path: str,
+        data: str | bytes,
+        encoding: str = "utf-8",
+    ) -> protocol.FsWriteFileResponse:
+        raw_data = data.encode(encoding) if isinstance(data, str) else data
+        params = protocol.FsWriteFileParams(
+            path=protocol.AbsolutePathBuf(path),
+            dataBase64=base64.b64encode(raw_data).decode("ascii"),
+        )
+        return await self._rpc.request_typed(
+            "fs/writeFile",
+            params,
+            protocol.FsWriteFileResponse,
+        )
+
+
 class AsyncSkillsClient(_AsyncServiceClient):
+    def __init__(self, rpc: _TypedRpcClient, fs: AsyncFsClient) -> None:
+        super().__init__(rpc)
+        self._fs = fs
+
+    def input(self, *, name: str, path: str) -> protocol.SkillUserInput:
+        return skill_input(name=name, path=path)
+
     async def list(
         self,
         *,
@@ -133,12 +188,29 @@ class AsyncSkillsClient(_AsyncServiceClient):
         )
         return await self._rpc.request_typed("skills/list", params, SkillsListResult)
 
+    async def reload(self, *, cwds: Sequence[str] | None = None) -> Sequence[SkillsListEntry]:
+        return await self.list(cwds=cwds, force_reload=True)
+
     async def write_config(self, *, path: str, enabled: bool) -> SkillsConfigWriteResult:
         params = protocol.SkillsConfigWriteParams(
             path=protocol.AbsolutePathBuf(path),
             enabled=enabled,
         )
         return await self._rpc.request_typed("skills/config/write", params, SkillsConfigWriteResult)
+
+    async def write_skill(
+        self,
+        *,
+        name: str,
+        directory: str,
+        instructions: str | bytes,
+        reload_cwds: Sequence[str] | None = None,
+    ) -> protocol.SkillUserInput:
+        skill_path = _skill_markdown_path(directory)
+        await self._fs.create_directory(path=directory, recursive=True)
+        await self._fs.write_file(path=skill_path, data=instructions)
+        await self.reload(cwds=reload_cwds)
+        return self.input(name=name, path=skill_path)
 
 
 class AsyncAccountClient(_AsyncServiceClient):
@@ -324,6 +396,7 @@ class AsyncCommandClient(_AsyncServiceClient):
         disable_timeout: bool | None = None,
         env: Mapping[str, object | None] | None = None,
         output_bytes_cap: int | None = None,
+        permission_profile: str | None = None,
         process_id: str | None = None,
         sandbox_policy: protocol.SandboxPolicy | None = None,
         size: protocol.CommandExecTerminalSize | None = None,
@@ -339,6 +412,7 @@ class AsyncCommandClient(_AsyncServiceClient):
             disableTimeout=disable_timeout,
             env=dict(env) if env is not None else None,
             outputBytesCap=output_bytes_cap,
+            permissionProfile=permission_profile,
             processId=process_id,
             sandboxPolicy=sandbox_policy,
             size=size,

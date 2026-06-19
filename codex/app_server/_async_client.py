@@ -14,6 +14,7 @@ from codex.app_server._async_services import (
     AsyncConfigClient,
     AsyncExternalAgentConfigClient,
     AsyncFeedbackClient,
+    AsyncFsClient,
     AsyncMcpServersClient,
     AsyncModelsClient,
     AsyncSkillsClient,
@@ -151,7 +152,8 @@ class AsyncAppServerClient:
         self.events = AsyncEventsClient(self._session)
         self.models = AsyncModelsClient(self.rpc)
         self.apps = AsyncAppsClient(self.rpc)
-        self.skills = AsyncSkillsClient(self.rpc)
+        self.fs = AsyncFsClient(self.rpc)
+        self.skills = AsyncSkillsClient(self.rpc, self.fs)
         self.account = AsyncAccountClient(self.rpc)
         self.config = AsyncConfigClient(self.rpc)
         self.mcp_servers = AsyncMcpServersClient(self.rpc)

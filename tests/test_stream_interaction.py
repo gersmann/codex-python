@@ -380,3 +380,41 @@ def test_turn_stream_yields_terminal_interaction_and_does_not_hang() -> None:
         assert stream.final_text == "Post interaction text"
     finally:
         client.close()
+
+
+def test_turn_stream_yields_moderation_metadata_and_does_not_hang() -> None:
+    client, transport = _make_sync_client()
+    try:
+        thread = client.start_thread()
+        stream = thread.run("Moderation metadata compatibility")
+
+        transport.push(
+            {
+                "method": "turn/moderationMetadata",
+                "params": {
+                    "threadId": "thr-1",
+                    "turnId": "turn-1",
+                    "metadata": {"blocked": False},
+                },
+            }
+        )
+        transport.push(
+            {
+                "method": "turn/completed",
+                "params": {
+                    "threadId": "thr-1",
+                    "turn": _turn_payload(turn_id="turn-1", status="completed"),
+                },
+            }
+        )
+
+        task_complete, events = _consume_like_review_action(stream)
+
+        assert task_complete is True
+        assert [type(event) for event in events] == [
+            protocol.TurnModerationMetadataNotificationModel,
+            protocol.TurnCompletedNotificationModel,
+        ]
+        assert events[0].params.metadata == {"blocked": False}
+    finally:
+        client.close()

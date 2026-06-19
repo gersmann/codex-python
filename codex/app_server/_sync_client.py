@@ -21,6 +21,7 @@ from codex.app_server._sync_services import (
     _ConfigClient,
     _ExternalAgentConfigClient,
     _FeedbackClient,
+    _FsClient,
     _McpServersClient,
     _ModelsClient,
     _SkillsClient,
@@ -240,6 +241,7 @@ class AppServerClient(_SyncRunner):
         self.mcp_servers = _McpServersClient(async_client.mcp_servers, self._run)
         self.feedback = _FeedbackClient(async_client.feedback, self._run)
         self.command = _CommandClient(async_client.command, self._run)
+        self.fs = _FsClient(async_client.fs, self._run)
         self.external_agent_config = _ExternalAgentConfigClient(
             async_client.external_agent_config,
             self._run,

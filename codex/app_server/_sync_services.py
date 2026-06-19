@@ -71,6 +71,8 @@ class _AsyncAppsClientLike(Protocol):
 
 
 class _AsyncSkillsClientLike(Protocol):
+    def input(self, *, name: str, path: str) -> protocol.SkillUserInput: ...
+
     async def list(
         self,
         *,
@@ -85,7 +87,35 @@ class _AsyncSkillsClientLike(Protocol):
         force_reload: bool | None = None,
     ) -> SkillsListResult: ...
 
+    async def reload(self, *, cwds: Sequence[str] | None = None) -> Sequence[SkillsListEntry]: ...
+
     async def write_config(self, *, path: str, enabled: bool) -> SkillsConfigWriteResult: ...
+
+    async def write_skill(
+        self,
+        *,
+        name: str,
+        directory: str,
+        instructions: str | bytes,
+        reload_cwds: Sequence[str] | None = None,
+    ) -> protocol.SkillUserInput: ...
+
+
+class _AsyncFsClientLike(Protocol):
+    async def create_directory(
+        self,
+        *,
+        path: str,
+        recursive: bool | None = True,
+    ) -> protocol.FsCreateDirectoryResponse: ...
+
+    async def write_file(
+        self,
+        *,
+        path: str,
+        data: str | bytes,
+        encoding: str = "utf-8",
+    ) -> protocol.FsWriteFileResponse: ...
 
 
 class _AsyncAccountClientLike(Protocol):
@@ -187,6 +217,7 @@ class _AsyncCommandClientLike(Protocol):
         disable_timeout: bool | None = None,
         env: Mapping[str, object | None] | None = None,
         output_bytes_cap: int | None = None,
+        permission_profile: str | None = None,
         process_id: str | None = None,
         sandbox_policy: protocol.SandboxPolicy | None = None,
         size: protocol.CommandExecTerminalSize | None = None,
@@ -331,6 +362,9 @@ class _SkillsClient(_SyncRunner):
         super().__init__(runner)
         self._async_client = async_client
 
+    def input(self, *, name: str, path: str) -> protocol.SkillUserInput:
+        return self._async_client.input(name=name, path=path)
+
     def list(
         self,
         *,
@@ -357,8 +391,55 @@ class _SkillsClient(_SyncRunner):
             )
         )
 
+    def reload(self, *, cwds: Sequence[str] | None = None) -> Sequence[SkillsListEntry]:
+        return self._run(self._async_client.reload(cwds=cwds))
+
     def write_config(self, *, path: str, enabled: bool) -> SkillsConfigWriteResult:
         return self._run(self._async_client.write_config(path=path, enabled=enabled))
+
+    def write_skill(
+        self,
+        *,
+        name: str,
+        directory: str,
+        instructions: str | bytes,
+        reload_cwds: Sequence[str] | None = None,
+    ) -> protocol.SkillUserInput:
+        return self._run(
+            self._async_client.write_skill(
+                name=name,
+                directory=directory,
+                instructions=instructions,
+                reload_cwds=reload_cwds,
+            )
+        )
+
+
+class _FsClient(_SyncRunner):
+    def __init__(
+        self,
+        async_client: _AsyncFsClientLike,
+        runner: Callable[[Coroutine[Any, Any, Any]], Any],
+    ) -> None:
+        super().__init__(runner)
+        self._async_client = async_client
+
+    def create_directory(
+        self,
+        *,
+        path: str,
+        recursive: bool | None = True,
+    ) -> protocol.FsCreateDirectoryResponse:
+        return self._run(self._async_client.create_directory(path=path, recursive=recursive))
+
+    def write_file(
+        self,
+        *,
+        path: str,
+        data: str | bytes,
+        encoding: str = "utf-8",
+    ) -> protocol.FsWriteFileResponse:
+        return self._run(self._async_client.write_file(path=path, data=data, encoding=encoding))
 
 
 class _AccountClient(_SyncRunner):
@@ -554,6 +635,7 @@ class _CommandClient(_SyncRunner):
         disable_timeout: bool | None = None,
         env: Mapping[str, object | None] | None = None,
         output_bytes_cap: int | None = None,
+        permission_profile: str | None = None,
         process_id: str | None = None,
         sandbox_policy: protocol.SandboxPolicy | None = None,
         size: protocol.CommandExecTerminalSize | None = None,
@@ -570,6 +652,7 @@ class _CommandClient(_SyncRunner):
                 disable_timeout=disable_timeout,
                 env=env,
                 output_bytes_cap=output_bytes_cap,
+                permission_profile=permission_profile,
                 process_id=process_id,
                 sandbox_policy=sandbox_policy,
                 size=size,

@@ -86,6 +86,10 @@ class ThreadStartOptions(_CodexOptionsModel):
         default=None,
         description="Forwarded to AppServerThreadStartOptions.dynamic_tools.",
     )
+    environments: list[protocol.TurnEnvironmentParams] | None = Field(
+        default=None,
+        description="Forwarded to AppServerThreadStartOptions.environments.",
+    )
     ephemeral: bool | None = Field(
         default=None,
         description="Forwarded to AppServerThreadStartOptions.ephemeral.",
@@ -106,17 +110,25 @@ class ThreadStartOptions(_CodexOptionsModel):
         default=None,
         description="Forwarded to AppServerThreadStartOptions.model_provider.",
     )
-    persist_extended_history: bool | None = Field(
+    permissions: str | None = Field(
         default=None,
-        description="Forwarded to AppServerThreadStartOptions.persist_extended_history.",
+        description="Forwarded to AppServerThreadStartOptions.permissions.",
     )
     personality: protocol.Personality | None = Field(
         default=None,
         description="Forwarded to AppServerThreadStartOptions.personality.",
     )
+    runtime_workspace_roots: list[protocol.AbsolutePathBuf] | None = Field(
+        default=None,
+        description="Forwarded to AppServerThreadStartOptions.runtime_workspace_roots.",
+    )
     sandbox: protocol.SandboxMode | None = Field(
         default=None,
         description="Forwarded to AppServerThreadStartOptions.sandbox.",
+    )
+    selected_capability_roots: list[protocol.SelectedCapabilityRoot] | None = Field(
+        default=None,
+        description="Forwarded to AppServerThreadStartOptions.selected_capability_roots.",
     )
     service_name: str | None = Field(
         default=None,
@@ -125,6 +137,10 @@ class ThreadStartOptions(_CodexOptionsModel):
     service_tier: protocol.ServiceTier | None = Field(
         default=None,
         description="Forwarded to AppServerThreadStartOptions.service_tier.",
+    )
+    thread_source: protocol.ThreadSource | None = Field(
+        default=None,
+        description="Forwarded to AppServerThreadStartOptions.thread_source.",
     )
 
     def to_app_server_options(self) -> AppServerThreadStartOptions:
@@ -154,9 +170,17 @@ class ThreadResumeOptions(_CodexOptionsModel):
         default=None,
         description="Forwarded to AppServerThreadResumeOptions.developer_instructions.",
     )
+    exclude_turns: bool | None = Field(
+        default=None,
+        description="Forwarded to AppServerThreadResumeOptions.exclude_turns.",
+    )
     history: list[protocol.ResponseItem] | None = Field(
         default=None,
         description="Forwarded to AppServerThreadResumeOptions.history.",
+    )
+    initial_turns_page: protocol.ThreadResumeInitialTurnsPageParams | None = Field(
+        default=None,
+        description="Forwarded to AppServerThreadResumeOptions.initial_turns_page.",
     )
     model: str | None = Field(
         default=None,
@@ -170,13 +194,17 @@ class ThreadResumeOptions(_CodexOptionsModel):
         default=None,
         description="Forwarded to AppServerThreadResumeOptions.path.",
     )
-    persist_extended_history: bool | None = Field(
+    permissions: str | None = Field(
         default=None,
-        description="Forwarded to AppServerThreadResumeOptions.persist_extended_history.",
+        description="Forwarded to AppServerThreadResumeOptions.permissions.",
     )
     personality: protocol.Personality | None = Field(
         default=None,
         description="Forwarded to AppServerThreadResumeOptions.personality.",
+    )
+    runtime_workspace_roots: list[protocol.AbsolutePathBuf] | None = Field(
+        default=None,
+        description="Forwarded to AppServerThreadResumeOptions.runtime_workspace_roots.",
     )
     sandbox: protocol.SandboxMode | None = Field(
         default=None,
@@ -198,6 +226,14 @@ class TurnOptions(_CodexOptionsModel):
         default=None,
         description="Forwarded to AppServerTurnOptions.approval_policy.",
     )
+    additional_context: dict[str, protocol.AdditionalContextEntry] | None = Field(
+        default=None,
+        description="Forwarded to AppServerTurnOptions.additional_context.",
+    )
+    client_user_message_id: str | None = Field(
+        default=None,
+        description="Forwarded to AppServerTurnOptions.client_user_message_id.",
+    )
     collaboration_mode: protocol.CollaborationMode | None = Field(
         default=None,
         description="Forwarded to AppServerTurnOptions.collaboration_mode.",
@@ -205,6 +241,10 @@ class TurnOptions(_CodexOptionsModel):
     cwd: str | None = Field(
         default=None,
         description="Forwarded to AppServerTurnOptions.cwd.",
+    )
+    environments: list[protocol.TurnEnvironmentParams] | None = Field(
+        default=None,
+        description="Forwarded to AppServerTurnOptions.environments.",
     )
     effort: protocol.ReasoningEffort | None = Field(
         default=None,
@@ -221,6 +261,14 @@ class TurnOptions(_CodexOptionsModel):
     personality: protocol.Personality | None = Field(
         default=None,
         description="Forwarded to AppServerTurnOptions.personality.",
+    )
+    permissions: str | None = Field(
+        default=None,
+        description="Forwarded to AppServerTurnOptions.permissions.",
+    )
+    runtime_workspace_roots: list[protocol.AbsolutePathBuf] | None = Field(
+        default=None,
+        description="Forwarded to AppServerTurnOptions.runtime_workspace_roots.",
     )
     sandbox_policy: protocol.SandboxPolicy | None = Field(
         default=None,
