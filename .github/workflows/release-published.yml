@@ -276,6 +276,32 @@ jobs:
             echo "Found $bin"
           done
 
+      - name: Compress Windows x64 Codex binary
+        if: ${{ matrix.platform == 'windows-amd64' }}
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $version = "5.2.0"
+          $binary = "codex/vendor/x86_64-pc-windows-msvc/codex/codex.exe"
+          if (!(Test-Path $binary)) {
+            throw "Bundled Codex binary not found at $binary"
+          }
+
+          $archive = Join-Path $env:RUNNER_TEMP "upx-$version-win64.zip"
+          $extractDir = Join-Path $env:RUNNER_TEMP "upx"
+          Invoke-WebRequest `
+            -Uri "https://github.com/upx/upx/releases/download/v$version/upx-$version-win64.zip" `
+            -OutFile $archive
+          Expand-Archive -Path $archive -DestinationPath $extractDir -Force
+
+          $upxDir = Join-Path $extractDir "upx-$version-win64"
+          $upx = Join-Path $upxDir "upx.exe"
+          & $upx $binary
+          if ($LASTEXITCODE -ne 0) {
+            exit $LASTEXITCODE
+          }
+          Get-Item $binary | Format-List FullName,Length
+
       - name: Build Linux x86_64 wheel (manylinux2014)
         if: ${{ matrix.platform == 'linux-x86_64' }}
         uses: PyO3/maturin-action@v1
@@ -423,40 +449,6 @@ jobs:
             exit 1
           fi
           echo "Found ${#files[@]} files:" && ls -al dist
-
-      - name: Repack oversized wheels with bzip2
-        shell: bash
-        run: |
-          set -euo pipefail
-          python - <<'PY'
-          from pathlib import Path
-          import zipfile
-
-          MAX_BYTES = 100 * 1024 * 1024
-
-          for wheel in Path("dist").glob("*.whl"):
-              original_size = wheel.stat().st_size
-              if original_size <= MAX_BYTES:
-                  continue
-
-              tmp = wheel.with_suffix(".tmp.whl")
-              with zipfile.ZipFile(wheel, "r") as source:
-                  with zipfile.ZipFile(
-                      tmp,
-                      "w",
-                      compression=zipfile.ZIP_BZIP2,
-                      compresslevel=9,
-                  ) as target:
-                      for info in source.infolist():
-                          target.writestr(
-                              info,
-                              source.read(info.filename),
-                              compress_type=zipfile.ZIP_BZIP2,
-                              compresslevel=9,
-                          )
-              tmp.replace(wheel)
-              print(f"Repacked {wheel}: {original_size} -> {wheel.stat().st_size} bytes")
-          PY
 
       - name: Verify PyPI file size limit
         shell: bash

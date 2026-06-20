@@ -33,13 +33,15 @@ def test_release_workflow_builds_split_macos_wheels() -> None:
 def test_release_workflow_rejects_pypi_oversized_files_before_publish() -> None:
     workflow = Path(".github/workflows/release-published.yml").read_text()
 
-    assert "Repack oversized wheels with bzip2" in workflow
-    assert "zipfile.ZIP_BZIP2" in workflow
+    assert "Compress Windows x64 Codex binary" in workflow
+    assert '$version = "5.2.0"' in workflow
+    assert "github.com/upx/upx/releases/download/v$version/upx-$version-win64.zip" in workflow
+    assert "zipfile.ZIP_BZIP2" not in workflow
     assert "Verify PyPI file size limit" in workflow
     assert "100 * 1024 * 1024" in workflow
     assert "pypa/gh-action-pypi-publish" in workflow
-    assert workflow.index("Repack oversized wheels with bzip2") < workflow.index(
-        "Verify PyPI file size limit"
+    assert workflow.index("Compress Windows x64 Codex binary") < workflow.index(
+        "Build Windows wheel"
     )
     assert workflow.index("Verify PyPI file size limit") < workflow.index(
         "pypa/gh-action-pypi-publish"
