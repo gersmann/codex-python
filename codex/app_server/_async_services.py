@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import base64
+import json
+import re
 from collections.abc import Mapping, Sequence
-from typing import Any, Protocol, TypeVar
+from typing import Any, Literal, Protocol, TypeVar
 
 from pydantic import BaseModel
 
@@ -35,6 +37,7 @@ from codex.app_server.models import (
 from codex.protocol import types as protocol
 
 _ModelT = TypeVar("_ModelT", bound=BaseModel)
+_CONFIG_BARE_KEY = re.compile(r"^[A-Za-z0-9_-]+$")
 
 
 class _TypedRpcClient(Protocol):
@@ -59,6 +62,26 @@ def _skill_markdown_path(directory: str) -> str:
     if "\\" in directory and "/" not in directory:
         return f"{directory}\\SKILL.md"
     return f"{directory}/SKILL.md"
+
+
+def _config_key_segment(value: str) -> str:
+    if value == "":
+        raise ValueError("Config key segment cannot be empty.")
+    if _CONFIG_BARE_KEY.fullmatch(value):
+        return value
+    return json.dumps(value)
+
+
+def _mcp_tools_key_path(
+    *,
+    name: str,
+    field_name: Literal["enabled_tools", "disabled_tools"],
+    plugin_id: str | None = None,
+) -> str:
+    server_key = _config_key_segment(name)
+    if plugin_id is None:
+        return f"mcp_servers.{server_key}.{field_name}"
+    return f"plugins.{_config_key_segment(plugin_id)}.mcp_servers.{server_key}.{field_name}"
 
 
 class AsyncModelsClient(_AsyncServiceClient):
@@ -322,6 +345,42 @@ class AsyncConfigClient(_AsyncServiceClient):
 
 
 class AsyncMcpServersClient(_AsyncServiceClient):
+    async def set_enabled_tools(
+        self,
+        *,
+        name: str,
+        tools: Sequence[str],
+        plugin_id: str | None = None,
+        reload: bool = True,
+        file_path: str | None = None,
+    ) -> ConfigWriteResult:
+        return await self._set_tool_filter(
+            name=name,
+            field_name="enabled_tools",
+            tools=tools,
+            plugin_id=plugin_id,
+            reload=reload,
+            file_path=file_path,
+        )
+
+    async def set_disabled_tools(
+        self,
+        *,
+        name: str,
+        tools: Sequence[str],
+        plugin_id: str | None = None,
+        reload: bool = True,
+        file_path: str | None = None,
+    ) -> ConfigWriteResult:
+        return await self._set_tool_filter(
+            name=name,
+            field_name="disabled_tools",
+            tools=tools,
+            plugin_id=plugin_id,
+            reload=reload,
+            file_path=file_path,
+        )
+
     async def oauth_login(
         self,
         *,
@@ -364,6 +423,31 @@ class AsyncMcpServersClient(_AsyncServiceClient):
     # Backward-compatible aliases; prefer list()/list_page().
     list_status = list
     list_status_page = list_page
+
+    async def _set_tool_filter(
+        self,
+        *,
+        name: str,
+        field_name: Literal["enabled_tools", "disabled_tools"],
+        tools: Sequence[str],
+        plugin_id: str | None,
+        reload: bool,
+        file_path: str | None,
+    ) -> ConfigWriteResult:
+        params = protocol.ConfigValueWriteParams(
+            filePath=file_path,
+            keyPath=_mcp_tools_key_path(name=name, plugin_id=plugin_id, field_name=field_name),
+            mergeStrategy=protocol.MergeStrategy("replace"),
+            value=list(tools),
+        )
+        result = await self._rpc.request_typed(
+            "config/value/write",
+            params,
+            ConfigWriteResult,
+        )
+        if reload:
+            await self._rpc.request_typed("config/mcpServer/reload", None, EmptyResult)
+        return result
 
 
 class AsyncFeedbackClient(_AsyncServiceClient):

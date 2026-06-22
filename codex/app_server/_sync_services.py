@@ -172,6 +172,26 @@ class _AsyncConfigClientLike(Protocol):
 
 
 class _AsyncMcpServersClientLike(Protocol):
+    async def set_enabled_tools(
+        self,
+        *,
+        name: str,
+        tools: Sequence[str],
+        plugin_id: str | None = None,
+        reload: bool = True,
+        file_path: str | None = None,
+    ) -> ConfigWriteResult: ...
+
+    async def set_disabled_tools(
+        self,
+        *,
+        name: str,
+        tools: Sequence[str],
+        plugin_id: str | None = None,
+        reload: bool = True,
+        file_path: str | None = None,
+    ) -> ConfigWriteResult: ...
+
     async def oauth_login(
         self,
         *,
@@ -551,6 +571,44 @@ class _McpServersClient(_SyncRunner):
     ) -> None:
         super().__init__(runner)
         self._async_client = async_client
+
+    def set_enabled_tools(
+        self,
+        *,
+        name: str,
+        tools: Sequence[str],
+        plugin_id: str | None = None,
+        reload: bool = True,
+        file_path: str | None = None,
+    ) -> ConfigWriteResult:
+        return self._run(
+            self._async_client.set_enabled_tools(
+                name=name,
+                tools=tools,
+                plugin_id=plugin_id,
+                reload=reload,
+                file_path=file_path,
+            )
+        )
+
+    def set_disabled_tools(
+        self,
+        *,
+        name: str,
+        tools: Sequence[str],
+        plugin_id: str | None = None,
+        reload: bool = True,
+        file_path: str | None = None,
+    ) -> ConfigWriteResult:
+        return self._run(
+            self._async_client.set_disabled_tools(
+                name=name,
+                tools=tools,
+                plugin_id=plugin_id,
+                reload=reload,
+                file_path=file_path,
+            )
+        )
 
     def oauth_login(
         self,

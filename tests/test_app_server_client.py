@@ -2013,6 +2013,67 @@ def test_async_client_exposes_typed_rpc_domain_clients() -> None:
     asyncio.run(scenario())
 
 
+def test_async_mcp_servers_update_tool_filters_and_reload() -> None:
+    async def scenario() -> None:
+        transport = ScriptedTransport()
+        writes: list[JsonObject] = []
+        reload_count = 0
+
+        def write_value(message: JsonObject) -> JsonObject:
+            writes.append(message["params"])
+            return {
+                "id": message["id"],
+                "result": {
+                    "filePath": "/home/user/.codex/config.toml",
+                    "overriddenMetadata": None,
+                    "status": "ok",
+                    "version": f"v{len(writes)}",
+                },
+            }
+
+        def reload_mcp_servers(message: JsonObject) -> JsonObject:
+            nonlocal reload_count
+            assert "params" not in message
+            reload_count += 1
+            return {"id": message["id"], "result": {}}
+
+        transport.responses["config/value/write"] = write_value
+        transport.responses["config/mcpServer/reload"] = reload_mcp_servers
+        client = AsyncAppServerClient(transport)
+        await client.start()
+
+        enabled = await client.mcp_servers.set_enabled_tools(
+            name="context7",
+            tools=["resolve-library-id", "get-library-docs"],
+        )
+        disabled = await client.mcp_servers.set_disabled_tools(
+            name="sample",
+            plugin_id="sample@test",
+            tools=["dangerous.tool"],
+            reload=False,
+        )
+
+        assert enabled.version == "v1"
+        assert disabled.version == "v2"
+        assert reload_count == 1
+        assert writes == [
+            {
+                "keyPath": "mcp_servers.context7.enabled_tools",
+                "value": ["resolve-library-id", "get-library-docs"],
+                "mergeStrategy": "replace",
+            },
+            {
+                "keyPath": 'plugins."sample@test".mcp_servers.sample.disabled_tools',
+                "value": ["dangerous.tool"],
+                "mergeStrategy": "replace",
+            },
+        ]
+
+        await client.close()
+
+    asyncio.run(scenario())
+
+
 def test_async_rpc_supports_raw_and_typed_calls_for_unsupported_methods() -> None:
     async def scenario() -> None:
         transport = ScriptedTransport()
