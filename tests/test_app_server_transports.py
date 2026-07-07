@@ -488,8 +488,9 @@ def test_websocket_transport_send_receive_and_close(monkeypatch: pytest.MonkeyPa
         exceptions = _FakeWebSocketExceptions
 
         @staticmethod
-        async def connect(url: str) -> _FakeWebSocketConnection:
+        async def connect(url: str, **kwargs: object) -> _FakeWebSocketConnection:
             assert url == "ws://127.0.0.1:4500"
+            assert kwargs == {"max_size": 1024 * 1024}
             return connection
 
     monkeypatch.setitem(sys.modules, "websockets", _FakeWebsocketsModule())
@@ -534,6 +535,7 @@ def test_websocket_transport_start_passes_explicit_auth_and_config(
                 subprotocols=("codex-rpc",),
                 open_timeout=5.0,
                 close_timeout=2.0,
+                max_size=16 * 1024 * 1024,
             ),
         )
         await transport.start()
@@ -550,7 +552,14 @@ def test_websocket_transport_start_passes_explicit_auth_and_config(
         "subprotocols": ["codex-rpc"],
         "open_timeout": 5.0,
         "close_timeout": 2.0,
+        "max_size": 16 * 1024 * 1024,
     }
+
+
+def test_websocket_options_can_disable_receive_size_limit() -> None:
+    options = AppServerWebSocketOptions(max_size=None)
+
+    assert options.to_connect_kwargs() == {"max_size": None}
 
 
 def test_websocket_options_reject_authorization_header() -> None:

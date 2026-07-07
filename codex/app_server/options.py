@@ -154,6 +154,14 @@ class AppServerWebSocketOptions(_AppServerOptionsModel):
         default=None,
         description="Timeout used while closing the websocket connection.",
     )
+    max_size: int | None = Field(
+        default=1024 * 1024,
+        ge=0,
+        description=(
+            "Maximum websocket message size in bytes. "
+            "Set to None to disable the websockets receive size limit."
+        ),
+    )
 
     def to_connect_kwargs(self) -> dict[str, object]:
         headers = {} if self.headers is None else dict(self.headers)
@@ -174,6 +182,7 @@ class AppServerWebSocketOptions(_AppServerOptionsModel):
             kwargs["open_timeout"] = self.open_timeout
         if self.close_timeout is not None:
             kwargs["close_timeout"] = self.close_timeout
+        kwargs["max_size"] = self.max_size
         return kwargs
 
 
