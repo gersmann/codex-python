@@ -71,6 +71,24 @@ class _AsyncThreadLike(Protocol):
 
     async def refresh(self, *, include_turns: bool = False) -> protocol.Thread: ...
 
+    async def list_items(
+        self,
+        *,
+        cursor: str | None = None,
+        limit: int | None = None,
+        sort_direction: protocol.SortDirection | None = None,
+        turn_id: str | None = None,
+    ) -> list[protocol.ThreadItem]: ...
+
+    async def list_items_page(
+        self,
+        *,
+        cursor: str | None = None,
+        limit: int | None = None,
+        sort_direction: protocol.SortDirection | None = None,
+        turn_id: str | None = None,
+    ) -> protocol.ThreadItemsListResponse: ...
+
     async def run(
         self,
         input: TurnInput,
@@ -292,6 +310,40 @@ class AppServerThread(_SyncRunner):
 
     def refresh(self, *, include_turns: bool = False) -> protocol.Thread:
         return self._run(self._async_thread.refresh(include_turns=include_turns))
+
+    def list_items(
+        self,
+        *,
+        cursor: str | None = None,
+        limit: int | None = None,
+        sort_direction: protocol.SortDirection | None = None,
+        turn_id: str | None = None,
+    ) -> list[protocol.ThreadItem]:
+        return self._run(
+            self._async_thread.list_items(
+                cursor=cursor,
+                limit=limit,
+                sort_direction=sort_direction,
+                turn_id=turn_id,
+            )
+        )
+
+    def list_items_page(
+        self,
+        *,
+        cursor: str | None = None,
+        limit: int | None = None,
+        sort_direction: protocol.SortDirection | None = None,
+        turn_id: str | None = None,
+    ) -> protocol.ThreadItemsListResponse:
+        return self._run(
+            self._async_thread.list_items_page(
+                cursor=cursor,
+                limit=limit,
+                sort_direction=sort_direction,
+                turn_id=turn_id,
+            )
+        )
 
     def run(
         self,

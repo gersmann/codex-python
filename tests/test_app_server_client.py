@@ -337,6 +337,9 @@ def test_sync_connect_websocket_passes_explicit_options_to_async_client(
         async def write_file(self, *args: object, **kwargs: object) -> object:
             raise AssertionError("not used")
 
+        async def info(self, *args: object, **kwargs: object) -> object:
+            raise AssertionError("not used")
+
     class FakeAsyncClient:
         def __init__(self) -> None:
             fake_service = FakeService()
@@ -351,6 +354,7 @@ def test_sync_connect_websocket_passes_explicit_options_to_async_client(
             self.feedback = fake_service
             self.command = fake_service
             self.fs = fake_service
+            self.environment = fake_service
             self.external_agent_config = fake_service
             self.windows_sandbox = fake_service
 
@@ -526,16 +530,18 @@ def test_async_client_start_thread_returns_thread_object() -> None:
 
 def test_app_server_thread_start_options_serialize_with_camel_case_aliases() -> None:
     params = AppServerThreadStartOptions(
+        allow_provider_model_fallback=True,
         approval_policy=protocol.AskForApproval("never"),
         approvals_reviewer=protocol.ApprovalsReviewer("guardian_subagent"),
         base_instructions="Follow repo policy",
         environments=[
             protocol.TurnEnvironmentParams(
-                cwd=protocol.AbsolutePathBuf("/repo"),
+                cwd=protocol.LegacyAppPathString("/repo"),
                 environmentId="env-1",
             )
         ],
         experimental_raw_events=True,
+        history_mode=protocol.ThreadHistoryMode("paginated"),
         permissions="profile-1",
         runtime_workspace_roots=[protocol.AbsolutePathBuf("/repo")],
         sandbox=protocol.SandboxMode("workspace-write"),
@@ -562,11 +568,13 @@ def test_app_server_thread_start_options_serialize_with_camel_case_aliases() -> 
         exclude_none=True,
         exclude_defaults=True,
     ) == {
+        "allowProviderModelFallback": True,
         "approvalPolicy": "never",
         "approvalsReviewer": "guardian_subagent",
         "baseInstructions": "Follow repo policy",
         "environments": [{"cwd": "/repo", "environmentId": "env-1"}],
         "experimentalRawEvents": True,
+        "historyMode": "paginated",
         "permissions": "profile-1",
         "runtimeWorkspaceRoots": ["/repo"],
         "sandbox": "workspace-write",
@@ -601,6 +609,7 @@ def test_app_server_thread_resume_and_fork_options_include_current_protocol_fiel
         approvals_reviewer=protocol.ApprovalsReviewer("guardian_subagent"),
         ephemeral=True,
         exclude_turns=True,
+        last_turn_id="turn-2",
         permissions="profile-1",
         runtime_workspace_roots=[protocol.AbsolutePathBuf("/repo")],
         thread_source=protocol.ThreadSource("pytest"),
@@ -618,6 +627,7 @@ def test_app_server_thread_resume_and_fork_options_include_current_protocol_fiel
         "approvalsReviewer": "guardian_subagent",
         "ephemeral": True,
         "excludeTurns": True,
+        "lastTurnId": "turn-2",
         "permissions": "profile-1",
         "runtimeWorkspaceRoots": ["/repo"],
         "threadId": "thr-1",
@@ -638,7 +648,7 @@ def test_app_server_turn_and_list_options_use_protocol_owned_types() -> None:
         client_user_message_id="msg-1",
         environments=[
             protocol.TurnEnvironmentParams(
-                cwd=protocol.AbsolutePathBuf("/repo"),
+                cwd=protocol.LegacyAppPathString("/repo"),
                 environmentId="env-1",
             )
         ],
@@ -1337,6 +1347,32 @@ def test_async_client_exposes_public_thread_operations() -> None:
             assert message["params"] == {}
             return {"id": message["id"], "result": {"data": ["thr-1", "thr-2"]}}
 
+        def list_thread_items(message: JsonObject) -> JsonObject:
+            if message["params"] == {"limit": 1, "threadId": "thr-1"}:
+                return {
+                    "id": message["id"],
+                    "result": {
+                        "data": [_agent_message_item("First")],
+                        "nextCursor": "item-cursor-1",
+                        "backwardsCursor": None,
+                    },
+                }
+            assert message["params"] == {
+                "cursor": "item-cursor-1",
+                "limit": 2,
+                "sortDirection": "desc",
+                "threadId": "thr-1",
+                "turnId": "turn-1",
+            }
+            return {
+                "id": message["id"],
+                "result": {
+                    "data": [_agent_message_item("Second", "item-2")],
+                    "nextCursor": None,
+                    "backwardsCursor": "item-cursor-2",
+                },
+            }
+
         def fork_thread(message: JsonObject) -> JsonObject:
             assert message["params"] == {"threadId": "thr-1", "model": "gpt-fork"}
             return {"id": message["id"], "result": {"thread": _thread_payload("thr-fork")}}
@@ -1374,6 +1410,7 @@ def test_async_client_exposes_public_thread_operations() -> None:
         transport.responses["thread/read"] = read_thread
         transport.responses["thread/list"] = list_threads
         transport.responses["thread/loaded/list"] = list_loaded_threads
+        transport.responses["thread/items/list"] = list_thread_items
         transport.responses["thread/fork"] = fork_thread
         transport.responses["thread/archive"] = archive_thread
         transport.responses["thread/unarchive"] = unarchive_thread
@@ -1393,6 +1430,13 @@ def test_async_client_exposes_public_thread_operations() -> None:
             AppServerThreadListOptions(cursor="cursor-1", limit=1)
         )
         loaded_ids = await client.loaded_thread_ids()
+        items = await thread.list_items(limit=1)
+        item_page = await thread.list_items_page(
+            cursor="item-cursor-1",
+            limit=2,
+            sort_direction=protocol.SortDirection("desc"),
+            turn_id="turn-1",
+        )
         forked = await thread.fork(AppServerThreadForkOptions(model="gpt-fork"))
         archived = await thread.archive()
         assert thread.snapshot.name == "Refreshed thread"
@@ -1411,6 +1455,19 @@ def test_async_client_exposes_public_thread_operations() -> None:
         assert [item.id for item in page.data] == ["thr-3"]
         assert page.next_cursor == "cursor-2"
         assert loaded_ids == ["thr-1", "thr-2"]
+        assert items[0].root == protocol.AgentMessageThreadItem(
+            id="item-1",
+            phase="final_answer",
+            text="First",
+            type="agentMessage",
+        )
+        assert item_page.data[0].root == protocol.AgentMessageThreadItem(
+            id="item-2",
+            phase="final_answer",
+            text="Second",
+            type="agentMessage",
+        )
+        assert item_page.backwardsCursor == "item-cursor-2"
         assert forked.id == "thr-fork"
         assert archived == EmptyResult()
         assert unarchived.name == "Unarchived thread"
@@ -1668,6 +1725,7 @@ def test_async_client_exposes_typed_rpc_domain_clients() -> None:
             assert message["params"] == {
                 "name": "github",
                 "scopes": ["repo"],
+                "threadId": "thr-1",
                 "timeoutSecs": 30,
             }
             return {
@@ -1757,6 +1815,16 @@ def test_async_client_exposes_typed_rpc_domain_clients() -> None:
             }
             return {"id": message["id"], "result": {}}
 
+        def environment_info(message: JsonObject) -> JsonObject:
+            assert message["params"] == {"environmentId": "environment-1"}
+            return {
+                "id": message["id"],
+                "result": {
+                    "cwd": "file:///repo",
+                    "shell": {"name": "zsh", "path": "/bin/zsh"},
+                },
+            }
+
         def detect_external_agent_config(message: JsonObject) -> JsonObject:
             assert message["params"] == {"cwds": ["/repo"], "includeHome": True}
             return {
@@ -1808,6 +1876,7 @@ def test_async_client_exposes_typed_rpc_domain_clients() -> None:
         transport.responses["command/exec"] = command_exec
         transport.responses["fs/createDirectory"] = create_directory
         transport.responses["fs/writeFile"] = write_file
+        transport.responses["environment/info"] = environment_info
         transport.responses["externalAgentConfig/detect"] = detect_external_agent_config
         transport.responses["externalAgentConfig/import"] = import_external_agent_config
         transport.responses["windowsSandbox/setupStart"] = windows_sandbox_setup_start
@@ -1873,6 +1942,7 @@ def test_async_client_exposes_typed_rpc_domain_clients() -> None:
         oauth_result = await client.mcp_servers.oauth_login(
             name="github",
             scopes=["repo"],
+            thread_id="thr-1",
             timeout_seconds=30,
         )
         mcp_status = await client.mcp_servers.list(cursor="cursor-2", limit=5)
@@ -1906,6 +1976,7 @@ def test_async_client_exposes_typed_rpc_domain_clients() -> None:
             path="/repo/.codex/skills/generated/SKILL.md",
             data="# Generated Skill\n",
         )
+        environment = await client.environment.info(environment_id="environment-1")
         generated_skill = await client.skills.write_skill(
             name="generated",
             directory="/repo/.codex/skills/generated",
@@ -1999,6 +2070,8 @@ def test_async_client_exposes_typed_rpc_domain_clients() -> None:
         assert command.exit_code == 0
         assert isinstance(created_dir, protocol.FsCreateDirectoryResponse)
         assert isinstance(wrote_file, protocol.FsWriteFileResponse)
+        assert environment.cwd == protocol.PathUri("file:///repo")
+        assert environment.shell == protocol.EnvironmentShellInfo(name="zsh", path="/bin/zsh")
         assert generated_skill == protocol.SkillUserInput(
             type=protocol.SkillUserInputType("skill"),
             name="generated",
@@ -2289,9 +2362,12 @@ def test_async_client_start_thread_registers_annotation_driven_dynamic_tools() -
         await client.start()
 
         raw_tool = protocol.DynamicToolSpec(
-            name="raw_lookup",
-            description="Raw tool.",
-            inputSchema={"type": "object"},
+            protocol.FunctionDynamicToolSpec(
+                name="raw_lookup",
+                description="Raw tool.",
+                inputSchema={"type": "object"},
+                type=protocol.FunctionDynamicToolSpecType("function"),
+            )
         )
 
         @dynamic_tool
@@ -2671,6 +2747,32 @@ def test_sync_client_exposes_public_thread_operations() -> None:
         assert message["params"] == {}
         return {"id": message["id"], "result": {"data": ["thr-1", "thr-2"]}}
 
+    def list_thread_items(message: JsonObject) -> JsonObject:
+        if message["params"] == {"limit": 1, "threadId": "thr-1"}:
+            return {
+                "id": message["id"],
+                "result": {
+                    "data": [_agent_message_item("First")],
+                    "nextCursor": "item-cursor-1",
+                    "backwardsCursor": None,
+                },
+            }
+        assert message["params"] == {
+            "cursor": "item-cursor-1",
+            "limit": 2,
+            "sortDirection": "desc",
+            "threadId": "thr-1",
+            "turnId": "turn-1",
+        }
+        return {
+            "id": message["id"],
+            "result": {
+                "data": [_agent_message_item("Second", "item-2")],
+                "nextCursor": None,
+                "backwardsCursor": "item-cursor-2",
+            },
+        }
+
     def fork_thread(message: JsonObject) -> JsonObject:
         assert message["params"] == {"threadId": "thr-1", "model": "gpt-fork"}
         return {"id": message["id"], "result": {"thread": _thread_payload("thr-fork")}}
@@ -2708,6 +2810,7 @@ def test_sync_client_exposes_public_thread_operations() -> None:
     transport.responses["thread/read"] = read_thread
     transport.responses["thread/list"] = list_threads
     transport.responses["thread/loaded/list"] = list_loaded_threads
+    transport.responses["thread/items/list"] = list_thread_items
     transport.responses["thread/fork"] = fork_thread
     transport.responses["thread/archive"] = archive_thread
     transport.responses["thread/unarchive"] = unarchive_thread
@@ -2727,6 +2830,13 @@ def test_sync_client_exposes_public_thread_operations() -> None:
         threads = client.list_threads(AppServerThreadListOptions(limit=2))
         page = client.list_threads_page(AppServerThreadListOptions(cursor="cursor-1", limit=1))
         loaded_ids = client.loaded_thread_ids()
+        items = thread.list_items(limit=1)
+        item_page = thread.list_items_page(
+            cursor="item-cursor-1",
+            limit=2,
+            sort_direction=protocol.SortDirection("desc"),
+            turn_id="turn-1",
+        )
         forked = thread.fork(AppServerThreadForkOptions(model="gpt-fork"))
         archived = thread.archive()
         assert thread.snapshot.name == "Refreshed thread"
@@ -2745,6 +2855,19 @@ def test_sync_client_exposes_public_thread_operations() -> None:
         assert [item.id for item in page.data] == ["thr-3"]
         assert page.next_cursor == "cursor-2"
         assert loaded_ids == ["thr-1", "thr-2"]
+        assert items[0].root == protocol.AgentMessageThreadItem(
+            id="item-1",
+            phase="final_answer",
+            text="First",
+            type="agentMessage",
+        )
+        assert item_page.data[0].root == protocol.AgentMessageThreadItem(
+            id="item-2",
+            phase="final_answer",
+            text="Second",
+            type="agentMessage",
+        )
+        assert item_page.backwardsCursor == "item-cursor-2"
         assert forked.id == "thr-fork"
         assert archived == EmptyResult()
         assert unarchived.name == "Unarchived thread"
@@ -2785,6 +2908,16 @@ def test_sync_client_exposes_typed_rpc_domain_clients_and_events() -> None:
         }
         return {"id": message["id"], "result": {}}
 
+    def environment_info(message: JsonObject) -> JsonObject:
+        assert message["params"] == {"environmentId": "environment-1"}
+        return {
+            "id": message["id"],
+            "result": {
+                "cwd": "file:///repo",
+                "shell": {"name": "zsh", "path": "/bin/zsh"},
+            },
+        }
+
     def list_skills(message: JsonObject) -> JsonObject:
         assert message["params"] == {"cwds": ["/repo"], "forceReload": True}
         return {"id": message["id"], "result": {"data": []}}
@@ -2812,6 +2945,7 @@ def test_sync_client_exposes_typed_rpc_domain_clients_and_events() -> None:
     transport.responses["command/exec"] = command_exec
     transport.responses["fs/createDirectory"] = create_directory
     transport.responses["fs/writeFile"] = write_file
+    transport.responses["environment/info"] = environment_info
     transport.responses["skills/list"] = list_skills
     transport.responses["config/read"] = config_read
     transport.responses["account/login/start"] = login_account
@@ -2871,6 +3005,7 @@ def test_sync_client_exposes_typed_rpc_domain_clients_and_events() -> None:
             "data",
             "encoding",
         )
+        assert tuple(inspect.signature(client.environment.info).parameters) == ("environment_id",)
         assert tuple(inspect.signature(client.skills.write_skill).parameters) == (
             "name",
             "directory",
@@ -2890,6 +3025,7 @@ def test_sync_client_exposes_typed_rpc_domain_clients_and_events() -> None:
             path="/repo/.codex/skills/generated/SKILL.md",
             data="# Generated Skill\n",
         )
+        environment = client.environment.info(environment_id="environment-1")
         generated_skill = client.skills.write_skill(
             name="generated",
             directory="/repo/.codex/skills/generated",
@@ -2906,6 +3042,8 @@ def test_sync_client_exposes_typed_rpc_domain_clients_and_events() -> None:
         assert command.stdout == "clean\n"
         assert isinstance(created_dir, protocol.FsCreateDirectoryResponse)
         assert isinstance(wrote_file, protocol.FsWriteFileResponse)
+        assert environment.cwd == protocol.PathUri("file:///repo")
+        assert environment.shell == protocol.EnvironmentShellInfo(name="zsh", path="/bin/zsh")
         assert generated_skill == client.skills.input(
             name="generated",
             path="/repo/.codex/skills/generated/SKILL.md",

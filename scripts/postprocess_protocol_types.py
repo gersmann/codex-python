@@ -34,13 +34,19 @@ RENAME_MAP = {
     "Record3Cstring2Cnever3E": "EmptyObject",
 }
 ROOT_MODEL_DEFAULT_REPLACEMENTS = {
+    "AmazonBedrockCredentialSource": (
+        "awsManaged",
+        'AmazonBedrockCredentialSource("awsManaged")',
+    ),
     "ConversationTextRole": ("user", 'ConversationTextRole("user")'),
     "PermissionGrantScope": ("turn", 'PermissionGrantScope("turn")'),
     "NetworkAccess": ("restricted", 'NetworkAccess("restricted")'),
     "CommandExecutionSource": ("agent", 'CommandExecutionSource("agent")'),
     "HookSource": ("unknown", 'HookSource("unknown")'),
+    "MultiAgentMode": ("explicitRequestOnly", 'MultiAgentMode("explicitRequestOnly")'),
     "TurnItemsView": ("full", 'TurnItemsView("full")'),
     "PluginAvailability": ("AVAILABLE", 'PluginAvailability("AVAILABLE")'),
+    "ThreadHistoryMode": ("legacy", 'ThreadHistoryMode("legacy")'),
 }
 ROOT_MODEL_LIST_DEFAULT_REPLACEMENTS = {
     "InputModality": (
@@ -207,13 +213,17 @@ def rename_generated_aliases(text: str) -> str:
 
 def normalize_root_model_defaults(text: str) -> str:
     for model_name, (literal_value, replacement) in ROOT_MODEL_DEFAULT_REPLACEMENTS.items():
+        literal_default = (
+            rf'(?:["\']{re.escape(literal_value)}["\']|'
+            rf'\(\s*["\']{re.escape(literal_value)}["\']\s*\))'
+        )
         text = re.sub(
-            rf"(\b\w+:\s*Annotated\[{model_name} \| None, Field\(validate_default=True\)\]\s*=\s*)[\"']{literal_value}[\"']",
+            rf"(\b\w+:\s*Annotated\[{model_name} \| None, Field\(validate_default=True\)\]\s*=\s*){literal_default}",
             rf"\1{replacement}",
             text,
         )
         text = re.sub(
-            rf"(\b\w+:\s*Annotated\[\s*{model_name} \| None,\s*Field\((?:(?!\]\s*=).)*?\),?\s*\]\s*=\s*)[\"']{literal_value}[\"']",
+            rf"(\b\w+:\s*Annotated\[\s*{model_name} \| None,\s*Field\((?:(?!\]\s*=).)*?\),?\s*\]\s*=\s*){literal_default}",
             rf"\1{replacement}",
             text,
             flags=re.S,
@@ -304,7 +314,8 @@ POSTPROCESS_PASSES = (
 def postprocess_types(text: str) -> tuple[str, int]:
     for transform_pass in POSTPROCESS_PASSES:
         text = transform_pass.transform(text)
-    return deduplicate_model_rebuild_calls(text)
+    text, removed = deduplicate_model_rebuild_calls(text)
+    return text.rstrip() + "\n", removed
 
 
 def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:

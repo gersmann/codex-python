@@ -62,6 +62,10 @@ class CodexOptions(_CodexOptionsModel):
 class ThreadStartOptions(_CodexOptionsModel):
     """Thread creation options for the high-level `Codex` client."""
 
+    allow_provider_model_fallback: bool | None = Field(
+        default=None,
+        description="Forwarded to AppServerThreadStartOptions.allow_provider_model_fallback.",
+    )
     approval_policy: protocol.AskForApproval | None = Field(
         default=None,
         description="Forwarded to AppServerThreadStartOptions.approval_policy.",
@@ -97,6 +101,10 @@ class ThreadStartOptions(_CodexOptionsModel):
     experimental_raw_events: bool | None = Field(
         default=None,
         description="Forwarded to AppServerThreadStartOptions.experimental_raw_events.",
+    )
+    history_mode: protocol.ThreadHistoryMode | None = Field(
+        default=None,
+        description="Forwarded to AppServerThreadStartOptions.history_mode.",
     )
     mock_experimental_field: str | None = Field(
         default=None,

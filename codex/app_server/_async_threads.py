@@ -42,6 +42,7 @@ _TURN_STREAM_NOTIFICATION_METHODS = {
     "turn/completed",
     "turn/diff/updated",
     "turn/moderationMetadata",
+    "model/safetyBuffering/updated",
     "turn/plan/updated",
     "hook/started",
     "hook/completed",
@@ -413,6 +414,43 @@ class AsyncAppServerThread:
         )
         self._snapshot = result.thread
         return self.snapshot
+
+    async def list_items(
+        self,
+        *,
+        cursor: str | None = None,
+        limit: int | None = None,
+        sort_direction: protocol.SortDirection | None = None,
+        turn_id: str | None = None,
+    ) -> list[protocol.ThreadItem]:
+        return (
+            await self.list_items_page(
+                cursor=cursor,
+                limit=limit,
+                sort_direction=sort_direction,
+                turn_id=turn_id,
+            )
+        ).data
+
+    async def list_items_page(
+        self,
+        *,
+        cursor: str | None = None,
+        limit: int | None = None,
+        sort_direction: protocol.SortDirection | None = None,
+        turn_id: str | None = None,
+    ) -> protocol.ThreadItemsListResponse:
+        return await self._client.rpc.request_typed(
+            "thread/items/list",
+            protocol.ThreadItemsListParams(
+                cursor=cursor,
+                limit=limit,
+                sortDirection=sort_direction,
+                threadId=self.id,
+                turnId=turn_id,
+            ),
+            protocol.ThreadItemsListResponse,
+        )
 
     async def run(
         self,

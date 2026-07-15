@@ -28,9 +28,12 @@ class _ResolvedDynamicTool:
 
     def spec(self) -> protocol.DynamicToolSpec:
         return protocol.DynamicToolSpec(
-            name=self.name,
-            description=self.description,
-            inputSchema=self.input_model.model_json_schema(),
+            protocol.FunctionDynamicToolSpec(
+                name=self.name,
+                description=self.description,
+                inputSchema=self.input_model.model_json_schema(),
+                type=protocol.FunctionDynamicToolSpecType("function"),
+            )
         )
 
 
@@ -86,9 +89,9 @@ def merge_dynamic_tool_specs(
     resolved_tools: Sequence[_ResolvedDynamicTool],
 ) -> list[protocol.DynamicToolSpec] | None:
     merged = list(raw_specs or [])
-    _raise_on_duplicate_names(spec.name for spec in merged)
+    _raise_on_duplicate_names(spec.root.name for spec in merged)
     _raise_on_duplicate_names(
-        [spec.name for spec in merged] + [tool.name for tool in resolved_tools]
+        [spec.root.name for spec in merged] + [tool.name for tool in resolved_tools]
     )
     if not merged and not resolved_tools:
         return None

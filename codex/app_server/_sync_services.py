@@ -118,6 +118,10 @@ class _AsyncFsClientLike(Protocol):
     ) -> protocol.FsWriteFileResponse: ...
 
 
+class _AsyncEnvironmentClientLike(Protocol):
+    async def info(self, *, environment_id: str) -> protocol.EnvironmentInfoResponse: ...
+
+
 class _AsyncAccountClientLike(Protocol):
     async def read(self, *, refresh_token: bool | None = None) -> AccountReadResult: ...
 
@@ -197,6 +201,7 @@ class _AsyncMcpServersClientLike(Protocol):
         *,
         name: str,
         scopes: Sequence[str] | None = None,
+        thread_id: str | None = None,
         timeout_seconds: int | None = None,
     ) -> McpServerOauthLoginResult: ...
 
@@ -462,6 +467,19 @@ class _FsClient(_SyncRunner):
         return self._run(self._async_client.write_file(path=path, data=data, encoding=encoding))
 
 
+class _EnvironmentClient(_SyncRunner):
+    def __init__(
+        self,
+        async_client: _AsyncEnvironmentClientLike,
+        runner: Callable[[Coroutine[Any, Any, Any]], Any],
+    ) -> None:
+        super().__init__(runner)
+        self._async_client = async_client
+
+    def info(self, *, environment_id: str) -> protocol.EnvironmentInfoResponse:
+        return self._run(self._async_client.info(environment_id=environment_id))
+
+
 class _AccountClient(_SyncRunner):
     def __init__(
         self,
@@ -615,12 +633,14 @@ class _McpServersClient(_SyncRunner):
         *,
         name: str,
         scopes: Sequence[str] | None = None,
+        thread_id: str | None = None,
         timeout_seconds: int | None = None,
     ) -> McpServerOauthLoginResult:
         return self._run(
             self._async_client.oauth_login(
                 name=name,
                 scopes=scopes,
+                thread_id=thread_id,
                 timeout_seconds=timeout_seconds,
             )
         )

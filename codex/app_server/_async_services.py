@@ -178,6 +178,15 @@ class AsyncFsClient(_AsyncServiceClient):
         )
 
 
+class AsyncEnvironmentClient(_AsyncServiceClient):
+    async def info(self, *, environment_id: str) -> protocol.EnvironmentInfoResponse:
+        return await self._rpc.request_typed(
+            "environment/info",
+            protocol.EnvironmentInfoParams(environmentId=environment_id),
+            protocol.EnvironmentInfoResponse,
+        )
+
+
 class AsyncSkillsClient(_AsyncServiceClient):
     def __init__(self, rpc: _TypedRpcClient, fs: AsyncFsClient) -> None:
         super().__init__(rpc)
@@ -386,11 +395,13 @@ class AsyncMcpServersClient(_AsyncServiceClient):
         *,
         name: str,
         scopes: Sequence[str] | None = None,
+        thread_id: str | None = None,
         timeout_seconds: int | None = None,
     ) -> McpServerOauthLoginResult:
         params = protocol.McpServerOauthLoginParams(
             name=name,
             scopes=list(scopes) if scopes is not None else None,
+            threadId=thread_id,
             timeoutSecs=timeout_seconds,
         )
         return await self._rpc.request_typed(
