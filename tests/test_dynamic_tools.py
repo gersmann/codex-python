@@ -27,17 +27,19 @@ def test_dynamic_tool_derives_schema_from_typed_parameters() -> None:
     resolved = resolve_dynamic_tools([lookup_ticket])[0]
     spec = resolved.spec()
 
-    assert spec.name == "lookup_ticket"
-    assert spec.description == "Look up a support ticket."
-    assert spec.inputSchema["type"] == "object"
-    assert spec.inputSchema["additionalProperties"] is False
-    assert spec.inputSchema["required"] == ["ticket_id"]
-    assert spec.inputSchema["properties"]["ticket_id"] == {
+    assert isinstance(spec.root, protocol.FunctionDynamicToolSpec)
+    assert spec.root.type.root == "function"
+    assert spec.root.name == "lookup_ticket"
+    assert spec.root.description == "Look up a support ticket."
+    assert spec.root.inputSchema["type"] == "object"
+    assert spec.root.inputSchema["additionalProperties"] is False
+    assert spec.root.inputSchema["required"] == ["ticket_id"]
+    assert spec.root.inputSchema["properties"]["ticket_id"] == {
         "description": "Ticket identifier",
         "title": "Ticket Id",
         "type": "string",
     }
-    assert spec.inputSchema["properties"]["include_logs"] == {
+    assert spec.root.inputSchema["properties"]["include_logs"] == {
         "default": False,
         "title": "Include Logs",
         "type": "boolean",

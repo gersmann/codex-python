@@ -599,6 +599,7 @@ def test_async_turn_stream_start_review_installs_safe_initial_predicate() -> Non
 
         stream = await AsyncTurnStream.start_review(thread, {"threadId": "thr-1"})
 
+        assert "model/safetyBuffering/updated" in session.calls[0][0]
         initial_predicate = session.calls[0][1]
         assert callable(initial_predicate)
         assert callable(subscription.updated_predicate)

@@ -282,6 +282,10 @@ class AppServerTurnOptions(_AppServerOptionsModel):
 class AppServerThreadStartOptions(_AppServerOptionsModel):
     """High-level options for creating a new app-server thread."""
 
+    allow_provider_model_fallback: bool | None = Field(
+        default=None,
+        description="Sent as thread/start allowProviderModelFallback.",
+    )
     approval_policy: protocol.AskForApproval | None = Field(
         default=None,
         description="Sent as thread/start approvalPolicy.",
@@ -324,6 +328,10 @@ class AppServerThreadStartOptions(_AppServerOptionsModel):
             "Sent as thread/start experimentalRawEvents. "
             "Present in the generated protocol; not described in the public app-server docs."
         ),
+    )
+    history_mode: protocol.ThreadHistoryMode | None = Field(
+        default=None,
+        description="Sent as thread/start historyMode.",
     )
     mock_experimental_field: str | None = Field(
         default=None,
@@ -502,6 +510,10 @@ class AppServerThreadForkOptions(_AppServerOptionsModel):
     exclude_turns: bool | None = Field(
         default=None,
         description="Sent as thread/fork excludeTurns.",
+    )
+    last_turn_id: str | None = Field(
+        default=None,
+        description="Sent as thread/fork lastTurnId.",
     )
     model: str | None = Field(
         default=None,

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-PINNED_CODEX_BINARY_RELEASE_TAG = "rust-v0.140.0"
+PINNED_CODEX_BINARY_RELEASE_TAG = "rust-v0.144.4"
 
 
 def test_binary_fetch_workflows_default_to_pinned_codex_release() -> None:
