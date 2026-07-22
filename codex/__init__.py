@@ -1,4 +1,4 @@
-"""Python SDK for embedding Codex via the bundled CLI binary."""
+"""Python SDK for embedding Codex via the bundled app-server binary."""
 
 from __future__ import annotations
 

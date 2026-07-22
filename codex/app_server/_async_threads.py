@@ -391,9 +391,16 @@ class AsyncTurnStream:
 class AsyncAppServerThread:
     """Async OO wrapper around a single app-server thread."""
 
-    def __init__(self, client: _ThreadClient, snapshot: protocol.Thread) -> None:
+    def __init__(
+        self,
+        client: _ThreadClient,
+        snapshot: protocol.Thread,
+        *,
+        resume_response: protocol.ThreadResumeResponse | None = None,
+    ) -> None:
         self._client = client
         self._snapshot = snapshot
+        self._resume_response = resume_response
 
     @property
     def id(self) -> str:
@@ -404,6 +411,11 @@ class AsyncAppServerThread:
     def snapshot(self) -> protocol.Thread:
         """Return the cached thread snapshot. Call `refresh()` after mutations for latest state."""
         return self._snapshot
+
+    @property
+    def resume_response(self) -> protocol.ThreadResumeResponse | None:
+        """Return resume metadata, including paginated-history cursors, when resumed."""
+        return self._resume_response
 
     async def refresh(self, *, include_turns: bool = False) -> protocol.Thread:
         """Reload the stored thread snapshot from app-server."""
@@ -423,14 +435,14 @@ class AsyncAppServerThread:
         sort_direction: protocol.SortDirection | None = None,
         turn_id: str | None = None,
     ) -> list[protocol.ThreadItem]:
-        return (
-            await self.list_items_page(
-                cursor=cursor,
-                limit=limit,
-                sort_direction=sort_direction,
-                turn_id=turn_id,
-            )
-        ).data
+        """Return persisted items, without their containing-turn page metadata."""
+        page = await self.list_items_page(
+            cursor=cursor,
+            limit=limit,
+            sort_direction=sort_direction,
+            turn_id=turn_id,
+        )
+        return [entry.item for entry in page.data]
 
     async def list_items_page(
         self,
@@ -440,6 +452,7 @@ class AsyncAppServerThread:
         sort_direction: protocol.SortDirection | None = None,
         turn_id: str | None = None,
     ) -> protocol.ThreadItemsListResponse:
+        """Return one page of persisted items and their containing turn ids."""
         return await self._client.rpc.request_typed(
             "thread/items/list",
             protocol.ThreadItemsListParams(
@@ -450,6 +463,80 @@ class AsyncAppServerThread:
                 turnId=turn_id,
             ),
             protocol.ThreadItemsListResponse,
+        )
+
+    async def list_turns(
+        self,
+        *,
+        cursor: str | None = None,
+        items_view: protocol.TurnItemsView | None = None,
+        limit: int | None = None,
+        sort_direction: protocol.SortDirection | None = None,
+    ) -> list[protocol.Turn]:
+        """Return one page of persisted turns without page metadata."""
+        return (
+            await self.list_turns_page(
+                cursor=cursor,
+                items_view=items_view,
+                limit=limit,
+                sort_direction=sort_direction,
+            )
+        ).data
+
+    async def list_turns_page(
+        self,
+        *,
+        cursor: str | None = None,
+        items_view: protocol.TurnItemsView | None = None,
+        limit: int | None = None,
+        sort_direction: protocol.SortDirection | None = None,
+    ) -> protocol.ThreadTurnsListResponse:
+        """Return one page of persisted turns with forward and reverse cursors."""
+        return await self._client.rpc.request_typed(
+            "thread/turns/list",
+            protocol.ThreadTurnsListParams(
+                cursor=cursor,
+                itemsView=items_view,
+                limit=limit,
+                sortDirection=sort_direction,
+                threadId=self.id,
+            ),
+            protocol.ThreadTurnsListResponse,
+        )
+
+    async def search_occurrences(
+        self,
+        search_term: str,
+        *,
+        cursor: str | None = None,
+        limit: int | None = None,
+    ) -> list[protocol.ThreadSearchOccurrence]:
+        """Return one page of message occurrences in this paginated thread."""
+        return (
+            await self.search_occurrences_page(
+                search_term,
+                cursor=cursor,
+                limit=limit,
+            )
+        ).data
+
+    async def search_occurrences_page(
+        self,
+        search_term: str,
+        *,
+        cursor: str | None = None,
+        limit: int | None = None,
+    ) -> protocol.ThreadSearchOccurrencesResponse:
+        """Return one page of message occurrences with navigation cursors."""
+        return await self._client.rpc.request_typed(
+            "thread/searchOccurrences",
+            protocol.ThreadSearchOccurrencesParams(
+                cursor=cursor,
+                limit=limit,
+                searchTerm=search_term,
+                threadId=self.id,
+            ),
+            protocol.ThreadSearchOccurrencesResponse,
         )
 
     async def run(

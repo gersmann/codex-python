@@ -6,7 +6,7 @@ import re
 from collections.abc import Callable, Mapping
 from pathlib import Path
 
-from codex._binary import BundledCodexNotFoundError
+from codex._binary import BundledAppServerNotFoundError
 from codex._config_types import CodexConfig, CodexConfigObject, CodexConfigValue
 
 INTERNAL_ORIGINATOR_ENV = "CODEX_INTERNAL_ORIGINATOR_OVERRIDE"
@@ -41,7 +41,7 @@ def resolve_codex_path(
         return str(Path(executable_path))
     try:
         return str(bundled_path())
-    except BundledCodexNotFoundError as bundled_error:
+    except BundledAppServerNotFoundError as bundled_error:
         system_codex = which("codex")
         if system_codex is None:
             raise error_type(

@@ -31,7 +31,7 @@ class ReleaseAsset:
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Fetch and stage codex binary assets into the wheel."
+        description="Fetch and stage codex app-server assets into the wheel."
     )
     parser.add_argument(
         "--release-tag",
@@ -75,10 +75,10 @@ def main() -> int:
         if asset is None:
             raise RuntimeError(
                 f"No release asset found for target '{target}'. "
-                f"Looked for names starting with 'codex-{target}'."
+                f"Looked for names starting with 'codex-app-server-{target}'."
             )
         install_asset(asset, target, dest_root, token)
-    print(f"Installed codex binaries for {len(targets)} target(s) into {dest_root}")
+    print(f"Installed codex app-server binaries for {len(targets)} target(s) into {dest_root}")
     return 0
 
 
@@ -119,19 +119,23 @@ def resolve_release_tag(repo: str, release_tag: str, token: str | None) -> str:
 
 
 def candidate_asset_names(target: str) -> list[str]:
-    prefix = f"codex-{target}"
+    prefix = f"codex-app-server-{target}"
+    if "windows" in target:
+        return [
+            f"{prefix}.exe.zip",
+            f"{prefix}.exe.tar.gz",
+            f"{prefix}.exe",
+            f"{prefix}.exe.zst",
+        ]
     return [
         f"{prefix}.tar.gz",
-        f"{prefix}.zip",
-        f"{prefix}.exe",
         f"{prefix}",
         f"{prefix}.zst",
-        f"{prefix}.exe.zst",
     ]
 
 
 def select_asset_for_target(assets: list[ReleaseAsset], target: str) -> ReleaseAsset | None:
-    prefix = f"codex-{target}"
+    prefix = f"codex-app-server-{target}"
     exact_candidates = candidate_asset_names(target)
     by_name = {asset.name: asset for asset in assets}
     for candidate in exact_candidates:
@@ -173,8 +177,8 @@ def install_asset(asset: ReleaseAsset, target: str, dest_root: Path, token: str 
         archive_path = tmp_dir / asset.name
         download(asset.url, archive_path, token)
 
-        binary_name = "codex.exe" if "windows" in target else "codex"
-        dest_path = dest_root / target / "codex" / binary_name
+        binary_name = "codex-app-server.exe" if "windows" in target else "codex-app-server"
+        dest_path = dest_root / target / "codex-app-server" / binary_name
         dest_path.parent.mkdir(parents=True, exist_ok=True)
         _extract_to_binary(archive_path, dest_path)
 

@@ -69,19 +69,19 @@ jobs:
       - name: Fetch bundled codex binary for integration test
         if: ${{ steps.integration.outputs.enabled == 'true' }}
         env:
-          CODEX_BINARY_RELEASE_TAG: ${{ vars.CODEX_BINARY_RELEASE_TAG || 'rust-v0.144.4' }}
+          CODEX_BINARY_RELEASE_TAG: ${{ vars.CODEX_BINARY_RELEASE_TAG || 'rust-v0.145.0' }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
           python scripts/fetch_codex_binary.py \
             --release-tag "$CODEX_BINARY_RELEASE_TAG" \
             --target-triple x86_64-unknown-linux-musl
-          test -f codex/vendor/x86_64-unknown-linux-musl/codex/codex
+          test -f codex/vendor/x86_64-unknown-linux-musl/codex-app-server/codex-app-server
 
       - name: Integration test (real codex binary)
         if: ${{ steps.integration.outputs.enabled == 'true' }}
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-          CODEX_BINARY_PATH: codex/vendor/x86_64-unknown-linux-musl/codex/codex
+          CODEX_BINARY_PATH: codex/vendor/x86_64-unknown-linux-musl/codex-app-server/codex-app-server
           CODEX_INTEGRATION_TEST: "1"
         run: uv run --group dev pytest -q tests/test_integration_real_binary.py

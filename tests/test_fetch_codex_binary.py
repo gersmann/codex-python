@@ -38,16 +38,33 @@ def test_read_optional_env_returns_none_for_missing_or_empty(
 def test_select_asset_for_target_prefers_exact_names() -> None:
     module = _load_script_module("fetch_codex_binary", "scripts/fetch_codex_binary.py")
     assets = [
-        module.ReleaseAsset(name="codex-x86_64-unknown-linux-gnu.tar.gz", url="tar"),
-        module.ReleaseAsset(name="codex-x86_64-unknown-linux-gnu-debug.tar.gz", url="debug"),
+        module.ReleaseAsset(
+            name="codex-app-server-x86_64-unknown-linux-gnu.tar.gz",
+            url="tar",
+        ),
+        module.ReleaseAsset(
+            name="codex-app-server-x86_64-unknown-linux-gnu-debug.tar.gz",
+            url="debug",
+        ),
     ]
 
     selected = module.select_asset_for_target(assets, "x86_64-unknown-linux-gnu")
 
     assert selected == module.ReleaseAsset(
-        name="codex-x86_64-unknown-linux-gnu.tar.gz",
+        name="codex-app-server-x86_64-unknown-linux-gnu.tar.gz",
         url="tar",
     )
+
+
+def test_windows_candidates_match_app_server_release_assets() -> None:
+    module = _load_script_module("fetch_codex_binary", "scripts/fetch_codex_binary.py")
+
+    assert module.candidate_asset_names("x86_64-pc-windows-msvc") == [
+        "codex-app-server-x86_64-pc-windows-msvc.exe.zip",
+        "codex-app-server-x86_64-pc-windows-msvc.exe.tar.gz",
+        "codex-app-server-x86_64-pc-windows-msvc.exe",
+        "codex-app-server-x86_64-pc-windows-msvc.exe.zst",
+    ]
 
 
 def test_resolve_release_tag_uses_latest_redirect(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -90,8 +107,8 @@ def test_try_install_direct_asset_skips_missing_candidates(monkeypatch: pytest.M
 
     assert installed is True
     assert attempted == [
-        "codex-x86_64-unknown-linux-musl.tar.gz",
-        "codex-x86_64-unknown-linux-musl.zip",
+        "codex-app-server-x86_64-unknown-linux-musl.tar.gz",
+        "codex-app-server-x86_64-unknown-linux-musl",
     ]
 
 
@@ -124,14 +141,14 @@ def test_try_install_direct_asset_propagates_non_404_errors(
 def test_select_asset_for_target_falls_back_to_sorted_prefix_match() -> None:
     module = _load_script_module("fetch_codex_binary", "scripts/fetch_codex_binary.py")
     assets = [
-        module.ReleaseAsset(name="codex-aarch64-apple-darwin-beta.zip", url="beta"),
-        module.ReleaseAsset(name="codex-aarch64-apple-darwin-alpha.zip", url="alpha"),
+        module.ReleaseAsset(name="codex-app-server-aarch64-apple-darwin-beta.zip", url="beta"),
+        module.ReleaseAsset(name="codex-app-server-aarch64-apple-darwin-alpha.zip", url="alpha"),
     ]
 
     selected = module.select_asset_for_target(assets, "aarch64-apple-darwin")
 
     assert selected == module.ReleaseAsset(
-        name="codex-aarch64-apple-darwin-alpha.zip",
+        name="codex-app-server-aarch64-apple-darwin-alpha.zip",
         url="alpha",
     )
 

@@ -50,10 +50,6 @@ class CodexOptions(_CodexOptionsModel):
         default=None,
         description="Forwarded to AppServerProcessOptions.env.",
     )
-    analytics_default_enabled: bool = Field(
-        default=False,
-        description="Forwarded to AppServerProcessOptions.analytics_default_enabled.",
-    )
 
     def to_app_server_options(self) -> AppServerProcessOptions:
         return AppServerProcessOptions.model_validate(self.model_dump(mode="python"))

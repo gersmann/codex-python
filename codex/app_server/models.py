@@ -26,11 +26,6 @@ class ThreadResult(AppServerResultModel):
     thread: protocol.Thread
 
 
-class ThreadListResult(AppServerResultModel):
-    data: list[protocol.Thread]
-    next_cursor: str | None = None
-
-
 class LoadedThreadsResult(AppServerResultModel):
     data: list[str]
 

@@ -34,7 +34,6 @@ from codex.app_server._sync_threads import (
     EventsClient,
     _AsyncThreadLike,
 )
-from codex.app_server.models import ThreadListResult
 from codex.app_server.options import (
     AppServerInitializeOptions,
     AppServerProcessOptions,
@@ -350,7 +349,7 @@ class AppServerClient(_SyncRunner):
     def list_threads_page(
         self,
         options: AppServerThreadListOptions | None = None,
-    ) -> ThreadListResult:
+    ) -> protocol.ThreadListResponse:
         return self._run(self._async_client.list_threads_page(options))
 
     def loaded_thread_ids(self) -> list[str]:
