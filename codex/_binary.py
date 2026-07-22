@@ -6,8 +6,8 @@ from pathlib import Path
 from codex.errors import CodexExecError
 
 
-class BundledCodexNotFoundError(CodexExecError):
-    """The platform wheel does not contain a bundled Codex binary."""
+class BundledAppServerNotFoundError(CodexExecError):
+    """The platform wheel does not contain a bundled app-server binary."""
 
 
 def resolve_target_triple(system_name: str | None = None, machine_name: str | None = None) -> str:
@@ -33,14 +33,14 @@ def resolve_target_triple(system_name: str | None = None, machine_name: str | No
     raise CodexExecError(f"Unsupported platform: {system} ({machine})")
 
 
-def bundled_codex_path(target_triple: str | None = None) -> Path:
+def bundled_app_server_path(target_triple: str | None = None) -> Path:
     triple = target_triple or resolve_target_triple()
     package_root = Path(__file__).resolve().parent
-    binary_name = "codex.exe" if "windows" in triple else "codex"
-    binary_path = package_root / "vendor" / triple / "codex" / binary_name
+    binary_name = "codex-app-server.exe" if "windows" in triple else "codex-app-server"
+    binary_path = package_root / "vendor" / triple / "codex-app-server" / binary_name
     if not binary_path.exists():
-        raise BundledCodexNotFoundError(
-            "Bundled codex binary not found at "
+        raise BundledAppServerNotFoundError(
+            "Bundled codex app-server binary not found at "
             f"{binary_path}. Install a platform wheel or provide codex_path_override."
         )
     return binary_path

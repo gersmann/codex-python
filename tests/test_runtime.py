@@ -5,7 +5,7 @@ from pathlib import Path
 import pytest
 
 from codex import _runtime
-from codex._binary import BundledCodexNotFoundError
+from codex._binary import BundledAppServerNotFoundError
 
 
 class _ResolveError(RuntimeError):
@@ -47,7 +47,7 @@ def test_resolve_codex_path_prefers_explicit_path() -> None:
 def test_resolve_codex_path_falls_back_to_path_lookup() -> None:
     resolved = _runtime.resolve_codex_path(
         None,
-        bundled_path=lambda: (_ for _ in ()).throw(BundledCodexNotFoundError("bundle missing")),
+        bundled_path=lambda: (_ for _ in ()).throw(BundledAppServerNotFoundError("bundle missing")),
         which=lambda name: "/usr/bin/codex" if name == "codex" else None,
         error_type=_ResolveError,
     )
@@ -59,7 +59,9 @@ def test_resolve_codex_path_raises_error_when_nothing_available() -> None:
     with pytest.raises(_ResolveError, match="Also failed to find `codex` on PATH"):
         _runtime.resolve_codex_path(
             None,
-            bundled_path=lambda: (_ for _ in ()).throw(BundledCodexNotFoundError("bundle missing")),
+            bundled_path=lambda: (_ for _ in ()).throw(
+                BundledAppServerNotFoundError("bundle missing")
+            ),
             which=lambda name: None,
             error_type=_ResolveError,
         )

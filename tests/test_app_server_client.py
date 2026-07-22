@@ -64,6 +64,20 @@ def _turn_payload(turn_id: str = "turn-1", *, status: str = "inProgress") -> Jso
     }
 
 
+def _thread_resume_result_payload(thread_id: str = "thr-1") -> JsonObject:
+    return {
+        "approvalPolicy": "never",
+        "approvalsReviewer": "user",
+        "cwd": "/repo",
+        "itemsBackwardsCursor": "items-head",
+        "model": "gpt-5.4",
+        "modelProvider": "openai",
+        "sandbox": {"type": "dangerFullAccess"},
+        "thread": _thread_payload(thread_id),
+        "turnsBackwardsCursor": "turns-head",
+    }
+
+
 def _agent_message_item(text: str, item_id: str = "item-1") -> JsonObject:
     return {
         "id": item_id,
@@ -607,9 +621,10 @@ def test_app_server_thread_resume_and_fork_options_include_current_protocol_fiel
     ).to_params(thread_id="thr-1")
     fork_params = AppServerThreadForkOptions(
         approvals_reviewer=protocol.ApprovalsReviewer("guardian_subagent"),
+        before_turn_id="turn-2",
+        defer_goal_continuation=True,
         ephemeral=True,
         exclude_turns=True,
-        last_turn_id="turn-2",
         permissions="profile-1",
         runtime_workspace_roots=[protocol.AbsolutePathBuf("/repo")],
         thread_source=protocol.ThreadSource("pytest"),
@@ -625,9 +640,10 @@ def test_app_server_thread_resume_and_fork_options_include_current_protocol_fiel
     }
     assert fork_params.model_dump(mode="python", by_alias=True, exclude_none=True) == {
         "approvalsReviewer": "guardian_subagent",
+        "beforeTurnId": "turn-2",
+        "deferGoalContinuation": True,
         "ephemeral": True,
         "excludeTurns": True,
-        "lastTurnId": "turn-2",
         "permissions": "profile-1",
         "runtimeWorkspaceRoots": ["/repo"],
         "threadId": "thr-1",
@@ -664,10 +680,14 @@ def test_app_server_turn_and_list_options_use_protocol_owned_types() -> None:
         input=[{"type": "text", "text": "Summarize this repo."}],
     )
     list_params = AppServerThreadListOptions(
+        ancestor_thread_id="thr-root",
+        cwd=["/repo", "/worktree"],
         sort_direction=protocol.SortDirection("asc"),
         sort_key=protocol.ThreadSortKey("updated_at"),
         source_kinds=[protocol.ThreadSourceKind("appServer")],
+        use_state_db_only=True,
     ).to_params()
+    child_list_params = AppServerThreadListOptions(parent_thread_id="thr-root").to_params()
 
     assert turn_params.model_dump(mode="python", by_alias=True, exclude_none=True) == {
         "additionalContext": {"fixture": {"kind": "application", "value": "context"}},
@@ -686,9 +706,15 @@ def test_app_server_turn_and_list_options_use_protocol_owned_types() -> None:
         "threadId": "thr-1",
     }
     assert list_params.model_dump(mode="python", by_alias=True, exclude_none=True) == {
+        "ancestorThreadId": "thr-root",
+        "cwd": ["/repo", "/worktree"],
         "sortDirection": "asc",
         "sortKey": "updated_at",
         "sourceKinds": ["appServer"],
+        "useStateDbOnly": True,
+    }
+    assert child_list_params.model_dump(mode="python", by_alias=True, exclude_none=True) == {
+        "parentThreadId": "thr-root"
     }
 
 
@@ -1312,6 +1338,7 @@ def test_async_client_exposes_public_thread_operations() -> None:
     async def scenario() -> None:
         transport = ScriptedTransport()
         transport.responses["thread/start"] = {"thread": _thread_payload()}
+        transport.responses["thread/resume"] = _thread_resume_result_payload()
 
         def read_thread(message: JsonObject) -> JsonObject:
             if message["params"] == {"threadId": "thr-1", "includeTurns": False}:
@@ -1340,6 +1367,7 @@ def test_async_client_exposes_public_thread_operations() -> None:
                 "result": {
                     "data": [_thread_payload("thr-3")],
                     "nextCursor": "cursor-2",
+                    "backwardsCursor": "cursor-0",
                 },
             }
 
@@ -1352,7 +1380,7 @@ def test_async_client_exposes_public_thread_operations() -> None:
                 return {
                     "id": message["id"],
                     "result": {
-                        "data": [_agent_message_item("First")],
+                        "data": [{"turnId": "turn-1", "item": _agent_message_item("First")}],
                         "nextCursor": "item-cursor-1",
                         "backwardsCursor": None,
                     },
@@ -1367,9 +1395,62 @@ def test_async_client_exposes_public_thread_operations() -> None:
             return {
                 "id": message["id"],
                 "result": {
-                    "data": [_agent_message_item("Second", "item-2")],
+                    "data": [
+                        {
+                            "turnId": "turn-1",
+                            "item": _agent_message_item("Second", "item-2"),
+                        }
+                    ],
                     "nextCursor": None,
                     "backwardsCursor": "item-cursor-2",
+                },
+            }
+
+        def list_thread_turns(message: JsonObject) -> JsonObject:
+            if message["params"] == {"limit": 1, "threadId": "thr-1"}:
+                return {
+                    "id": message["id"],
+                    "result": {
+                        "data": [_turn_payload(status="completed")],
+                        "nextCursor": "turn-cursor-1",
+                    },
+                }
+            assert message["params"] == {
+                "cursor": "turn-cursor-1",
+                "itemsView": "full",
+                "limit": 2,
+                "sortDirection": "desc",
+                "threadId": "thr-1",
+            }
+            return {
+                "id": message["id"],
+                "result": {
+                    "data": [_turn_payload("turn-2", status="completed")],
+                    "nextCursor": None,
+                    "backwardsCursor": "turn-cursor-2",
+                },
+            }
+
+        def search_thread_occurrences(message: JsonObject) -> JsonObject:
+            assert message["params"] == {
+                "cursor": "occurrence-cursor-1",
+                "limit": 2,
+                "searchTerm": "needle",
+                "threadId": "thr-1",
+            }
+            return {
+                "id": message["id"],
+                "result": {
+                    "data": [
+                        {
+                            "itemId": "item-2",
+                            "snippet": "A needle here",
+                            "snippetMatchRange": {"start": 2, "end": 8},
+                            "turnCursor": "turn-cursor-2",
+                            "turnId": "turn-2",
+                        }
+                    ],
+                    "nextCursor": "occurrence-cursor-2",
                 },
             }
 
@@ -1411,6 +1492,8 @@ def test_async_client_exposes_public_thread_operations() -> None:
         transport.responses["thread/list"] = list_threads
         transport.responses["thread/loaded/list"] = list_loaded_threads
         transport.responses["thread/items/list"] = list_thread_items
+        transport.responses["thread/turns/list"] = list_thread_turns
+        transport.responses["thread/searchOccurrences"] = search_thread_occurrences
         transport.responses["thread/fork"] = fork_thread
         transport.responses["thread/archive"] = archive_thread
         transport.responses["thread/unarchive"] = unarchive_thread
@@ -1422,6 +1505,9 @@ def test_async_client_exposes_public_thread_operations() -> None:
         client = AsyncAppServerClient(transport)
         await client.start()
         thread = await client.start_thread()
+        resumed = await client.resume_thread(
+            "thr-1", AppServerThreadResumeOptions(exclude_turns=True)
+        )
 
         refreshed = await thread.refresh()
         read = await client.read_thread("thr-1", include_turns=True)
@@ -1436,6 +1522,18 @@ def test_async_client_exposes_public_thread_operations() -> None:
             limit=2,
             sort_direction=protocol.SortDirection("desc"),
             turn_id="turn-1",
+        )
+        turns = await thread.list_turns(limit=1)
+        turn_page = await thread.list_turns_page(
+            cursor="turn-cursor-1",
+            items_view=protocol.TurnItemsView("full"),
+            limit=2,
+            sort_direction=protocol.SortDirection("desc"),
+        )
+        occurrence_page = await thread.search_occurrences_page(
+            "needle",
+            cursor="occurrence-cursor-1",
+            limit=2,
         )
         forked = await thread.fork(AppServerThreadForkOptions(model="gpt-fork"))
         archived = await thread.archive()
@@ -1453,7 +1551,11 @@ def test_async_client_exposes_public_thread_operations() -> None:
         assert read.name == "Read thread"
         assert [item.id for item in threads] == ["thr-1", "thr-2"]
         assert [item.id for item in page.data] == ["thr-3"]
-        assert page.next_cursor == "cursor-2"
+        assert page.nextCursor == "cursor-2"
+        assert page.backwardsCursor == "cursor-0"
+        assert resumed.resume_response is not None
+        assert resumed.resume_response.turnsBackwardsCursor == "turns-head"
+        assert resumed.resume_response.itemsBackwardsCursor == "items-head"
         assert loaded_ids == ["thr-1", "thr-2"]
         assert items[0].root == protocol.AgentMessageThreadItem(
             id="item-1",
@@ -1461,13 +1563,20 @@ def test_async_client_exposes_public_thread_operations() -> None:
             text="First",
             type="agentMessage",
         )
-        assert item_page.data[0].root == protocol.AgentMessageThreadItem(
+        assert item_page.data[0].turnId == "turn-1"
+        assert item_page.data[0].item.root == protocol.AgentMessageThreadItem(
             id="item-2",
             phase="final_answer",
             text="Second",
             type="agentMessage",
         )
         assert item_page.backwardsCursor == "item-cursor-2"
+        assert turns[0].id == "turn-1"
+        assert turn_page.data[0].id == "turn-2"
+        assert turn_page.backwardsCursor == "turn-cursor-2"
+        assert occurrence_page.data[0].turnId == "turn-2"
+        assert occurrence_page.data[0].turnCursor == "turn-cursor-2"
+        assert occurrence_page.nextCursor == "occurrence-cursor-2"
         assert forked.id == "thr-fork"
         assert archived == EmptyResult()
         assert unarchived.name == "Unarchived thread"
@@ -2712,6 +2821,7 @@ def test_sync_client_exposes_public_thread_operations() -> None:
     loop = _LoopThread()
     transport = ScriptedTransport()
     transport.responses["thread/start"] = {"thread": _thread_payload()}
+    transport.responses["thread/resume"] = _thread_resume_result_payload()
 
     def read_thread(message: JsonObject) -> JsonObject:
         if message["params"] == {"threadId": "thr-1", "includeTurns": False}:
@@ -2740,6 +2850,7 @@ def test_sync_client_exposes_public_thread_operations() -> None:
             "result": {
                 "data": [_thread_payload("thr-3")],
                 "nextCursor": "cursor-2",
+                "backwardsCursor": "cursor-0",
             },
         }
 
@@ -2752,7 +2863,7 @@ def test_sync_client_exposes_public_thread_operations() -> None:
             return {
                 "id": message["id"],
                 "result": {
-                    "data": [_agent_message_item("First")],
+                    "data": [{"turnId": "turn-1", "item": _agent_message_item("First")}],
                     "nextCursor": "item-cursor-1",
                     "backwardsCursor": None,
                 },
@@ -2767,9 +2878,51 @@ def test_sync_client_exposes_public_thread_operations() -> None:
         return {
             "id": message["id"],
             "result": {
-                "data": [_agent_message_item("Second", "item-2")],
+                "data": [
+                    {
+                        "turnId": "turn-1",
+                        "item": _agent_message_item("Second", "item-2"),
+                    }
+                ],
                 "nextCursor": None,
                 "backwardsCursor": "item-cursor-2",
+            },
+        }
+
+    def list_thread_turns(message: JsonObject) -> JsonObject:
+        assert message["params"] == {
+            "itemsView": "summary",
+            "limit": 2,
+            "threadId": "thr-1",
+        }
+        return {
+            "id": message["id"],
+            "result": {
+                "data": [_turn_payload(status="completed")],
+                "nextCursor": "turn-cursor-1",
+                "backwardsCursor": "turn-cursor-0",
+            },
+        }
+
+    def search_thread_occurrences(message: JsonObject) -> JsonObject:
+        assert message["params"] == {
+            "limit": 1,
+            "searchTerm": "needle",
+            "threadId": "thr-1",
+        }
+        return {
+            "id": message["id"],
+            "result": {
+                "data": [
+                    {
+                        "itemId": "item-1",
+                        "snippet": "A needle here",
+                        "snippetMatchRange": {"start": 2, "end": 8},
+                        "turnCursor": "turn-cursor-1",
+                        "turnId": "turn-1",
+                    }
+                ],
+                "nextCursor": None,
             },
         }
 
@@ -2811,6 +2964,8 @@ def test_sync_client_exposes_public_thread_operations() -> None:
     transport.responses["thread/list"] = list_threads
     transport.responses["thread/loaded/list"] = list_loaded_threads
     transport.responses["thread/items/list"] = list_thread_items
+    transport.responses["thread/turns/list"] = list_thread_turns
+    transport.responses["thread/searchOccurrences"] = search_thread_occurrences
     transport.responses["thread/fork"] = fork_thread
     transport.responses["thread/archive"] = archive_thread
     transport.responses["thread/unarchive"] = unarchive_thread
@@ -2825,6 +2980,7 @@ def test_sync_client_exposes_public_thread_operations() -> None:
 
     try:
         thread = client.start_thread()
+        resumed = client.resume_thread("thr-1", AppServerThreadResumeOptions(exclude_turns=True))
         refreshed = thread.refresh()
         read = client.read_thread("thr-1", include_turns=True)
         threads = client.list_threads(AppServerThreadListOptions(limit=2))
@@ -2837,6 +2993,11 @@ def test_sync_client_exposes_public_thread_operations() -> None:
             sort_direction=protocol.SortDirection("desc"),
             turn_id="turn-1",
         )
+        turn_page = thread.list_turns_page(
+            items_view=protocol.TurnItemsView("summary"),
+            limit=2,
+        )
+        occurrences = thread.search_occurrences("needle", limit=1)
         forked = thread.fork(AppServerThreadForkOptions(model="gpt-fork"))
         archived = thread.archive()
         assert thread.snapshot.name == "Refreshed thread"
@@ -2853,7 +3014,10 @@ def test_sync_client_exposes_public_thread_operations() -> None:
         assert read.name == "Read thread"
         assert [item.id for item in threads] == ["thr-1", "thr-2"]
         assert [item.id for item in page.data] == ["thr-3"]
-        assert page.next_cursor == "cursor-2"
+        assert page.nextCursor == "cursor-2"
+        assert page.backwardsCursor == "cursor-0"
+        assert resumed.resume_response is not None
+        assert resumed.resume_response.turnsBackwardsCursor == "turns-head"
         assert loaded_ids == ["thr-1", "thr-2"]
         assert items[0].root == protocol.AgentMessageThreadItem(
             id="item-1",
@@ -2861,13 +3025,17 @@ def test_sync_client_exposes_public_thread_operations() -> None:
             text="First",
             type="agentMessage",
         )
-        assert item_page.data[0].root == protocol.AgentMessageThreadItem(
+        assert item_page.data[0].turnId == "turn-1"
+        assert item_page.data[0].item.root == protocol.AgentMessageThreadItem(
             id="item-2",
             phase="final_answer",
             text="Second",
             type="agentMessage",
         )
         assert item_page.backwardsCursor == "item-cursor-2"
+        assert turn_page.data[0].id == "turn-1"
+        assert turn_page.backwardsCursor == "turn-cursor-0"
+        assert occurrences[0].turnId == "turn-1"
         assert forked.id == "thr-fork"
         assert archived == EmptyResult()
         assert unarchived.name == "Unarchived thread"

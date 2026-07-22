@@ -63,6 +63,46 @@ with AppServerClient.connect_stdio() as client:
 
 Thread objects expose lifecycle methods such as `refresh()`, `fork()`, `archive()`, `rollback()`, `compact()`, and `set_name()`.
 
+## Paginated thread history
+
+Codex 0.145 can persist thread history in paginated form. Enable the experimental API, select the
+history mode when starting the thread, and page turns or full persisted items with generated
+protocol response types:
+
+```python
+from codex.app_server import (
+    AppServerClient,
+    AppServerInitializeOptions,
+    AppServerThreadStartOptions,
+)
+from codex.protocol import types as protocol
+
+with AppServerClient.connect_stdio(
+    initialize_options=AppServerInitializeOptions(experimental_api=True)
+) as client:
+    thread = client.start_thread(
+        AppServerThreadStartOptions(history_mode=protocol.ThreadHistoryMode("paginated"))
+    )
+    turns = thread.list_turns_page(limit=50)
+    items = thread.list_items_page(limit=100)
+
+    for entry in items.data:
+        print(entry.turnId, entry.item.root)
+```
+
+A new thread is materialized when its first user message starts; history pagination is unavailable
+before that point.
+
+Resume with `exclude_turns=True` to avoid returning the entire history. The generated resume
+response retained on `thread.resume_response` contains `turnsBackwardsCursor` and
+`itemsBackwardsCursor`, which establish the durable-history boundary while newer records arrive as
+live notifications.
+
+`AppServerThreadListOptions` supports `parent_thread_id` for direct spawned children and
+`ancestor_thread_id` for all spawned descendants. Returned `protocol.Thread` values include
+`parentThreadId`, `agentNickname`, and `agentRole` when available. Paginated threads also expose
+`search_occurrences_page()` for typed message-search results and turn-navigation cursors.
+
 ## Running turns
 
 ### `run()`

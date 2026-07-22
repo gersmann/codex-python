@@ -250,7 +250,7 @@ jobs:
       - name: Fetch bundled codex binaries
         shell: bash
         env:
-          CODEX_BINARY_RELEASE_TAG: ${{ vars.CODEX_BINARY_RELEASE_TAG || 'rust-v0.144.4' }}
+          CODEX_BINARY_RELEASE_TAG: ${{ vars.CODEX_BINARY_RELEASE_TAG || 'rust-v0.145.0' }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
@@ -268,23 +268,23 @@ jobs:
           IFS=',' read -r -a targets <<< "${{ matrix.codex-targets }}"
           for target in "${targets[@]}"; do
             if [[ "$target" == *windows* ]]; then
-              bin="codex/vendor/$target/codex/codex.exe"
+              bin="codex/vendor/$target/codex-app-server/codex-app-server.exe"
             else
-              bin="codex/vendor/$target/codex/codex"
+              bin="codex/vendor/$target/codex-app-server/codex-app-server"
             fi
             test -f "$bin"
             echo "Found $bin"
           done
 
-      - name: Compress Windows x64 Codex binary
+      - name: Compress Windows x64 app-server binary
         if: ${{ matrix.platform == 'windows-amd64' }}
         shell: pwsh
         run: |
           $ErrorActionPreference = "Stop"
           $version = "5.2.0"
-          $binary = "codex/vendor/x86_64-pc-windows-msvc/codex/codex.exe"
+          $binary = "codex/vendor/x86_64-pc-windows-msvc/codex-app-server/codex-app-server.exe"
           if (!(Test-Path $binary)) {
-            throw "Bundled Codex binary not found at $binary"
+            throw "Bundled Codex app-server binary not found at $binary"
           }
 
           $archive = Join-Path $env:RUNNER_TEMP "upx-$version-win64.zip"

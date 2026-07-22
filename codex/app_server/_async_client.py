@@ -29,7 +29,6 @@ from codex.app_server._session import _AsyncNotificationSubscription, _AsyncSess
 from codex.app_server.models import (
     InitializeResult,
     LoadedThreadsResult,
-    ThreadListResult,
     ThreadResult,
 )
 from codex.app_server.options import (
@@ -225,8 +224,16 @@ class AsyncAppServerClient:
         options: AppServerThreadResumeOptions | None = None,
     ) -> AsyncAppServerThread:
         payload = (options or AppServerThreadResumeOptions()).to_params(thread_id=thread_id)
-        result = await self.rpc.request_typed("thread/resume", payload, ThreadResult)
-        return AsyncAppServerThread(cast(_ThreadClient, self), result.thread)
+        result = await self.rpc.request_typed(
+            "thread/resume",
+            payload,
+            protocol.ThreadResumeResponse,
+        )
+        return AsyncAppServerThread(
+            cast(_ThreadClient, self),
+            result.thread,
+            resume_response=result,
+        )
 
     async def read_thread(
         self,
@@ -248,18 +255,18 @@ class AsyncAppServerClient:
         result = await self.rpc.request_typed(
             "thread/list",
             (options or AppServerThreadListOptions()).to_params(),
-            ThreadListResult,
+            protocol.ThreadListResponse,
         )
         return result.data
 
     async def list_threads_page(
         self,
         options: AppServerThreadListOptions | None = None,
-    ) -> ThreadListResult:
+    ) -> protocol.ThreadListResponse:
         return await self.rpc.request_typed(
             "thread/list",
             (options or AppServerThreadListOptions()).to_params(),
-            ThreadListResult,
+            protocol.ThreadListResponse,
         )
 
     async def loaded_thread_ids(self) -> list[str]:

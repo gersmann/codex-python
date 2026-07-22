@@ -6,7 +6,7 @@ from typing import Any
 
 import pytest
 
-from codex._binary import BundledCodexNotFoundError
+from codex._binary import BundledAppServerNotFoundError
 from codex.app_server.errors import (
     AppServerClosedError,
     AppServerConnectionError,
@@ -16,6 +16,7 @@ from codex.app_server.options import AppServerProcessOptions, AppServerWebSocket
 from codex.app_server.transports import (
     AsyncStdioTransport,
     AsyncWebSocketTransport,
+    _app_server_command,
     _build_env,
     _resolve_codex_path,
 )
@@ -123,8 +124,8 @@ def test_resolve_codex_path_prefers_override() -> None:
 
 def test_resolve_codex_path_falls_back_to_path(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(
-        "codex.app_server.transports.bundled_codex_path",
-        lambda: (_ for _ in ()).throw(BundledCodexNotFoundError("missing bundled")),
+        "codex.app_server.transports.bundled_app_server_path",
+        lambda: (_ for _ in ()).throw(BundledAppServerNotFoundError("missing bundled")),
     )
     monkeypatch.setattr("codex.app_server.transports.shutil.which", lambda _: "/usr/bin/codex")
 
@@ -135,8 +136,8 @@ def test_resolve_codex_path_raises_when_no_binary_available(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(
-        "codex.app_server.transports.bundled_codex_path",
-        lambda: (_ for _ in ()).throw(BundledCodexNotFoundError("missing bundled")),
+        "codex.app_server.transports.bundled_app_server_path",
+        lambda: (_ for _ in ()).throw(BundledAppServerNotFoundError("missing bundled")),
     )
     monkeypatch.setattr("codex.app_server.transports.shutil.which", lambda _: None)
 
@@ -148,13 +149,21 @@ def test_resolve_codex_path_preserves_non_missing_bundle_failures(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(
-        "codex.app_server.transports.bundled_codex_path",
+        "codex.app_server.transports.bundled_app_server_path",
         lambda: (_ for _ in ()).throw(RuntimeError("permission denied")),
     )
     monkeypatch.setattr("codex.app_server.transports.shutil.which", lambda _: "/usr/bin/codex")
 
     with pytest.raises(RuntimeError, match="permission denied"):
         _resolve_codex_path(None)
+
+
+def test_app_server_command_selects_standalone_or_full_cli() -> None:
+    assert _app_server_command("/tmp/codex-app-server") == ["/tmp/codex-app-server"]
+    assert _app_server_command("/tmp/codex-app-server-x86_64-unknown-linux-musl") == [
+        "/tmp/codex-app-server-x86_64-unknown-linux-musl"
+    ]
+    assert _app_server_command("/tmp/codex") == ["/tmp/codex", "app-server"]
 
 
 def test_build_env_uses_override_without_parent_env(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -210,7 +219,6 @@ def test_stdio_transport_start_builds_command_and_env(monkeypatch: pytest.Monkey
                 base_url="http://localhost:8080",
                 api_key="test-key",
                 config={"approval_policy": "never"},
-                analytics_default_enabled=True,
             )
         )
         await transport.start()
@@ -221,7 +229,6 @@ def test_stdio_transport_start_builds_command_and_env(monkeypatch: pytest.Monkey
     assert captured["cmd"] == [
         "/tmp/codex",
         "app-server",
-        "--analytics-default-enabled",
         "--config",
         'approval_policy="never"',
     ]

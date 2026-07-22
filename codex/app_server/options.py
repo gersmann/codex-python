@@ -116,10 +116,6 @@ class AppServerProcessOptions(_AppServerOptionsModel):
         default=None,
         description="Additional environment variables merged into the child process environment.",
     )
-    analytics_default_enabled: bool = Field(
-        default=False,
-        description="Default analytics setting for the spawned local process.",
-    )
 
 
 class AppServerWebSocketOptions(_AppServerOptionsModel):
@@ -491,6 +487,10 @@ class AppServerThreadForkOptions(_AppServerOptionsModel):
         default=None,
         description="Sent as thread/fork baseInstructions.",
     )
+    before_turn_id: str | None = Field(
+        default=None,
+        description="Sent as thread/fork beforeTurnId.",
+    )
     config: CodexConfig | None = Field(
         default=None,
         description="Sent as thread/fork config. Accepts the typed CodexConfig model or a plain dict.",
@@ -498,6 +498,10 @@ class AppServerThreadForkOptions(_AppServerOptionsModel):
     cwd: str | None = Field(
         default=None,
         description="Sent as thread/fork cwd.",
+    )
+    defer_goal_continuation: bool | None = Field(
+        default=None,
+        description="Sent as thread/fork deferGoalContinuation.",
     )
     developer_instructions: str | None = Field(
         default=None,
@@ -560,6 +564,10 @@ class AppServerThreadForkOptions(_AppServerOptionsModel):
 class AppServerThreadListOptions(_AppServerOptionsModel):
     """High-level filters for listing stored app-server threads."""
 
+    ancestor_thread_id: str | None = Field(
+        default=None,
+        description="Sent as thread/list ancestorThreadId.",
+    )
     archived: bool | None = Field(
         default=None,
         description="Sent as thread/list archived.",
@@ -568,7 +576,7 @@ class AppServerThreadListOptions(_AppServerOptionsModel):
         default=None,
         description="Sent as thread/list cursor.",
     )
-    cwd: str | None = Field(
+    cwd: str | list[str] | None = Field(
         default=None,
         description="Sent as thread/list cwd.",
     )
@@ -580,12 +588,13 @@ class AppServerThreadListOptions(_AppServerOptionsModel):
         default=None,
         description="Sent as thread/list modelProviders.",
     )
+    parent_thread_id: str | None = Field(
+        default=None,
+        description="Sent as thread/list parentThreadId.",
+    )
     search_term: str | None = Field(
         default=None,
-        description=(
-            "Sent as thread/list searchTerm. "
-            "Present in the generated protocol; not described in the public app-server docs."
-        ),
+        description="Sent as thread/list searchTerm.",
     )
     sort_key: protocol.ThreadSortKey | None = Field(
         default=None,
@@ -598,6 +607,10 @@ class AppServerThreadListOptions(_AppServerOptionsModel):
     source_kinds: list[protocol.ThreadSourceKind] | None = Field(
         default=None,
         description="Sent as thread/list sourceKinds.",
+    )
+    use_state_db_only: bool | None = Field(
+        default=None,
+        description="Sent as thread/list useStateDbOnly.",
     )
 
     def to_params(self) -> protocol.ThreadListParams:

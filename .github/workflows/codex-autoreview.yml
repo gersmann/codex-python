@@ -29,14 +29,14 @@ jobs:
         run: python3 -m pip install zstandard
       - name: Fetch bundled codex binary
         env:
-          CODEX_BINARY_RELEASE_TAG: ${{ vars.CODEX_BINARY_RELEASE_TAG || 'rust-v0.144.4' }}
+          CODEX_BINARY_RELEASE_TAG: ${{ vars.CODEX_BINARY_RELEASE_TAG || 'rust-v0.145.0' }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
           python3 scripts/fetch_codex_binary.py \
             --release-tag "$CODEX_BINARY_RELEASE_TAG" \
             --target-triple x86_64-unknown-linux-musl
-          test -x codex/vendor/x86_64-unknown-linux-musl/codex/codex
+          test -x codex/vendor/x86_64-unknown-linux-musl/codex-app-server/codex-app-server
       - name: Codex autonomous review
         uses: gersmann/codex-review-action@v1
         with:
@@ -60,14 +60,14 @@ jobs:
         run: python3 -m pip install zstandard
       - name: Fetch bundled codex binary
         env:
-          CODEX_BINARY_RELEASE_TAG: ${{ vars.CODEX_BINARY_RELEASE_TAG || 'rust-v0.144.4' }}
+          CODEX_BINARY_RELEASE_TAG: ${{ vars.CODEX_BINARY_RELEASE_TAG || 'rust-v0.145.0' }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
           python3 scripts/fetch_codex_binary.py \
             --release-tag "$CODEX_BINARY_RELEASE_TAG" \
             --target-triple x86_64-unknown-linux-musl
-          test -x codex/vendor/x86_64-unknown-linux-musl/codex/codex
+          test -x codex/vendor/x86_64-unknown-linux-musl/codex-app-server/codex-app-server
       - name: Codex autonomous edits
         uses: gersmann/codex-review-action@v1
         with:

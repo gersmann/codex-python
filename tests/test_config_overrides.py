@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 from pydantic import BaseModel
 
-from codex._binary import bundled_codex_path, resolve_target_triple
+from codex._binary import bundled_app_server_path, resolve_target_triple
 from codex.errors import CodexExecError
 from codex.output_schema_file import create_output_schema_file
 
@@ -27,23 +27,23 @@ def test_resolve_target_triple_rejects_unsupported() -> None:
         resolve_target_triple("freebsd", "x86_64")
 
 
-def test_bundled_codex_path_resolves_when_binary_exists() -> None:
+def test_bundled_app_server_path_resolves_when_binary_exists() -> None:
     target = "x86_64-unknown-linux-musl"
     package_root = Path(__file__).resolve().parent.parent / "codex"
-    binary_path = package_root / "vendor" / target / "codex" / "codex"
+    binary_path = package_root / "vendor" / target / "codex-app-server" / "codex-app-server"
     binary_path.parent.mkdir(parents=True, exist_ok=True)
     binary_path.write_text("test", encoding="utf-8")
     try:
-        assert bundled_codex_path(target) == binary_path
+        assert bundled_app_server_path(target) == binary_path
     finally:
         if binary_path.exists():
             binary_path.unlink()
         shutil.rmtree(package_root / "vendor" / target, ignore_errors=True)
 
 
-def test_bundled_codex_path_raises_when_missing() -> None:
-    with pytest.raises(CodexExecError, match="Bundled codex binary not found"):
-        bundled_codex_path("missing-target")
+def test_bundled_app_server_path_raises_when_missing() -> None:
+    with pytest.raises(CodexExecError, match="Bundled codex app-server binary not found"):
+        bundled_app_server_path("missing-target")
 
 
 def test_output_schema_file_lifecycle() -> None:

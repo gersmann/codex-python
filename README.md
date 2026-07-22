@@ -220,15 +220,18 @@ Advanced app-server usage, including typed stable RPC domains such as `client.mo
 
 By default, the SDK resolves the bundled binary at:
 
-`codex/vendor/<target-triple>/codex/{codex|codex.exe}`
+`codex/vendor/<target-triple>/codex-app-server/{codex-app-server|codex-app-server.exe}`
 
-If the bundled binary is not present, for example in a source checkout, the SDK falls back to
-`codex` on `PATH`.
+The bundled app-server runs directly. If it is not present, for example in a source checkout, the
+SDK falls back to `codex app-server` using `codex` on `PATH`.
 
 You can override the executable path with:
 
 - `CodexOptions(codex_path_override=...)`
 - `codex.app_server.AppServerProcessOptions(codex_path_override=...)`
+
+Overrides named `codex-app-server*` run directly; other overrides run with the `app-server`
+subcommand.
 
 ## Development
 

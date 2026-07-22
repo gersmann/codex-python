@@ -69,6 +69,9 @@ class _AsyncThreadLike(Protocol):
     @property
     def snapshot(self) -> protocol.Thread: ...
 
+    @property
+    def resume_response(self) -> protocol.ThreadResumeResponse | None: ...
+
     async def refresh(self, *, include_turns: bool = False) -> protocol.Thread: ...
 
     async def list_items(
@@ -88,6 +91,40 @@ class _AsyncThreadLike(Protocol):
         sort_direction: protocol.SortDirection | None = None,
         turn_id: str | None = None,
     ) -> protocol.ThreadItemsListResponse: ...
+
+    async def list_turns(
+        self,
+        *,
+        cursor: str | None = None,
+        items_view: protocol.TurnItemsView | None = None,
+        limit: int | None = None,
+        sort_direction: protocol.SortDirection | None = None,
+    ) -> list[protocol.Turn]: ...
+
+    async def list_turns_page(
+        self,
+        *,
+        cursor: str | None = None,
+        items_view: protocol.TurnItemsView | None = None,
+        limit: int | None = None,
+        sort_direction: protocol.SortDirection | None = None,
+    ) -> protocol.ThreadTurnsListResponse: ...
+
+    async def search_occurrences(
+        self,
+        search_term: str,
+        *,
+        cursor: str | None = None,
+        limit: int | None = None,
+    ) -> list[protocol.ThreadSearchOccurrence]: ...
+
+    async def search_occurrences_page(
+        self,
+        search_term: str,
+        *,
+        cursor: str | None = None,
+        limit: int | None = None,
+    ) -> protocol.ThreadSearchOccurrencesResponse: ...
 
     async def run(
         self,
@@ -308,6 +345,10 @@ class AppServerThread(_SyncRunner):
     def snapshot(self) -> protocol.Thread:
         return self._async_thread.snapshot
 
+    @property
+    def resume_response(self) -> protocol.ThreadResumeResponse | None:
+        return self._async_thread.resume_response
+
     def refresh(self, *, include_turns: bool = False) -> protocol.Thread:
         return self._run(self._async_thread.refresh(include_turns=include_turns))
 
@@ -342,6 +383,70 @@ class AppServerThread(_SyncRunner):
                 limit=limit,
                 sort_direction=sort_direction,
                 turn_id=turn_id,
+            )
+        )
+
+    def list_turns(
+        self,
+        *,
+        cursor: str | None = None,
+        items_view: protocol.TurnItemsView | None = None,
+        limit: int | None = None,
+        sort_direction: protocol.SortDirection | None = None,
+    ) -> list[protocol.Turn]:
+        return self._run(
+            self._async_thread.list_turns(
+                cursor=cursor,
+                items_view=items_view,
+                limit=limit,
+                sort_direction=sort_direction,
+            )
+        )
+
+    def list_turns_page(
+        self,
+        *,
+        cursor: str | None = None,
+        items_view: protocol.TurnItemsView | None = None,
+        limit: int | None = None,
+        sort_direction: protocol.SortDirection | None = None,
+    ) -> protocol.ThreadTurnsListResponse:
+        return self._run(
+            self._async_thread.list_turns_page(
+                cursor=cursor,
+                items_view=items_view,
+                limit=limit,
+                sort_direction=sort_direction,
+            )
+        )
+
+    def search_occurrences(
+        self,
+        search_term: str,
+        *,
+        cursor: str | None = None,
+        limit: int | None = None,
+    ) -> list[protocol.ThreadSearchOccurrence]:
+        return self._run(
+            self._async_thread.search_occurrences(
+                search_term,
+                cursor=cursor,
+                limit=limit,
+            )
+        )
+
+    def search_occurrences_page(
+        self,
+        search_term: str,
+        *,
+        cursor: str | None = None,
+        limit: int | None = None,
+    ) -> protocol.ThreadSearchOccurrencesResponse:
+        return self._run(
+            self._async_thread.search_occurrences_page(
+                search_term,
+                cursor=cursor,
+                limit=limit,
             )
         )
 
