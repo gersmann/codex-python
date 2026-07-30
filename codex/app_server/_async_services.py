@@ -23,6 +23,7 @@ from codex.app_server.models import (
     ConfigWriteResult,
     EmptyResult,
     ExternalAgentConfigDetectResult,
+    ExternalAgentConfigImportResult,
     FeedbackUploadResult,
     McpServerOauthLoginResult,
     McpServerStatus,
@@ -570,10 +571,16 @@ class AsyncExternalAgentConfigClient(_AsyncServiceClient):
         *,
         cwds: Sequence[str] | None = None,
         include_home: bool | None = None,
+        max_session_age_days: int | None = None,
+        max_sessions: int | None = None,
+        migration_source: str | None = None,
     ) -> ExternalAgentConfigDetectResult:
         params = protocol.ExternalAgentConfigDetectParams(
             cwds=list(cwds) if cwds is not None else None,
             includeHome=include_home,
+            maxSessionAgeDays=max_session_age_days,
+            maxSessions=max_sessions,
+            migrationSource=migration_source,
         )
         return await self._rpc.request_typed(
             "externalAgentConfig/detect",
@@ -585,9 +592,37 @@ class AsyncExternalAgentConfigClient(_AsyncServiceClient):
         self,
         *,
         migration_items: Sequence[protocol.ExternalAgentConfigMigrationItem],
-    ) -> EmptyResult:
-        params = protocol.ExternalAgentConfigImportParams(migrationItems=list(migration_items))
-        return await self._rpc.request_typed("externalAgentConfig/import", params, EmptyResult)
+        migration_source: str | None = None,
+        provider_id: str | None = None,
+        source: str | None = None,
+    ) -> ExternalAgentConfigImportResult:
+        params = protocol.ExternalAgentConfigImportParams(
+            migrationItems=list(migration_items),
+            migrationSource=migration_source,
+            providerId=provider_id,
+            source=source,
+        )
+        return await self._rpc.request_typed(
+            "externalAgentConfig/import",
+            params,
+            ExternalAgentConfigImportResult,
+        )
+
+    async def record_history(
+        self,
+        *,
+        item_type_results: Sequence[protocol.ExternalAgentConfigImportTypeResult],
+        provider_id: str,
+    ) -> ExternalAgentConfigImportResult:
+        params = protocol.ExternalAgentConfigImportHistoryRecordParams(
+            itemTypeResults=list(item_type_results),
+            providerId=provider_id,
+        )
+        return await self._rpc.request_typed(
+            "externalAgentConfig/import/recordHistory",
+            params,
+            ExternalAgentConfigImportResult,
+        )
 
 
 class AsyncWindowsSandboxClient(_AsyncServiceClient):

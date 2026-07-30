@@ -102,6 +102,7 @@ live notifications.
 `ancestor_thread_id` for all spawned descendants. Returned `protocol.Thread` values include
 `parentThreadId`, `agentNickname`, and `agentRole` when available. Paginated threads also expose
 `search_occurrences_page()` for typed message-search results and turn-navigation cursors.
+Codex 0.146 adds `is_pinned` list filtering and `thread.set_pinned()` for persisted thread pins.
 
 ## Running turns
 

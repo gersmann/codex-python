@@ -665,6 +665,16 @@ class AsyncAppServerThread:
             EmptyResult,
         )
 
+    async def set_pinned(self, pinned: bool) -> protocol.Thread:
+        """Set whether this thread is pinned and update the cached snapshot."""
+        result = await self._client.rpc.request_typed(
+            "thread/metadata/update",
+            protocol.ThreadMetadataUpdateParams(threadId=self.id, isPinned=pinned),
+            protocol.ThreadMetadataUpdateResponse,
+        )
+        self._snapshot = result.thread
+        return self.snapshot
+
     async def unsubscribe(self) -> EmptyResult:
         """Unsubscribe this connection from the loaded thread."""
         return await self._client.rpc.request_typed(

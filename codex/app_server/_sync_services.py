@@ -18,6 +18,7 @@ from codex.app_server.models import (
     ConfigWriteResult,
     EmptyResult,
     ExternalAgentConfigDetectResult,
+    ExternalAgentConfigImportResult,
     FeedbackUploadResult,
     McpServerOauthLoginResult,
     McpServerStatus,
@@ -276,13 +277,26 @@ class _AsyncExternalAgentConfigClientLike(Protocol):
         *,
         cwds: Sequence[str] | None = None,
         include_home: bool | None = None,
+        max_session_age_days: int | None = None,
+        max_sessions: int | None = None,
+        migration_source: str | None = None,
     ) -> ExternalAgentConfigDetectResult: ...
 
     async def import_items(
         self,
         *,
         migration_items: Sequence[protocol.ExternalAgentConfigMigrationItem],
-    ) -> EmptyResult: ...
+        migration_source: str | None = None,
+        provider_id: str | None = None,
+        source: str | None = None,
+    ) -> ExternalAgentConfigImportResult: ...
+
+    async def record_history(
+        self,
+        *,
+        item_type_results: Sequence[protocol.ExternalAgentConfigImportTypeResult],
+        provider_id: str,
+    ) -> ExternalAgentConfigImportResult: ...
 
 
 class _AsyncWindowsSandboxClientLike(Protocol):
@@ -800,15 +814,49 @@ class _ExternalAgentConfigClient(_SyncRunner):
         *,
         cwds: Sequence[str] | None = None,
         include_home: bool | None = None,
+        max_session_age_days: int | None = None,
+        max_sessions: int | None = None,
+        migration_source: str | None = None,
     ) -> ExternalAgentConfigDetectResult:
-        return self._run(self._async_client.detect(cwds=cwds, include_home=include_home))
+        return self._run(
+            self._async_client.detect(
+                cwds=cwds,
+                include_home=include_home,
+                max_session_age_days=max_session_age_days,
+                max_sessions=max_sessions,
+                migration_source=migration_source,
+            )
+        )
 
     def import_items(
         self,
         *,
         migration_items: Sequence[protocol.ExternalAgentConfigMigrationItem],
-    ) -> EmptyResult:
-        return self._run(self._async_client.import_items(migration_items=migration_items))
+        migration_source: str | None = None,
+        provider_id: str | None = None,
+        source: str | None = None,
+    ) -> ExternalAgentConfigImportResult:
+        return self._run(
+            self._async_client.import_items(
+                migration_items=migration_items,
+                migration_source=migration_source,
+                provider_id=provider_id,
+                source=source,
+            )
+        )
+
+    def record_history(
+        self,
+        *,
+        item_type_results: Sequence[protocol.ExternalAgentConfigImportTypeResult],
+        provider_id: str,
+    ) -> ExternalAgentConfigImportResult:
+        return self._run(
+            self._async_client.record_history(
+                item_type_results=item_type_results,
+                provider_id=provider_id,
+            )
+        )
 
 
 class _WindowsSandboxClient(_SyncRunner):

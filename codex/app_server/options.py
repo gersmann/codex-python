@@ -580,6 +580,10 @@ class AppServerThreadListOptions(_AppServerOptionsModel):
         default=None,
         description="Sent as thread/list cwd.",
     )
+    is_pinned: bool | None = Field(
+        default=None,
+        description="Sent as thread/list isPinned.",
+    )
     limit: int | None = Field(
         default=None,
         description="Sent as thread/list limit.",

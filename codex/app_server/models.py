@@ -246,6 +246,10 @@ class ExternalAgentConfigDetectResult(AppServerResultModel):
     items: list[protocol.ExternalAgentConfigMigrationItem]
 
 
+class ExternalAgentConfigImportResult(AppServerResultModel):
+    import_id: str
+
+
 class WindowsSandboxSetupStartResult(AppServerResultModel):
     started: bool
 

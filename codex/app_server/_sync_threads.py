@@ -178,6 +178,8 @@ class _AsyncThreadLike(Protocol):
 
     async def set_name(self, name: str) -> EmptyResult: ...
 
+    async def set_pinned(self, pinned: bool) -> protocol.Thread: ...
+
     async def unsubscribe(self) -> EmptyResult: ...
 
 
@@ -532,6 +534,10 @@ class AppServerThread(_SyncRunner):
 
     def set_name(self, name: str) -> EmptyResult:
         return self._run(self._async_thread.set_name(name))
+
+    def set_pinned(self, pinned: bool) -> protocol.Thread:
+        """Set whether this thread is pinned and update the cached snapshot."""
+        return self._run(self._async_thread.set_pinned(pinned))
 
     def unsubscribe(self) -> EmptyResult:
         """Unsubscribe this connection from the loaded thread."""

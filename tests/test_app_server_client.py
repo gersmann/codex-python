@@ -682,6 +682,7 @@ def test_app_server_turn_and_list_options_use_protocol_owned_types() -> None:
     list_params = AppServerThreadListOptions(
         ancestor_thread_id="thr-root",
         cwd=["/repo", "/worktree"],
+        is_pinned=True,
         sort_direction=protocol.SortDirection("asc"),
         sort_key=protocol.ThreadSortKey("updated_at"),
         source_kinds=[protocol.ThreadSourceKind("appServer")],
@@ -708,6 +709,7 @@ def test_app_server_turn_and_list_options_use_protocol_owned_types() -> None:
     assert list_params.model_dump(mode="python", by_alias=True, exclude_none=True) == {
         "ancestorThreadId": "thr-root",
         "cwd": ["/repo", "/worktree"],
+        "isPinned": True,
         "sortDirection": "asc",
         "sortKey": "updated_at",
         "sourceKinds": ["appServer"],
@@ -1484,6 +1486,13 @@ def test_async_client_exposes_public_thread_operations() -> None:
             assert message["params"] == {"threadId": "thr-1", "name": "Renamed thread"}
             return {"id": message["id"], "result": {}}
 
+        def set_thread_pinned(message: JsonObject) -> JsonObject:
+            assert message["params"] == {"threadId": "thr-1", "isPinned": True}
+            return {
+                "id": message["id"],
+                "result": {"thread": {**_thread_payload(), "isPinned": True}},
+            }
+
         def unsubscribe_thread(message: JsonObject) -> JsonObject:
             assert message["params"] == {"threadId": "thr-1"}
             return {"id": message["id"], "result": {}}
@@ -1500,6 +1509,7 @@ def test_async_client_exposes_public_thread_operations() -> None:
         transport.responses["thread/rollback"] = rollback_thread
         transport.responses["thread/compact/start"] = compact_thread
         transport.responses["thread/name/set"] = set_thread_name
+        transport.responses["thread/metadata/update"] = set_thread_pinned
         transport.responses["thread/unsubscribe"] = unsubscribe_thread
 
         client = AsyncAppServerClient(transport)
@@ -1544,10 +1554,11 @@ def test_async_client_exposes_public_thread_operations() -> None:
         assert thread.snapshot.name == "Rolled back thread"
         compacted = await thread.compact()
         renamed = await thread.set_name("Renamed thread")
+        pinned = await thread.set_pinned(True)
         unsubscribed = await thread.unsubscribe()
 
         assert refreshed.name == "Refreshed thread"
-        assert thread.snapshot.name == "Rolled back thread"
+        assert thread.snapshot.isPinned is True
         assert read.name == "Read thread"
         assert [item.id for item in threads] == ["thr-1", "thr-2"]
         assert [item.id for item in page.data] == ["thr-3"]
@@ -1583,6 +1594,7 @@ def test_async_client_exposes_public_thread_operations() -> None:
         assert rolled_back.name == "Rolled back thread"
         assert compacted == EmptyResult()
         assert renamed == EmptyResult()
+        assert pinned.isPinned is True
         assert unsubscribed == EmptyResult()
 
         await client.close()
@@ -1935,7 +1947,13 @@ def test_async_client_exposes_typed_rpc_domain_clients() -> None:
             }
 
         def detect_external_agent_config(message: JsonObject) -> JsonObject:
-            assert message["params"] == {"cwds": ["/repo"], "includeHome": True}
+            assert message["params"] == {
+                "cwds": ["/repo"],
+                "includeHome": True,
+                "maxSessionAgeDays": 30,
+                "maxSessions": 100,
+                "migrationSource": "claude",
+            }
             return {
                 "id": message["id"],
                 "result": {
@@ -1957,9 +1975,25 @@ def test_async_client_exposes_typed_rpc_domain_clients() -> None:
                         "description": "Import CLAUDE.md",
                         "cwd": "/repo",
                     }
-                ]
+                ],
+                "migrationSource": "claude",
+                "providerId": "provider-1",
+                "source": "pytest",
             }
-            return {"id": message["id"], "result": {}}
+            return {"id": message["id"], "result": {"importId": "import-1"}}
+
+        def record_external_agent_config_history(message: JsonObject) -> JsonObject:
+            assert message["params"] == {
+                "itemTypeResults": [
+                    {
+                        "itemType": "AGENTS_MD",
+                        "successes": [],
+                        "failures": [],
+                    }
+                ],
+                "providerId": "provider-1",
+            }
+            return {"id": message["id"], "result": {"importId": "import-2"}}
 
         def windows_sandbox_setup_start(message: JsonObject) -> JsonObject:
             assert message["params"] == {"mode": "elevated", "cwd": "C:/repo"}
@@ -1988,6 +2022,9 @@ def test_async_client_exposes_typed_rpc_domain_clients() -> None:
         transport.responses["environment/info"] = environment_info
         transport.responses["externalAgentConfig/detect"] = detect_external_agent_config
         transport.responses["externalAgentConfig/import"] = import_external_agent_config
+        transport.responses["externalAgentConfig/import/recordHistory"] = (
+            record_external_agent_config_history
+        )
         transport.responses["windowsSandbox/setupStart"] = windows_sandbox_setup_start
         client = AsyncAppServerClient(transport)
         await client.start()
@@ -2092,7 +2129,13 @@ def test_async_client_exposes_typed_rpc_domain_clients() -> None:
             instructions="# Generated Skill\n",
             reload_cwds=["/repo"],
         )
-        detected = await client.external_agent_config.detect(cwds=["/repo"], include_home=True)
+        detected = await client.external_agent_config.detect(
+            cwds=["/repo"],
+            include_home=True,
+            max_session_age_days=30,
+            max_sessions=100,
+            migration_source="claude",
+        )
         import_result = await client.external_agent_config.import_items(
             migration_items=[
                 protocol.ExternalAgentConfigMigrationItem(
@@ -2100,7 +2143,20 @@ def test_async_client_exposes_typed_rpc_domain_clients() -> None:
                     description="Import CLAUDE.md",
                     cwd="/repo",
                 )
-            ]
+            ],
+            migration_source="claude",
+            provider_id="provider-1",
+            source="pytest",
+        )
+        recorded_history = await client.external_agent_config.record_history(
+            item_type_results=[
+                protocol.ExternalAgentConfigImportTypeResult(
+                    itemType="AGENTS_MD",
+                    successes=[],
+                    failures=[],
+                )
+            ],
+            provider_id="provider-1",
         )
         windows_setup = await client.windows_sandbox.setup_start(mode="elevated", cwd="C:/repo")
 
@@ -2187,7 +2243,8 @@ def test_async_client_exposes_typed_rpc_domain_clients() -> None:
             path="/repo/.codex/skills/generated/SKILL.md",
         )
         assert detected.items[0].itemType.root == "AGENTS_MD"
-        assert import_result == EmptyResult()
+        assert import_result.import_id == "import-1"
+        assert recorded_history.import_id == "import-2"
         assert windows_setup.started is True
 
         await client.close()
@@ -2956,6 +3013,13 @@ def test_sync_client_exposes_public_thread_operations() -> None:
         assert message["params"] == {"threadId": "thr-1", "name": "Renamed thread"}
         return {"id": message["id"], "result": {}}
 
+    def set_thread_pinned(message: JsonObject) -> JsonObject:
+        assert message["params"] == {"threadId": "thr-1", "isPinned": True}
+        return {
+            "id": message["id"],
+            "result": {"thread": {**_thread_payload(), "isPinned": True}},
+        }
+
     def unsubscribe_thread(message: JsonObject) -> JsonObject:
         assert message["params"] == {"threadId": "thr-1"}
         return {"id": message["id"], "result": {}}
@@ -2972,6 +3036,7 @@ def test_sync_client_exposes_public_thread_operations() -> None:
     transport.responses["thread/rollback"] = rollback_thread
     transport.responses["thread/compact/start"] = compact_thread
     transport.responses["thread/name/set"] = set_thread_name
+    transport.responses["thread/metadata/update"] = set_thread_pinned
     transport.responses["thread/unsubscribe"] = unsubscribe_thread
 
     async_client = AsyncAppServerClient(transport)
@@ -3007,10 +3072,11 @@ def test_sync_client_exposes_public_thread_operations() -> None:
         assert thread.snapshot.name == "Rolled back thread"
         compacted = thread.compact()
         renamed = thread.set_name("Renamed thread")
+        pinned = thread.set_pinned(True)
         unsubscribed = thread.unsubscribe()
 
         assert refreshed.name == "Refreshed thread"
-        assert thread.snapshot.name == "Rolled back thread"
+        assert thread.snapshot.isPinned is True
         assert read.name == "Read thread"
         assert [item.id for item in threads] == ["thr-1", "thr-2"]
         assert [item.id for item in page.data] == ["thr-3"]
@@ -3042,6 +3108,7 @@ def test_sync_client_exposes_public_thread_operations() -> None:
         assert rolled_back.name == "Rolled back thread"
         assert compacted == EmptyResult()
         assert renamed == EmptyResult()
+        assert pinned.isPinned is True
         assert unsubscribed == EmptyResult()
     finally:
         client.close()
