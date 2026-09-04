@@ -172,13 +172,20 @@ class _AsyncThreadLike(Protocol):
 
     async def unarchive(self) -> protocol.Thread: ...
 
+    async def revert(self, before_turn_id: str) -> protocol.ThreadRevertResponse: ...
+
     async def rollback(self, num_turns: int) -> protocol.Thread: ...
 
     async def compact(self) -> EmptyResult: ...
 
     async def set_name(self, name: str) -> EmptyResult: ...
 
-    async def set_pinned(self, pinned: bool) -> protocol.Thread: ...
+    async def move_to_section(
+        self,
+        section_id: str | None,
+        *,
+        before_thread_id: str | None = None,
+    ) -> EmptyResult: ...
 
     async def unsubscribe(self) -> EmptyResult: ...
 
@@ -525,6 +532,9 @@ class AppServerThread(_SyncRunner):
         """Restore an archived thread and update the cached snapshot from the response."""
         return self._run(self._async_thread.unarchive())
 
+    def revert(self, before_turn_id: str) -> protocol.ThreadRevertResponse:
+        return self._run(self._async_thread.revert(before_turn_id))
+
     def rollback(self, num_turns: int) -> protocol.Thread:
         return self._run(self._async_thread.rollback(num_turns))
 
@@ -535,9 +545,18 @@ class AppServerThread(_SyncRunner):
     def set_name(self, name: str) -> EmptyResult:
         return self._run(self._async_thread.set_name(name))
 
-    def set_pinned(self, pinned: bool) -> protocol.Thread:
-        """Set whether this thread is pinned and update the cached snapshot."""
-        return self._run(self._async_thread.set_pinned(pinned))
+    def move_to_section(
+        self,
+        section_id: str | None,
+        *,
+        before_thread_id: str | None = None,
+    ) -> EmptyResult:
+        return self._run(
+            self._async_thread.move_to_section(
+                section_id,
+                before_thread_id=before_thread_id,
+            )
+        )
 
     def unsubscribe(self) -> EmptyResult:
         """Unsubscribe this connection from the loaded thread."""

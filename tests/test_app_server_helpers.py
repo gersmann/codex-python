@@ -3,6 +3,7 @@ from __future__ import annotations
 import pytest
 from pydantic import BaseModel
 
+from codex._config_types import CodexConfig
 from codex.app_server._payloads import normalize_input_item, normalize_turn_input, serialize_value
 from codex.app_server._protocol_helpers import (
     extract_item,
@@ -44,6 +45,23 @@ def test_serialize_value_handles_models_model_classes_and_sequences() -> None:
         {"answer": "ok"},
         {"items": [{"answer": "ok"}]},
     ]
+    assert serialize_value(
+        protocol.ThreadSectionMoveParams(
+            sectionId=None,
+            threadId="thread-1",
+        )
+    ) == {"sectionId": None, "threadId": "thread-1"}
+    assert serialize_value(
+        protocol.TurnSettingsUpdateParams(
+            serviceTier=None,
+            threadId="thread-1",
+            turnId="turn-1",
+        )
+    ) == {"serviceTier": None, "threadId": "thread-1", "turnId": "turn-1"}
+    assert serialize_value(
+        protocol.TurnSettingsUpdateParams(threadId="thread-1", turnId="turn-1")
+    ) == {"threadId": "thread-1", "turnId": "turn-1"}
+    assert serialize_value(CodexConfig(custom_setting=True)) == {"custom_setting": True}
 
 
 def test_normalize_turn_input_wraps_strings_and_objects() -> None:
@@ -138,6 +156,29 @@ def test_parse_server_request_handles_permissions_approval_request() -> None:
     assert request_id(parsed) == "req-1"
     assert parsed.params.permissions.network is not None
     assert parsed.params.permissions.network.enabled is True
+
+
+@pytest.mark.parametrize("mode", ["openai/form", "openaiForm"])
+def test_parse_server_request_preserves_openai_elicitation_schema(mode: str) -> None:
+    schema = {"type": "object", "properties": {"answer": {"type": "string"}}}
+    parsed = parse_server_request(
+        {
+            "id": "request-1",
+            "method": "mcpServer/elicitation/request",
+            "params": {
+                "threadId": "thread-1",
+                "serverName": "example",
+                "mode": mode,
+                "message": "Provide an answer",
+                "requestedSchema": schema,
+            },
+        },
+        strict=True,
+    )
+
+    assert isinstance(parsed, protocol.McpServerElicitationRequestRequest)
+    assert parsed.params.root.mode == mode
+    assert parsed.params.model_dump(mode="json")["requestedSchema"] == schema
 
 
 def test_parse_server_request_rejects_invalid_shapes() -> None:

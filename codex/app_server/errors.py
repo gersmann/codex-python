@@ -37,7 +37,14 @@ class AppServerRpcError(AppServerError):
 class AppServerTurnError(AppServerError):
     """Raised when a turn reaches a terminal non-success status."""
 
-    def __init__(self, message: str, *, turn: protocol.Turn | None = None) -> None:
+    def __init__(
+        self,
+        message: str,
+        *,
+        turn: protocol.Turn | None = None,
+        error: protocol.TurnError | None = None,
+    ) -> None:
         super().__init__(message)
         self.turn = turn
+        self.error = error
         self.terminal_status = None if turn is None else turn.status.root

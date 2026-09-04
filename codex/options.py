@@ -282,9 +282,21 @@ class TurnOptions(_CodexOptionsModel):
         default=None,
         description="Forwarded to AppServerTurnOptions.service_tier.",
     )
+    service_tier_for_turn: str | None = Field(
+        default=None,
+        description="Forwarded to AppServerTurnOptions.service_tier_for_turn.",
+    )
     summary: protocol.ReasoningSummary | None = Field(
         default=None,
         description="Forwarded to AppServerTurnOptions.summary.",
+    )
+    tool_output: protocol.TurnToolOutput | None = Field(
+        default=None,
+        description="Forwarded to AppServerTurnOptions.tool_output.",
+    )
+    turn_trigger: str | None = Field(
+        default=None,
+        description="Forwarded to AppServerTurnOptions.turn_trigger.",
     )
 
     def to_app_server_options(self) -> AppServerTurnOptions:

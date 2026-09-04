@@ -26,6 +26,7 @@ from codex.app_server._sync_services import (
     _McpServersClient,
     _ModelsClient,
     _SkillsClient,
+    _ThreadSectionsClient,
     _WindowsSandboxClient,
 )
 from codex.app_server._sync_support import _SyncRunner
@@ -235,6 +236,7 @@ class AppServerClient(_SyncRunner):
         self.events = EventsClient(async_client.events, self._run)
         self.models = _ModelsClient(async_client.models, self._run)
         self.apps = _AppsClient(async_client.apps, self._run)
+        self.thread_sections = _ThreadSectionsClient(async_client.thread_sections, self._run)
         self.skills = _SkillsClient(async_client.skills, self._run)
         self.account = _AccountClient(async_client.account, self._run)
         self.config = _ConfigClient(async_client.config, self._run)

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, JsonValue
 from pydantic import ConfigDict as PydanticConfigDict
 from pydantic.alias_generators import to_camel
 
@@ -51,6 +51,7 @@ class ModelUpgradeInfo(AppServerResultModel):
     migration_markdown: str | None = None
     model: str
     model_link: str | None = None
+    retirement_at: int | None = None
     upgrade_copy: str | None = None
 
 
@@ -78,6 +79,8 @@ class ModelInfo(AppServerResultModel):
     )
     is_default: bool
     model: str
+    model_specialty: str | None = None
+    multi_agent_version: protocol.MultiAgentVersion | None = None
     supported_reasoning_efforts: list[ReasoningEffortOption]
     supports_personality: bool | None = False
     upgrade: str | None = None
@@ -109,6 +112,7 @@ class SkillInfo(AppServerResultModel):
     dependencies: protocol.SkillDependencies | None = None
     enabled: bool
     path: str
+    plugin_id: str | None = None
     scope: str
     interface: SkillInterface | None = None
     short_description: str | None = None
@@ -162,6 +166,9 @@ class AccountCancelLoginResult(AppServerResultModel):
 
 
 class AccountRateLimitsResult(AppServerResultModel):
+    account_id: str | None = None
+    rate_limit_reset_credits: protocol.RateLimitResetCreditsSummary | None = None
+    rate_limit_upsell: JsonValue = None
     rate_limits: protocol.RateLimitSnapshot
     rate_limits_by_limit_id: dict[str, protocol.RateLimitSnapshot] | None = None
 
@@ -202,12 +209,18 @@ class ConfigWriteResult(AppServerResultModel):
 
 
 class ConfigRequirements(AppServerResultModel):
+    additional_developer_instructions: str | None = None
+    allow_browser_and_computer_use: bool | None = None
     allowed_approval_policies: list[protocol.AskForApproval] | None = None
     allowed_approvals_reviewers: list[protocol.ApprovalsReviewer] | None = None
     allowed_sandbox_modes: list[protocol.SandboxMode] | None = None
     allowed_web_search_modes: list[protocol.WebSearchMode] | None = None
+    auto_review: protocol.AutoReviewRequirements | None = None
+    chatgpt_base_url: str | None = None
+    cli_auth_credentials_store: protocol.CliAuthCredentialsStoreMode | None = None
     enforce_residency: protocol.ResidencyRequirement | None = None
     feature_requirements: dict[str, object] | None = None
+    in_app_browser: protocol.InAppBrowserRequirements | None = None
     network: protocol.NetworkRequirements | None = None
 
 
@@ -218,8 +231,10 @@ class ConfigRequirementsReadResult(AppServerResultModel):
 class McpServerStatus(AppServerResultModel):
     auth_status: protocol.McpAuthStatus
     name: str
+    plugin_id: str | None = None
     resource_templates: list[protocol.ResourceTemplate]
     resources: list[protocol.Resource]
+    runtime_status: protocol.McpServerConnectionStatus | None = None
     tools: dict[str, protocol.Tool]
 
 
@@ -243,6 +258,7 @@ class CommandExecResult(AppServerResultModel):
 
 
 class ExternalAgentConfigDetectResult(AppServerResultModel):
+    connectors: list[protocol.ExternalAgentDetectedConnectorCandidate] = Field(default_factory=list)
     items: list[protocol.ExternalAgentConfigMigrationItem]
 
 

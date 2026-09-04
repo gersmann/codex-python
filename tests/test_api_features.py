@@ -40,6 +40,7 @@ def _thread_payload(thread_id: str = "thr-1") -> JsonObject:
         "preview": "",
         "ephemeral": False,
         "modelProvider": "openai",
+        "projectId": None,
         "createdAt": 1730910000,
         "updatedAt": 1730910000,
         "cwd": "/repo",

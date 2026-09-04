@@ -25,12 +25,28 @@ type ParamsModel = BaseModel
 
 def serialize_value(value: object) -> object:
     if isinstance(value, BaseModel):
-        return value.model_dump(
+        serialized = value.model_dump(
             mode="json",
             by_alias=True,
             exclude_none=True,
             exclude_unset=True,
         )
+        fields = type(value).model_fields
+        for name in value.model_fields_set:
+            field = fields.get(name)
+            if (
+                field is not None
+                and value.__dict__[name] is None
+                and (
+                    field.is_required()
+                    or (
+                        isinstance(value, protocol.TurnSettingsUpdateParams)
+                        and name == "serviceTier"
+                    )
+                )
+            ):
+                serialized[field.serialization_alias or field.alias or name] = None
+        return serialized
     if isinstance(value, type) and issubclass(value, BaseModel):
         return value.model_json_schema()
     if isinstance(value, list):

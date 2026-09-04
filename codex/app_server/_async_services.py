@@ -143,6 +143,57 @@ class AsyncAppsClient(_AsyncServiceClient):
         return await self._rpc.request_typed("app/list", params, AppListResult)
 
 
+class AsyncThreadSectionsClient(_AsyncServiceClient):
+    async def list(
+        self,
+        *,
+        cursor: str | None = None,
+        limit: int | None = None,
+    ) -> list[protocol.ThreadSection]:
+        return (await self.list_page(cursor=cursor, limit=limit)).data
+
+    async def list_page(
+        self,
+        *,
+        cursor: str | None = None,
+        limit: int | None = None,
+    ) -> protocol.ThreadSectionListResponse:
+        params = protocol.ThreadSectionListParams(cursor=cursor, limit=limit)
+        return await self._rpc.request_typed(
+            "threadSection/list",
+            params,
+            protocol.ThreadSectionListResponse,
+        )
+
+    async def create(
+        self,
+        *,
+        name: str,
+        appearance: protocol.ThreadSectionAppearance | None = None,
+    ) -> protocol.ThreadSection:
+        result = await self._rpc.request_typed(
+            "threadSection/create",
+            protocol.ThreadSectionCreateParams(name=name, appearance=appearance),
+            protocol.ThreadSectionCreateResponse,
+        )
+        return result.section
+
+    async def rename(self, *, section_id: str, name: str) -> protocol.ThreadSection:
+        result = await self._rpc.request_typed(
+            "threadSection/update",
+            protocol.ThreadSectionUpdateParams(sectionId=section_id, name=name),
+            protocol.ThreadSectionUpdateResponse,
+        )
+        return result.section
+
+    async def delete(self, *, section_id: str) -> EmptyResult:
+        return await self._rpc.request_typed(
+            "threadSection/delete",
+            protocol.ThreadSectionDeleteParams(sectionId=section_id),
+            EmptyResult,
+        )
+
+
 class AsyncFsClient(_AsyncServiceClient):
     async def create_directory(
         self,
@@ -394,12 +445,14 @@ class AsyncMcpServersClient(_AsyncServiceClient):
     async def oauth_login(
         self,
         *,
+        client_registration: protocol.McpServerOauthClientRegistration | None = None,
         name: str,
         scopes: Sequence[str] | None = None,
         thread_id: str | None = None,
         timeout_seconds: int | None = None,
     ) -> McpServerOauthLoginResult:
         params = protocol.McpServerOauthLoginParams(
+            clientRegistration=client_registration,
             name=name,
             scopes=list(scopes) if scopes is not None else None,
             threadId=thread_id,
@@ -611,7 +664,9 @@ class AsyncExternalAgentConfigClient(_AsyncServiceClient):
     async def record_history(
         self,
         *,
-        item_type_results: Sequence[protocol.ExternalAgentConfigImportTypeResult],
+        item_type_results: Sequence[
+            protocol.ExternalAgentConfigImportHistoryRecordTypeResultParams
+        ],
         provider_id: str,
     ) -> ExternalAgentConfigImportResult:
         params = protocol.ExternalAgentConfigImportHistoryRecordParams(

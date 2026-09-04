@@ -7,7 +7,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from codex.protocol import types as protocol
 
 type CodexConfigValue = (
-    str | int | float | bool | list["CodexConfigValue"] | dict[str, "CodexConfigValue"]
+    str | int | float | bool | None | list["CodexConfigValue"] | dict[str, "CodexConfigValue"]
 )
 type CodexConfigObject = dict[str, CodexConfigValue]
 

@@ -2,6 +2,10 @@
 
 `AppServerClient` connects to `codex app-server` and exposes a thread and stream API on top of the JSON-RPC protocol.
 
+SDK `1.153.3` bundles Codex app-server `0.153.3`; its generated protocol models
+include that version's experimental schema. Experimental RPCs still require
+`AppServerInitializeOptions(experimental_api=True)`.
+
 Use it when you need a deeper integration than `Codex` provides: persistent connections, typed protocol notifications, or server-driven requests.
 
 Import the raw app-server surface from `codex.app_server`, not from the top-level `codex` facade.
@@ -61,13 +65,14 @@ with AppServerClient.connect_stdio() as client:
     existing_thread = client.resume_thread("thr_123")
 ```
 
-Thread objects expose lifecycle methods such as `refresh()`, `fork()`, `archive()`, `rollback()`, `compact()`, and `set_name()`.
+Thread objects expose lifecycle methods such as `refresh()`, `fork()`, `archive()`, `revert()`,
+`compact()`, and `set_name()`.
 
 ## Paginated thread history
 
-Codex 0.145 can persist thread history in paginated form. Enable the experimental API, select the
-history mode when starting the thread, and page turns or full persisted items with generated
-protocol response types:
+Codex 0.151 defaults durable threads to paginated history when the active store supports it. Page
+turns or full persisted items with generated protocol response types. Explicitly selecting a
+history mode remains experimental and requires enabling the experimental API:
 
 ```python
 from codex.app_server import (
@@ -93,16 +98,36 @@ with AppServerClient.connect_stdio(
 A new thread is materialized when its first user message starts; history pagination is unavailable
 before that point.
 
+Use `thread.revert("turn_123")` to remove that turn and every later turn. The returned
+`ThreadRevertResponse` includes the updated thread and both backwards cursors. `rollback()` is the
+deprecated count-based operation and only works with legacy-history threads.
+
 Resume with `exclude_turns=True` to avoid returning the entire history. The generated resume
 response retained on `thread.resume_response` contains `turnsBackwardsCursor` and
 `itemsBackwardsCursor`, which establish the durable-history boundary while newer records arrive as
 live notifications.
 
-`AppServerThreadListOptions` supports `parent_thread_id` for direct spawned children and
-`ancestor_thread_id` for all spawned descendants. Returned `protocol.Thread` values include
-`parentThreadId`, `agentNickname`, and `agentRole` when available. Paginated threads also expose
-`search_occurrences_page()` for typed message-search results and turn-navigation cursors.
-Codex 0.146 adds `is_pinned` list filtering and `thread.set_pinned()` for persisted thread pins.
+`AppServerThreadListOptions` supports `parent_thread_id` and `ancestor_thread_id` for spawned
+thread trees, plus `project_id` and `section_id` for project organization. Returned
+`protocol.Thread` values include `parentThreadId`, `agentNickname`, and `agentRole` when available.
+Paginated threads also expose `search_occurrences_page()` for typed message-search results and
+turn-navigation cursors.
+
+## Thread sections
+
+Create, list, and rename sections through `client.thread_sections`; move or unsection a loaded
+thread directly:
+
+```python
+with AppServerClient.connect_stdio() as client:
+    section = client.thread_sections.create(name="Work")
+    thread = client.start_thread()
+    thread.move_to_section(section.id)
+    thread.move_to_section(None)
+```
+
+`AppServerThreadListOptions()` omits section and project filters. Pass `section_id=None` or
+`project_id=None` explicitly to list unassigned threads.
 
 ## Running turns
 

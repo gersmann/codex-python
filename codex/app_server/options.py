@@ -58,6 +58,10 @@ class AppServerInitializeOptions(_AppServerOptionsModel):
             "Opts the connection into experimental app-server methods and fields."
         ),
     )
+    extensions: dict[str, object] = Field(
+        default_factory=dict,
+        description="Sent as initialize.params.capabilities.extensions.",
+    )
     opt_out_notification_methods: tuple[str, ...] = Field(
         default=(),
         description=(
@@ -86,6 +90,8 @@ class AppServerInitializeOptions(_AppServerOptionsModel):
         capabilities: dict[str, object] = {}
         if self.experimental_api:
             capabilities["experimentalApi"] = True
+        if self.extensions:
+            capabilities["extensions"] = self.extensions
         if self.opt_out_notification_methods:
             capabilities["optOutNotificationMethods"] = list(self.opt_out_notification_methods)
         if capabilities:
@@ -257,9 +263,21 @@ class AppServerTurnOptions(_AppServerOptionsModel):
         default=None,
         description="Sent as turn/start serviceTier.",
     )
+    service_tier_for_turn: str | None = Field(
+        default=None,
+        description="Sent as turn/start serviceTierForTurn.",
+    )
     summary: protocol.ReasoningSummary | None = Field(
         default=None,
         description="Sent as turn/start summary.",
+    )
+    tool_output: protocol.TurnToolOutput | None = Field(
+        default=None,
+        description="Sent as turn/start toolOutput.",
+    )
+    turn_trigger: str | None = Field(
+        default=None,
+        description="Sent as turn/start turnTrigger.",
     )
 
     @field_serializer("output_schema", when_used="unless-none")
@@ -580,10 +598,6 @@ class AppServerThreadListOptions(_AppServerOptionsModel):
         default=None,
         description="Sent as thread/list cwd.",
     )
-    is_pinned: bool | None = Field(
-        default=None,
-        description="Sent as thread/list isPinned.",
-    )
     limit: int | None = Field(
         default=None,
         description="Sent as thread/list limit.",
@@ -596,9 +610,17 @@ class AppServerThreadListOptions(_AppServerOptionsModel):
         default=None,
         description="Sent as thread/list parentThreadId.",
     )
+    project_id: str | None = Field(
+        default=None,
+        description="Sent as thread/list projectId.",
+    )
     search_term: str | None = Field(
         default=None,
         description="Sent as thread/list searchTerm.",
+    )
+    section_id: str | None = Field(
+        default=None,
+        description="Sent as thread/list sectionId.",
     )
     sort_key: protocol.ThreadSortKey | None = Field(
         default=None,

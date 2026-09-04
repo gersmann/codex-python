@@ -280,6 +280,23 @@ def test_async_turn_stream_apply_tracks_text_usage_items_and_final_turn() -> Non
             },
         }
     )
+    function_output_completed = protocol.ItemCompletedNotificationModel.model_validate(
+        {
+            "method": "item/completed",
+            "params": {
+                "threadId": "thr-1",
+                "turnId": "turn-1",
+                "completedAtMs": 1_714_000_000_000,
+                "item": {
+                    "id": "item-2",
+                    "type": "functionCallOutput",
+                    "name": "knowledge_query",
+                    "namespace": "mcp",
+                    "output": "cached result",
+                },
+            },
+        }
+    )
     turn_completed = protocol.TurnCompletedNotificationModel.model_validate(
         {
             "method": "turn/completed",
@@ -290,13 +307,17 @@ def test_async_turn_stream_apply_tracks_text_usage_items_and_final_turn() -> Non
     stream._apply(delta)
     stream._apply(usage_notification)
     stream._apply(item_completed)
+    stream._apply(function_output_completed)
     stream._apply(turn_completed)
 
     assert stream.text_deltas == ("Hello ",)
     assert stream.final_text == "Hello world"
     assert stream.usage is not None
     assert stream.usage.total.totalTokens == 3
-    assert len(stream.items) == 1
+    assert len(stream.items) == 2
+    function_output = stream.items[1].root
+    assert isinstance(function_output, protocol.FunctionCallOutputThreadItem)
+    assert function_output.output.root == "cached result"
     assert stream.final_message is not None
     assert stream.final_turn is not None
 
@@ -449,6 +470,7 @@ def test_async_turn_stream_raises_and_closes_on_non_retryable_error_notification
                 "error": {
                     "message": "model unavailable",
                     "additionalDetails": "try another model",
+                    "codexErrorInfo": "rateLimitExceeded",
                 },
             },
         }
@@ -462,9 +484,14 @@ def test_async_turn_stream_raises_and_closes_on_non_retryable_error_notification
             protocol.Turn.model_validate(_turn_payload(status="inProgress")),
         )
 
-        with pytest.raises(AppServerTurnError, match="model unavailable: try another model"):
+        with pytest.raises(
+            AppServerTurnError, match="model unavailable: try another model"
+        ) as exc_info:
             await stream.__anext__()
 
+        assert exc_info.value.error is error_notification.params.error
+        assert exc_info.value.error.codexErrorInfo is not None
+        assert exc_info.value.error.codexErrorInfo.root == "rateLimitExceeded"
         assert subscription.closed is True
 
     asyncio.run(scenario())

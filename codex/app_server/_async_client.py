@@ -19,6 +19,7 @@ from codex.app_server._async_services import (
     AsyncMcpServersClient,
     AsyncModelsClient,
     AsyncSkillsClient,
+    AsyncThreadSectionsClient,
     AsyncWindowsSandboxClient,
 )
 from codex.app_server._async_threads import AsyncAppServerThread as AsyncAppServerThread
@@ -49,6 +50,23 @@ from codex.protocol import types as protocol
 
 _ModelT = TypeVar("_ModelT", bound=BaseModel)
 _RequestT = TypeVar("_RequestT", bound=BaseModel)
+
+
+def _thread_list_request_params(
+    options: AppServerThreadListOptions | None,
+) -> dict[str, object]:
+    selected = options or AppServerThreadListOptions()
+    params = selected.to_params().model_dump(
+        mode="python",
+        by_alias=True,
+        exclude_unset=True,
+    )
+    if selected.project_id is None and "project_id" in selected.model_fields_set:
+        params["projectId"] = None
+    if selected.section_id is None and "section_id" in selected.model_fields_set:
+        params["sectionId"] = None
+    return params
+
 
 __all__ = [
     "AsyncAppServerClient",
@@ -152,6 +170,7 @@ class AsyncAppServerClient:
         self.events = AsyncEventsClient(self._session)
         self.models = AsyncModelsClient(self.rpc)
         self.apps = AsyncAppsClient(self.rpc)
+        self.thread_sections = AsyncThreadSectionsClient(self.rpc)
         self.fs = AsyncFsClient(self.rpc)
         self.environment = AsyncEnvironmentClient(self.rpc)
         self.skills = AsyncSkillsClient(self.rpc, self.fs)
@@ -254,7 +273,7 @@ class AsyncAppServerClient:
     ) -> list[protocol.Thread]:
         result = await self.rpc.request_typed(
             "thread/list",
-            (options or AppServerThreadListOptions()).to_params(),
+            _thread_list_request_params(options),
             protocol.ThreadListResponse,
         )
         return result.data
@@ -265,7 +284,7 @@ class AsyncAppServerClient:
     ) -> protocol.ThreadListResponse:
         return await self.rpc.request_typed(
             "thread/list",
-            (options or AppServerThreadListOptions()).to_params(),
+            _thread_list_request_params(options),
             protocol.ThreadListResponse,
         )
 

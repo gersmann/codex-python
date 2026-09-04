@@ -38,6 +38,10 @@ ROOT_MODEL_DEFAULT_REPLACEMENTS = {
         "awsManaged",
         'AmazonBedrockCredentialSource("awsManaged")',
     ),
+    "CommandExecutionApprovalKind": (
+        "command",
+        'CommandExecutionApprovalKind("command")',
+    ),
     "ConversationTextRole": ("user", 'ConversationTextRole("user")'),
     "PermissionGrantScope": ("turn", 'PermissionGrantScope("turn")'),
     "NetworkAccess": ("restricted", 'NetworkAccess("restricted")'),

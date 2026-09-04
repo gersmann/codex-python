@@ -43,6 +43,8 @@ _TURN_STREAM_NOTIFICATION_METHODS = {
     "turn/diff/updated",
     "turn/moderationMetadata",
     "model/safetyBuffering/updated",
+    "modelProvider/authRecoveryStarted",
+    "modelProvider/authRecoveryCompleted",
     "turn/plan/updated",
     "hook/started",
     "hook/completed",
@@ -51,6 +53,7 @@ _TURN_STREAM_NOTIFICATION_METHODS = {
     "item/completed",
     "item/autoApprovalReview/started",
     "item/autoApprovalReview/completed",
+    "autoApprovalReview/strictReviewRequired",
     "item/agentMessage/delta",
     "item/plan/delta",
     "item/reasoning/summaryTextDelta",
@@ -201,7 +204,7 @@ class AsyncTurnStream:
                 message = error.message
                 if error.additionalDetails is not None and error.additionalDetails != "":
                     message = f"{message}: {error.additionalDetails}"
-                raise AppServerTurnError(message)
+                raise AppServerTurnError(message, error=error)
             self._retryable_error_notifications.append(notification)
         if isinstance(notification, protocol.TurnCompletedNotificationModel):
             self._done = True
@@ -233,7 +236,7 @@ class AsyncTurnStream:
             message = "Turn failed"
             if turn.error is not None:
                 message = turn.error.message
-            raise AppServerTurnError(message, turn=turn)
+            raise AppServerTurnError(message, turn=turn, error=turn.error)
         if turn.status.root == "interrupted":
             raise AppServerTurnError("Turn aborted: interrupted", turn=turn)
 
@@ -641,8 +644,18 @@ class AsyncAppServerThread:
         self._snapshot = result.thread
         return self.snapshot
 
+    async def revert(self, before_turn_id: str) -> protocol.ThreadRevertResponse:
+        """Remove `before_turn_id` and every later turn from this thread."""
+        result = await self._client.rpc.request_typed(
+            "thread/revert",
+            protocol.ThreadRevertParams(threadId=self.id, beforeTurnId=before_turn_id),
+            protocol.ThreadRevertResponse,
+        )
+        self._snapshot = result.thread
+        return result
+
     async def rollback(self, num_turns: int) -> protocol.Thread:
-        """Roll back the last `num_turns` turns."""
+        """Roll back the last `num_turns` turns on a legacy-history thread."""
         result = await self._client.rpc.request_typed(
             "thread/rollback",
             protocol.ThreadRollbackParams(threadId=self.id, numTurns=num_turns),
@@ -665,15 +678,21 @@ class AsyncAppServerThread:
             EmptyResult,
         )
 
-    async def set_pinned(self, pinned: bool) -> protocol.Thread:
-        """Set whether this thread is pinned and update the cached snapshot."""
-        result = await self._client.rpc.request_typed(
-            "thread/metadata/update",
-            protocol.ThreadMetadataUpdateParams(threadId=self.id, isPinned=pinned),
-            protocol.ThreadMetadataUpdateResponse,
+    async def move_to_section(
+        self,
+        section_id: str | None,
+        *,
+        before_thread_id: str | None = None,
+    ) -> EmptyResult:
+        return await self._client.rpc.request_typed(
+            "thread/section/move",
+            protocol.ThreadSectionMoveParams(
+                threadId=self.id,
+                sectionId=section_id,
+                beforeThreadId=before_thread_id,
+            ),
+            EmptyResult,
         )
-        self._snapshot = result.thread
-        return self.snapshot
 
     async def unsubscribe(self) -> EmptyResult:
         """Unsubscribe this connection from the loaded thread."""

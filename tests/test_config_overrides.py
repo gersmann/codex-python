@@ -1,11 +1,11 @@
 from __future__ import annotations
 
-import shutil
 from pathlib import Path
 
 import pytest
 from pydantic import BaseModel
 
+from codex import _binary
 from codex._binary import bundled_app_server_path, resolve_target_triple
 from codex.errors import CodexExecError
 from codex.output_schema_file import create_output_schema_file
@@ -27,18 +27,17 @@ def test_resolve_target_triple_rejects_unsupported() -> None:
         resolve_target_triple("freebsd", "x86_64")
 
 
-def test_bundled_app_server_path_resolves_when_binary_exists() -> None:
+def test_bundled_app_server_path_resolves_when_binary_exists(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     target = "x86_64-unknown-linux-musl"
-    package_root = Path(__file__).resolve().parent.parent / "codex"
+    package_root = tmp_path / "codex"
+    monkeypatch.setattr(_binary, "__file__", str(package_root / "_binary.py"))
     binary_path = package_root / "vendor" / target / "codex-app-server" / "codex-app-server"
     binary_path.parent.mkdir(parents=True, exist_ok=True)
     binary_path.write_text("test", encoding="utf-8")
-    try:
-        assert bundled_app_server_path(target) == binary_path
-    finally:
-        if binary_path.exists():
-            binary_path.unlink()
-        shutil.rmtree(package_root / "vendor" / target, ignore_errors=True)
+
+    assert bundled_app_server_path(target) == binary_path
 
 
 def test_bundled_app_server_path_raises_when_missing() -> None:

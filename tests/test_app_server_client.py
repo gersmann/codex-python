@@ -45,6 +45,7 @@ def _thread_payload(thread_id: str = "thr-1") -> JsonObject:
         "preview": "",
         "ephemeral": False,
         "modelProvider": "openai",
+        "projectId": None,
         "createdAt": 1730910000,
         "updatedAt": 1730910000,
         "cwd": "/repo",
@@ -52,6 +53,19 @@ def _thread_payload(thread_id: str = "thr-1") -> JsonObject:
         "source": "appServer",
         "status": {"type": "idle"},
         "turns": [],
+    }
+
+
+def _thread_section_payload(
+    section_id: str = "section-1",
+    *,
+    name: str = "Work",
+    appearance: JsonObject | None = None,
+) -> JsonObject:
+    return {
+        "id": section_id,
+        "name": name,
+        "appearance": appearance,
     }
 
 
@@ -75,6 +89,14 @@ def _thread_resume_result_payload(thread_id: str = "thr-1") -> JsonObject:
         "sandbox": {"type": "dangerFullAccess"},
         "thread": _thread_payload(thread_id),
         "turnsBackwardsCursor": "turns-head",
+    }
+
+
+def _thread_revert_result_payload(thread_id: str = "thr-1") -> JsonObject:
+    return {
+        "itemsBackwardsCursor": "items-reverted",
+        "thread": {**_thread_payload(thread_id), "name": "Reverted thread"},
+        "turnsBackwardsCursor": "turns-reverted",
     }
 
 
@@ -133,8 +155,16 @@ def _model_list_payload() -> JsonObject:
                 "inputModalities": ["text", "image"],
                 "supportsPersonality": True,
                 "isDefault": True,
+                "modelSpecialty": "coding",
+                "multiAgentVersion": "v2",
                 "upgrade": None,
-                "upgradeInfo": None,
+                "upgradeInfo": {
+                    "migrationMarkdown": None,
+                    "model": "gpt-5.5",
+                    "modelLink": None,
+                    "retirementAt": 1800000000,
+                    "upgradeCopy": None,
+                },
                 "availabilityNux": None,
             }
         ],
@@ -361,6 +391,7 @@ def test_sync_connect_websocket_passes_explicit_options_to_async_client(
             self.events = object()
             self.models = fake_service
             self.apps = fake_service
+            self.thread_sections = fake_service
             self.skills = fake_service
             self.account = fake_service
             self.config = fake_service
@@ -509,6 +540,7 @@ def test_async_client_start_thread_returns_thread_object() -> None:
                     version="1.2.3",
                 ),
                 experimental_api=True,
+                extensions={"openai/form": {}},
                 opt_out_notification_methods=("item/agentMessage/delta",),
             ),
         )
@@ -525,6 +557,7 @@ def test_async_client_start_thread_returns_thread_object() -> None:
         }
         assert initialize_request["params"]["capabilities"] == {
             "experimentalApi": True,
+            "extensions": {"openai/form": {}},
             "optOutNotificationMethods": ["item/agentMessage/delta"],
         }
         assert transport.wait_for_method("initialized") == {"method": "initialized", "params": {}}
@@ -674,7 +707,14 @@ def test_app_server_turn_and_list_options_use_protocol_owned_types() -> None:
         responsesapi_client_metadata={"trace_id": "trace-1"},
         runtime_workspace_roots=[protocol.AbsolutePathBuf("/repo")],
         service_tier=protocol.ServiceTier("fast"),
+        service_tier_for_turn="default",
         summary=protocol.ReasoningSummary("concise"),
+        tool_output=protocol.TurnToolOutput(
+            name="knowledge_query",
+            namespace="mcp",
+            output="cached result",
+        ),
+        turn_trigger="retry",
     ).to_params(
         thread_id="thr-1",
         input=[{"type": "text", "text": "Summarize this repo."}],
@@ -682,7 +722,8 @@ def test_app_server_turn_and_list_options_use_protocol_owned_types() -> None:
     list_params = AppServerThreadListOptions(
         ancestor_thread_id="thr-root",
         cwd=["/repo", "/worktree"],
-        is_pinned=True,
+        project_id="project-1",
+        section_id="section-1",
         sort_direction=protocol.SortDirection("asc"),
         sort_key=protocol.ThreadSortKey("updated_at"),
         source_kinds=[protocol.ThreadSourceKind("appServer")],
@@ -703,13 +744,21 @@ def test_app_server_turn_and_list_options_use_protocol_owned_types() -> None:
         "responsesapiClientMetadata": {"trace_id": "trace-1"},
         "runtimeWorkspaceRoots": ["/repo"],
         "serviceTier": "fast",
+        "serviceTierForTurn": "default",
         "summary": "concise",
         "threadId": "thr-1",
+        "toolOutput": {
+            "name": "knowledge_query",
+            "namespace": "mcp",
+            "output": "cached result",
+        },
+        "turnTrigger": "retry",
     }
     assert list_params.model_dump(mode="python", by_alias=True, exclude_none=True) == {
         "ancestorThreadId": "thr-root",
         "cwd": ["/repo", "/worktree"],
-        "isPinned": True,
+        "projectId": "project-1",
+        "sectionId": "section-1",
         "sortDirection": "asc",
         "sortKey": "updated_at",
         "sourceKinds": ["appServer"],
@@ -785,7 +834,10 @@ def test_async_turn_stream_yields_typed_events_and_aggregates_final_text() -> No
                     "threadId": "thr-1",
                     "turnId": "turn-1",
                     "completedAtMs": 1_714_000_000_000,
-                    "item": _agent_message_item("Repository summary"),
+                    "item": {
+                        **_agent_message_item("Repository summary"),
+                        "questions": [{"title": "Which module?", "options": ["API", "CLI"]}],
+                    },
                 },
             }
         )
@@ -799,6 +851,21 @@ def test_async_turn_stream_yields_typed_events_and_aggregates_final_text() -> No
                 },
             }
         )
+        for method in (
+            "modelProvider/authRecoveryStarted",
+            "modelProvider/authRecoveryCompleted",
+        ):
+            transport.push(
+                {
+                    "method": method,
+                    "params": {
+                        "threadId": "thr-1",
+                        "turnId": "turn-1",
+                        "provider": "openai",
+                        "message": "Refreshing authentication",
+                    },
+                }
+            )
         transport.push(
             {
                 "method": "turn/completed",
@@ -817,6 +884,8 @@ def test_async_turn_stream_yields_typed_events_and_aggregates_final_text() -> No
             protocol.ItemAgentMessageDeltaNotification,
             protocol.ItemCompletedNotificationModel,
             protocol.HookCompletedNotificationModel,
+            protocol.ModelProviderAuthRecoveryStartedNotification,
+            protocol.ModelProviderAuthRecoveryCompletedNotification,
             protocol.TurnCompletedNotificationModel,
         ]
         assert events[2].params.delta == "Repository summary"
@@ -827,6 +896,9 @@ def test_async_turn_stream_yields_typed_events_and_aggregates_final_text() -> No
         assert stream.final_message.text == "Repository summary"
         assert stream.final_message.phase is not None
         assert stream.final_message.phase.root == "final_answer"
+        assert stream.final_message.questions == [
+            protocol.AsyncUserInputQuestion(title="Which module?", options=["API", "CLI"])
+        ]
         assert stream.final_turn is not None
         assert stream.final_turn.status.root == "completed"
         assert isinstance(stream.items[0].root, protocol.AgentMessageThreadItem)
@@ -1225,16 +1297,29 @@ def test_async_thread_run_helpers_raise_for_failed_terminal_turn() -> None:
                     | {
                         "error": {
                             "message": "request failed",
-                            "codexErrorInfo": None,
+                            "codexErrorInfo": "misalignmentPolicyViolation",
                             "additionalDetails": None,
+                            "misalignment": {
+                                "errorType": "policyMismatch",
+                                "detailedExplanation": "The request needs clarification.",
+                                "steer": {"message": "Clarify the intended scope."},
+                            },
                         }
                     },
                 },
             }
         )
 
-        with pytest.raises(AppServerTurnError, match="request failed"):
+        with pytest.raises(AppServerTurnError, match="request failed") as exc_info:
             await text_task
+
+        assert exc_info.value.terminal_status == "failed"
+        assert exc_info.value.turn is not None
+        assert exc_info.value.error is exc_info.value.turn.error
+        assert exc_info.value.error is not None
+        assert exc_info.value.error.misalignment is not None
+        assert exc_info.value.error.misalignment.steer is not None
+        assert exc_info.value.error.misalignment.steer.message == "Clarify the intended scope."
 
         await client.close()
 
@@ -1471,6 +1556,10 @@ def test_async_client_exposes_public_thread_operations() -> None:
                 "result": {"thread": {**_thread_payload(), "name": "Unarchived thread"}},
             }
 
+        def revert_thread(message: JsonObject) -> JsonObject:
+            assert message["params"] == {"beforeTurnId": "turn-2", "threadId": "thr-1"}
+            return {"id": message["id"], "result": _thread_revert_result_payload()}
+
         def rollback_thread(message: JsonObject) -> JsonObject:
             assert message["params"] == {"threadId": "thr-1", "numTurns": 2}
             return {
@@ -1486,13 +1575,6 @@ def test_async_client_exposes_public_thread_operations() -> None:
             assert message["params"] == {"threadId": "thr-1", "name": "Renamed thread"}
             return {"id": message["id"], "result": {}}
 
-        def set_thread_pinned(message: JsonObject) -> JsonObject:
-            assert message["params"] == {"threadId": "thr-1", "isPinned": True}
-            return {
-                "id": message["id"],
-                "result": {"thread": {**_thread_payload(), "isPinned": True}},
-            }
-
         def unsubscribe_thread(message: JsonObject) -> JsonObject:
             assert message["params"] == {"threadId": "thr-1"}
             return {"id": message["id"], "result": {}}
@@ -1506,10 +1588,10 @@ def test_async_client_exposes_public_thread_operations() -> None:
         transport.responses["thread/fork"] = fork_thread
         transport.responses["thread/archive"] = archive_thread
         transport.responses["thread/unarchive"] = unarchive_thread
+        transport.responses["thread/revert"] = revert_thread
         transport.responses["thread/rollback"] = rollback_thread
         transport.responses["thread/compact/start"] = compact_thread
         transport.responses["thread/name/set"] = set_thread_name
-        transport.responses["thread/metadata/update"] = set_thread_pinned
         transport.responses["thread/unsubscribe"] = unsubscribe_thread
 
         client = AsyncAppServerClient(transport)
@@ -1550,15 +1632,15 @@ def test_async_client_exposes_public_thread_operations() -> None:
         assert thread.snapshot.name == "Refreshed thread"
         unarchived = await thread.unarchive()
         assert thread.snapshot.name == "Unarchived thread"
+        reverted = await thread.revert("turn-2")
+        assert thread.snapshot.name == "Reverted thread"
         rolled_back = await thread.rollback(2)
         assert thread.snapshot.name == "Rolled back thread"
         compacted = await thread.compact()
         renamed = await thread.set_name("Renamed thread")
-        pinned = await thread.set_pinned(True)
         unsubscribed = await thread.unsubscribe()
 
         assert refreshed.name == "Refreshed thread"
-        assert thread.snapshot.isPinned is True
         assert read.name == "Read thread"
         assert [item.id for item in threads] == ["thr-1", "thr-2"]
         assert [item.id for item in page.data] == ["thr-3"]
@@ -1591,11 +1673,126 @@ def test_async_client_exposes_public_thread_operations() -> None:
         assert forked.id == "thr-fork"
         assert archived == EmptyResult()
         assert unarchived.name == "Unarchived thread"
+        assert reverted.itemsBackwardsCursor == "items-reverted"
+        assert reverted.turnsBackwardsCursor == "turns-reverted"
         assert rolled_back.name == "Rolled back thread"
         assert compacted == EmptyResult()
         assert renamed == EmptyResult()
-        assert pinned.isPinned is True
         assert unsubscribed == EmptyResult()
+
+        await client.close()
+
+    asyncio.run(scenario())
+
+
+def test_async_client_exposes_thread_section_operations_and_null_filters() -> None:
+    async def scenario() -> None:
+        transport = ScriptedTransport()
+        list_section_params: list[JsonObject] = [
+            {"limit": 2},
+            {"cursor": "section-cursor-1", "limit": 1},
+        ]
+        move_params: list[JsonObject] = [
+            {
+                "beforeThreadId": "thr-2",
+                "sectionId": "section-1",
+                "threadId": "thr-1",
+            },
+            {"sectionId": None, "threadId": "thr-1"},
+        ]
+        thread_list_params: list[JsonObject] = []
+
+        def list_sections(message: JsonObject) -> JsonObject:
+            assert message["params"] == list_section_params.pop(0)
+            return {
+                "id": message["id"],
+                "result": {
+                    "data": [_thread_section_payload()],
+                    "nextCursor": "section-cursor-2",
+                },
+            }
+
+        def create_section(message: JsonObject) -> JsonObject:
+            assert message["params"] == {
+                "appearance": {"color": "blue", "icon": "folder"},
+                "name": "Work",
+            }
+            return {
+                "id": message["id"],
+                "result": {
+                    "section": _thread_section_payload(
+                        appearance={"color": "blue", "icon": "folder"}
+                    )
+                },
+            }
+
+        def rename_section(message: JsonObject) -> JsonObject:
+            assert message["params"] == {"name": "Projects", "sectionId": "section-1"}
+            return {
+                "id": message["id"],
+                "result": {
+                    "section": _thread_section_payload(name="Projects"),
+                },
+            }
+
+        def delete_section(message: JsonObject) -> JsonObject:
+            assert message["params"] == {"sectionId": "section-1"}
+            return {"id": message["id"], "result": {}}
+
+        def move_thread(message: JsonObject) -> JsonObject:
+            assert message["params"] == move_params.pop(0)
+            return {"id": message["id"], "result": {}}
+
+        def list_threads(message: JsonObject) -> JsonObject:
+            thread_list_params.append(message["params"])
+            return {
+                "id": message["id"],
+                "result": {"data": [_thread_payload()], "nextCursor": None},
+            }
+
+        transport.responses["thread/start"] = {"thread": _thread_payload()}
+        transport.responses["thread/list"] = list_threads
+        transport.responses["threadSection/list"] = list_sections
+        transport.responses["threadSection/create"] = create_section
+        transport.responses["threadSection/update"] = rename_section
+        transport.responses["threadSection/delete"] = delete_section
+        transport.responses["thread/section/move"] = move_thread
+
+        client = AsyncAppServerClient(transport)
+        await client.start()
+
+        await client.list_threads(AppServerThreadListOptions())
+        await client.list_threads(AppServerThreadListOptions(use_state_db_only=None))
+        unassigned = await client.list_threads(
+            AppServerThreadListOptions(project_id=None, section_id=None)
+        )
+        sections = await client.thread_sections.list(limit=2)
+        page = await client.thread_sections.list_page(cursor="section-cursor-1", limit=1)
+        created = await client.thread_sections.create(
+            name="Work",
+            appearance=protocol.ThreadSectionAppearance(color="blue", icon="folder"),
+        )
+        renamed = await client.thread_sections.rename(
+            section_id="section-1",
+            name="Projects",
+        )
+        deleted = await client.thread_sections.delete(section_id="section-1")
+        thread = await client.start_thread()
+        moved = await thread.move_to_section("section-1", before_thread_id="thr-2")
+        unsectioned = await thread.move_to_section(None)
+
+        assert [item.id for item in unassigned] == ["thr-1"]
+        assert thread_list_params == [{}, {}, {"projectId": None, "sectionId": None}]
+        assert [section.id for section in sections] == ["section-1"]
+        assert page.nextCursor == "section-cursor-2"
+        assert created.appearance is not None
+        assert created.appearance.color == "blue"
+        assert renamed.name == "Projects"
+        assert deleted == EmptyResult()
+        assert moved == EmptyResult()
+        assert unsectioned == EmptyResult()
+        assert not list_section_params
+        assert not move_params
 
         await client.close()
 
@@ -1668,6 +1865,7 @@ def test_async_client_exposes_typed_rpc_domain_clients() -> None:
                                         "defaultPrompt": None,
                                     },
                                     "path": "/repo/.codex/skills/skill-creator/SKILL.md",
+                                    "pluginId": "plugin-1",
                                     "shortDescription": "Create or update skills",
                                     "scope": "repo",
                                 }
@@ -1753,6 +1951,9 @@ def test_async_client_exposes_typed_rpc_domain_clients() -> None:
                 "result": {
                     "rateLimits": snapshot,
                     "rateLimitsByLimitId": {"codex": snapshot},
+                    "accountId": "acct-1",
+                    "rateLimitResetCredits": {"availableCount": 2, "credits": None},
+                    "rateLimitUpsell": {"banner_type": "usage", "dismissed_at": None},
                 },
             }
 
@@ -1765,6 +1966,8 @@ def test_async_client_exposes_typed_rpc_domain_clients() -> None:
                         "model": "gpt-5.4",
                         "approval_policy": "on-request",
                         "sandbox_mode": "workspace-write",
+                        "model_auto_compact_token_limit_scope": None,
+                        "apps": {"example": {"links": None}},
                     },
                     "layers": [
                         {
@@ -1822,12 +2025,18 @@ def test_async_client_exposes_typed_rpc_domain_clients() -> None:
                 "id": message["id"],
                 "result": {
                     "requirements": {
+                        "additionalDeveloperInstructions": "Follow managed policy.",
+                        "allowBrowserAndComputerUse": True,
                         "allowedApprovalPolicies": ["on-request", "never"],
                         "allowedApprovalsReviewers": ["user"],
                         "allowedSandboxModes": ["read-only", "workspace-write"],
                         "allowedWebSearchModes": ["disabled", "live"],
+                        "autoReview": {"ignoreRules": ["safe-command"]},
+                        "chatgptBaseUrl": "https://chatgpt.example.com",
+                        "cliAuthCredentialsStore": "file",
                         "enforceResidency": "us",
                         "featureRequirements": {"personality": {"required": True}},
+                        "inAppBrowser": {"allowExternalBrowserSettingsImport": False},
                         "network": {
                             "enabled": True,
                             "allowedDomains": ["api.openai.com"],
@@ -1844,6 +2053,7 @@ def test_async_client_exposes_typed_rpc_domain_clients() -> None:
 
         def oauth_login(message: JsonObject) -> JsonObject:
             assert message["params"] == {
+                "clientRegistration": "dcr",
                 "name": "github",
                 "scopes": ["repo"],
                 "threadId": "thr-1",
@@ -1863,6 +2073,8 @@ def test_async_client_exposes_typed_rpc_domain_clients() -> None:
                         {
                             "name": "github",
                             "authStatus": "oAuth",
+                            "pluginId": "plugin-1",
+                            "runtimeStatus": "connected",
                             "tools": {
                                 "repo_status": {
                                     "_meta": {"origin": "pytest"},
@@ -1957,13 +2169,20 @@ def test_async_client_exposes_typed_rpc_domain_clients() -> None:
             return {
                 "id": message["id"],
                 "result": {
+                    "connectors": [
+                        {
+                            "name": "knowledge",
+                            "sessionCount": 3,
+                            "source": "sessionToolUse",
+                        }
+                    ],
                     "items": [
                         {
                             "itemType": "AGENTS_MD",
                             "description": "Import CLAUDE.md",
                             "cwd": "/repo",
                         }
-                    ]
+                    ],
                 },
             }
 
@@ -2086,6 +2305,7 @@ def test_async_client_exposes_typed_rpc_domain_clients() -> None:
         requirements = await client.config.read_requirements()
         reload_result = await client.config.reload_mcp_servers()
         oauth_result = await client.mcp_servers.oauth_login(
+            client_registration=protocol.McpServerOauthClientRegistration("dcr"),
             name="github",
             scopes=["repo"],
             thread_id="thr-1",
@@ -2150,7 +2370,7 @@ def test_async_client_exposes_typed_rpc_domain_clients() -> None:
         )
         recorded_history = await client.external_agent_config.record_history(
             item_type_results=[
-                protocol.ExternalAgentConfigImportTypeResult(
+                protocol.ExternalAgentConfigImportHistoryRecordTypeResultParams(
                     itemType="AGENTS_MD",
                     successes=[],
                     failures=[],
@@ -2162,6 +2382,10 @@ def test_async_client_exposes_typed_rpc_domain_clients() -> None:
 
         assert models[0].display_name == "GPT-5.4"
         assert models[0].additional_speed_tiers == ["flex"]
+        assert models[0].model_specialty == "coding"
+        assert models[0].multi_agent_version == protocol.MultiAgentVersion("v2")
+        assert models[0].upgrade_info is not None
+        assert models[0].upgrade_info.retirement_at == 1800000000
         assert model_page.data[0].display_name == "GPT-5.4"
         assert model_page.data[0].additional_speed_tiers == ["flex"]
         assert apps[0].id == "demo-app"
@@ -2173,6 +2397,7 @@ def test_async_client_exposes_typed_rpc_domain_clients() -> None:
         assert skills[0].skills[0].dependencies.tools[0].value == "git"
         assert skills[0].skills[0].interface is not None
         assert skills[0].skills[0].interface.display_name == "Skill Creator"
+        assert skills[0].skills[0].plugin_id == "plugin-1"
         assert skills[0].skills[0].short_description == "Create or update skills"
         assert skills_result.data[0].cwd == "/repo"
         assert skill_config.effective_enabled is False
@@ -2184,10 +2409,25 @@ def test_async_client_exposes_typed_rpc_domain_clients() -> None:
         assert canceled_login.status == "canceled"
         assert logout_result == EmptyResult()
         assert rate_limits.rate_limits.limitId == "codex"
+        assert rate_limits.account_id == "acct-1"
+        assert rate_limits.rate_limit_reset_credits is not None
+        assert rate_limits.rate_limit_reset_credits.availableCount == 2
+        assert rate_limits.rate_limit_upsell == {"banner_type": "usage", "dismissed_at": None}
         assert config.config.model == "gpt-5.4"
         assert write_result.version == "v2"
         assert batch_result.version == "v3"
         assert requirements.requirements is not None
+        assert (
+            requirements.requirements.additional_developer_instructions == "Follow managed policy."
+        )
+        assert requirements.requirements.allow_browser_and_computer_use is True
+        assert requirements.requirements.auto_review is not None
+        assert requirements.requirements.auto_review.ignoreRules == ["safe-command"]
+        assert requirements.requirements.chatgpt_base_url == "https://chatgpt.example.com"
+        assert requirements.requirements.cli_auth_credentials_store is not None
+        assert requirements.requirements.cli_auth_credentials_store.root == "file"
+        assert requirements.requirements.in_app_browser is not None
+        assert requirements.requirements.in_app_browser.allowExternalBrowserSettingsImport is False
         assert requirements.requirements.allowed_sandbox_modes is not None
         assert [mode.root for mode in requirements.requirements.allowed_sandbox_modes] == [
             "read-only",
@@ -2215,6 +2455,8 @@ def test_async_client_exposes_typed_rpc_domain_clients() -> None:
         assert mcp_status[0].name == "github"
         assert isinstance(mcp_status[0].auth_status, protocol.McpAuthStatus)
         assert mcp_status[0].auth_status.root == "oAuth"
+        assert mcp_status[0].plugin_id == "plugin-1"
+        assert mcp_status[0].runtime_status == protocol.McpServerConnectionStatus("connected")
         assert isinstance(mcp_status[0].tools["repo_status"], protocol.Tool)
         assert mcp_status[0].tools["repo_status"].field_meta == {"origin": "pytest"}
         assert mcp_status[0].tools["repo_status"].inputSchema == {
@@ -2242,6 +2484,8 @@ def test_async_client_exposes_typed_rpc_domain_clients() -> None:
             name="generated",
             path="/repo/.codex/skills/generated/SKILL.md",
         )
+        assert detected.connectors[0].name == "knowledge"
+        assert detected.connectors[0].sessionCount == 3
         assert detected.items[0].itemType.root == "AGENTS_MD"
         assert import_result.import_id == "import-1"
         assert recorded_history.import_id == "import-2"
@@ -2998,6 +3242,10 @@ def test_sync_client_exposes_public_thread_operations() -> None:
             "result": {"thread": {**_thread_payload(), "name": "Unarchived thread"}},
         }
 
+    def revert_thread(message: JsonObject) -> JsonObject:
+        assert message["params"] == {"beforeTurnId": "turn-2", "threadId": "thr-1"}
+        return {"id": message["id"], "result": _thread_revert_result_payload()}
+
     def rollback_thread(message: JsonObject) -> JsonObject:
         assert message["params"] == {"threadId": "thr-1", "numTurns": 2}
         return {
@@ -3013,13 +3261,6 @@ def test_sync_client_exposes_public_thread_operations() -> None:
         assert message["params"] == {"threadId": "thr-1", "name": "Renamed thread"}
         return {"id": message["id"], "result": {}}
 
-    def set_thread_pinned(message: JsonObject) -> JsonObject:
-        assert message["params"] == {"threadId": "thr-1", "isPinned": True}
-        return {
-            "id": message["id"],
-            "result": {"thread": {**_thread_payload(), "isPinned": True}},
-        }
-
     def unsubscribe_thread(message: JsonObject) -> JsonObject:
         assert message["params"] == {"threadId": "thr-1"}
         return {"id": message["id"], "result": {}}
@@ -3033,10 +3274,10 @@ def test_sync_client_exposes_public_thread_operations() -> None:
     transport.responses["thread/fork"] = fork_thread
     transport.responses["thread/archive"] = archive_thread
     transport.responses["thread/unarchive"] = unarchive_thread
+    transport.responses["thread/revert"] = revert_thread
     transport.responses["thread/rollback"] = rollback_thread
     transport.responses["thread/compact/start"] = compact_thread
     transport.responses["thread/name/set"] = set_thread_name
-    transport.responses["thread/metadata/update"] = set_thread_pinned
     transport.responses["thread/unsubscribe"] = unsubscribe_thread
 
     async_client = AsyncAppServerClient(transport)
@@ -3068,15 +3309,15 @@ def test_sync_client_exposes_public_thread_operations() -> None:
         assert thread.snapshot.name == "Refreshed thread"
         unarchived = thread.unarchive()
         assert thread.snapshot.name == "Unarchived thread"
+        reverted = thread.revert("turn-2")
+        assert thread.snapshot.name == "Reverted thread"
         rolled_back = thread.rollback(2)
         assert thread.snapshot.name == "Rolled back thread"
         compacted = thread.compact()
         renamed = thread.set_name("Renamed thread")
-        pinned = thread.set_pinned(True)
         unsubscribed = thread.unsubscribe()
 
         assert refreshed.name == "Refreshed thread"
-        assert thread.snapshot.isPinned is True
         assert read.name == "Read thread"
         assert [item.id for item in threads] == ["thr-1", "thr-2"]
         assert [item.id for item in page.data] == ["thr-3"]
@@ -3105,11 +3346,51 @@ def test_sync_client_exposes_public_thread_operations() -> None:
         assert forked.id == "thr-fork"
         assert archived == EmptyResult()
         assert unarchived.name == "Unarchived thread"
+        assert reverted.itemsBackwardsCursor == "items-reverted"
+        assert reverted.turnsBackwardsCursor == "turns-reverted"
         assert rolled_back.name == "Rolled back thread"
         assert compacted == EmptyResult()
         assert renamed == EmptyResult()
-        assert pinned.isPinned is True
         assert unsubscribed == EmptyResult()
+    finally:
+        client.close()
+
+
+def test_sync_client_exposes_thread_section_operations() -> None:
+    loop = _LoopThread()
+    transport = ScriptedTransport()
+    transport.responses["thread/start"] = {"thread": _thread_payload()}
+    transport.responses["threadSection/list"] = {
+        "data": [_thread_section_payload()],
+        "nextCursor": "section-cursor-1",
+    }
+    transport.responses["threadSection/create"] = {
+        "section": _thread_section_payload(),
+    }
+    transport.responses["threadSection/update"] = {
+        "section": _thread_section_payload(name="Projects"),
+    }
+    transport.responses["threadSection/delete"] = {}
+    transport.responses["thread/section/move"] = {}
+
+    async_client = AsyncAppServerClient(transport)
+    loop.run(async_client.start())
+    client = AppServerClient(async_client, loop)
+
+    try:
+        sections = client.thread_sections.list(limit=1)
+        page = client.thread_sections.list_page(cursor="section-cursor-1", limit=1)
+        created = client.thread_sections.create(name="Work")
+        renamed = client.thread_sections.rename(section_id="section-1", name="Projects")
+        deleted = client.thread_sections.delete(section_id="section-1")
+        moved = client.start_thread().move_to_section(None)
+
+        assert [section.id for section in sections] == ["section-1"]
+        assert page.nextCursor == "section-cursor-1"
+        assert created.name == "Work"
+        assert renamed.name == "Projects"
+        assert deleted == EmptyResult()
+        assert moved == EmptyResult()
     finally:
         client.close()
 

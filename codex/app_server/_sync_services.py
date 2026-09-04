@@ -71,6 +71,33 @@ class _AsyncAppsClientLike(Protocol):
     ) -> AppListResult: ...
 
 
+class _AsyncThreadSectionsClientLike(Protocol):
+    async def list(
+        self,
+        *,
+        cursor: str | None = None,
+        limit: int | None = None,
+    ) -> list[protocol.ThreadSection]: ...
+
+    async def list_page(
+        self,
+        *,
+        cursor: str | None = None,
+        limit: int | None = None,
+    ) -> protocol.ThreadSectionListResponse: ...
+
+    async def create(
+        self,
+        *,
+        name: str,
+        appearance: protocol.ThreadSectionAppearance | None = None,
+    ) -> protocol.ThreadSection: ...
+
+    async def rename(self, *, section_id: str, name: str) -> protocol.ThreadSection: ...
+
+    async def delete(self, *, section_id: str) -> EmptyResult: ...
+
+
 class _AsyncSkillsClientLike(Protocol):
     def input(self, *, name: str, path: str) -> protocol.SkillUserInput: ...
 
@@ -200,6 +227,7 @@ class _AsyncMcpServersClientLike(Protocol):
     async def oauth_login(
         self,
         *,
+        client_registration: protocol.McpServerOauthClientRegistration | None = None,
         name: str,
         scopes: Sequence[str] | None = None,
         thread_id: str | None = None,
@@ -294,7 +322,9 @@ class _AsyncExternalAgentConfigClientLike(Protocol):
     async def record_history(
         self,
         *,
-        item_type_results: Sequence[protocol.ExternalAgentConfigImportTypeResult],
+        item_type_results: Sequence[
+            protocol.ExternalAgentConfigImportHistoryRecordTypeResultParams
+        ],
         provider_id: str,
     ) -> ExternalAgentConfigImportResult: ...
 
@@ -390,6 +420,46 @@ class _AppsClient(_SyncRunner):
                 thread_id=thread_id,
             )
         )
+
+
+class _ThreadSectionsClient(_SyncRunner):
+    def __init__(
+        self,
+        async_client: _AsyncThreadSectionsClientLike,
+        runner: Callable[[Coroutine[Any, Any, Any]], Any],
+    ) -> None:
+        super().__init__(runner)
+        self._async_client = async_client
+
+    def list(
+        self,
+        *,
+        cursor: str | None = None,
+        limit: int | None = None,
+    ) -> list[protocol.ThreadSection]:
+        return self._run(self._async_client.list(cursor=cursor, limit=limit))
+
+    def list_page(
+        self,
+        *,
+        cursor: str | None = None,
+        limit: int | None = None,
+    ) -> protocol.ThreadSectionListResponse:
+        return self._run(self._async_client.list_page(cursor=cursor, limit=limit))
+
+    def create(
+        self,
+        *,
+        name: str,
+        appearance: protocol.ThreadSectionAppearance | None = None,
+    ) -> protocol.ThreadSection:
+        return self._run(self._async_client.create(name=name, appearance=appearance))
+
+    def rename(self, *, section_id: str, name: str) -> protocol.ThreadSection:
+        return self._run(self._async_client.rename(section_id=section_id, name=name))
+
+    def delete(self, *, section_id: str) -> EmptyResult:
+        return self._run(self._async_client.delete(section_id=section_id))
 
 
 class _SkillsClient(_SyncRunner):
@@ -645,6 +715,7 @@ class _McpServersClient(_SyncRunner):
     def oauth_login(
         self,
         *,
+        client_registration: protocol.McpServerOauthClientRegistration | None = None,
         name: str,
         scopes: Sequence[str] | None = None,
         thread_id: str | None = None,
@@ -652,6 +723,7 @@ class _McpServersClient(_SyncRunner):
     ) -> McpServerOauthLoginResult:
         return self._run(
             self._async_client.oauth_login(
+                client_registration=client_registration,
                 name=name,
                 scopes=scopes,
                 thread_id=thread_id,
@@ -848,7 +920,9 @@ class _ExternalAgentConfigClient(_SyncRunner):
     def record_history(
         self,
         *,
-        item_type_results: Sequence[protocol.ExternalAgentConfigImportTypeResult],
+        item_type_results: Sequence[
+            protocol.ExternalAgentConfigImportHistoryRecordTypeResultParams
+        ],
         provider_id: str,
     ) -> ExternalAgentConfigImportResult:
         return self._run(
