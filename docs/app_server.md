@@ -2,7 +2,7 @@
 
 `AppServerClient` connects to `codex app-server` and exposes a thread and stream API on top of the JSON-RPC protocol.
 
-SDK `1.153.3` bundles Codex app-server `0.153.3`; its generated protocol models
+SDK `1.153.4` bundles Codex app-server `0.153.4`; its generated protocol models
 include that version's experimental schema. Experimental RPCs still require
 `AppServerInitializeOptions(experimental_api=True)`.
 
