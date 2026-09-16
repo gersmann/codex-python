@@ -3,6 +3,9 @@ from __future__ import annotations
 import asyncio
 import concurrent.futures
 import inspect
+import subprocess
+import sys
+import textwrap
 import threading
 import time
 from collections.abc import Callable
@@ -545,34 +548,69 @@ def test_async_client_start_thread_returns_thread_object() -> None:
             ),
         )
 
-        await client.start()
-        thread = await client.start_thread()
+        async with client:
+            thread = await client.start_thread()
 
-        assert transport.started is True
-        initialize_request = transport.wait_for_method("initialize")
-        assert initialize_request["params"]["clientInfo"] == {
-            "name": "pytest-client",
-            "title": "Pytest Client",
-            "version": "1.2.3",
-        }
-        assert initialize_request["params"]["capabilities"] == {
-            "experimentalApi": True,
-            "extensions": {"openai/form": {}},
-            "optOutNotificationMethods": ["item/agentMessage/delta"],
-        }
-        assert transport.wait_for_method("initialized") == {"method": "initialized", "params": {}}
-        assert transport.wait_for_method("thread/start") == {
-            "id": 1,
-            "method": "thread/start",
-            "params": {},
-        }
-        assert thread.id == "thr-1"
-        assert isinstance(thread.snapshot, protocol.Thread)
-        assert thread.snapshot.cwd.root == "/repo"
-
-        await client.close()
+            assert transport.started is True
+            initialize_request = transport.wait_for_method("initialize")
+            assert initialize_request["params"]["clientInfo"] == {
+                "name": "pytest-client",
+                "title": "Pytest Client",
+                "version": "1.2.3",
+            }
+            assert initialize_request["params"]["capabilities"] == {
+                "experimentalApi": True,
+                "extensions": {"openai/form": {}},
+                "optOutNotificationMethods": ["item/agentMessage/delta"],
+            }
+            assert transport.wait_for_method("initialized") == {
+                "method": "initialized",
+                "params": {},
+            }
+            assert transport.wait_for_method("thread/start") == {
+                "id": 1,
+                "method": "thread/start",
+                "params": {},
+            }
+            assert thread.id == "thr-1"
+            assert isinstance(thread.snapshot, protocol.Thread)
+            assert thread.snapshot.cwd.root == "/repo"
 
     asyncio.run(scenario())
+
+
+def test_async_client_context_closes_transport_after_assertion_failure() -> None:
+    # Bound the whole process: an unclosed Queue.get worker can stall asyncio.run teardown.
+    subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            textwrap.dedent("""\
+                import asyncio
+                import sys
+                sys.path.insert(0, "tests")
+                from test_app_server_client import AsyncAppServerClient, ScriptedTransport
+
+                transport = ScriptedTransport()
+
+                async def scenario():
+                    async with AsyncAppServerClient(transport):
+                        raise AssertionError("scenario failed")
+
+                try:
+                    asyncio.run(scenario())
+                except AssertionError as exc:
+                    assert str(exc) == "scenario failed"
+                    assert transport.closed
+                else:
+                    raise AssertionError("scenario failure was hidden")
+                """),
+        ],
+        check=True,
+        timeout=10,
+        capture_output=True,
+        text=True,
+    )
 
 
 def test_app_server_thread_start_options_serialize_with_camel_case_aliases() -> None:
@@ -2246,252 +2284,254 @@ def test_async_client_exposes_typed_rpc_domain_clients() -> None:
         )
         transport.responses["windowsSandbox/setupStart"] = windows_sandbox_setup_start
         client = AsyncAppServerClient(transport)
-        await client.start()
+        async with client:
+            models = await client.models.list(limit=20, include_hidden=False)
+            model_page = await client.models.list_page(limit=20, include_hidden=False)
+            apps = await client.apps.list(
+                cursor="cursor-1",
+                force_refetch=True,
+                limit=10,
+                thread_id="thr-1",
+            )
+            app_page = await client.apps.list_page(
+                cursor="cursor-1",
+                force_refetch=True,
+                limit=10,
+                thread_id="thr-1",
+            )
+            skills = await client.skills.list(
+                cwds=["/repo"],
+                force_reload=True,
+            )
+            skills_result = await client.skills.list_page(
+                cwds=["/repo"],
+                force_reload=True,
+            )
+            skill_config = await client.skills.write_config(
+                path="/repo/.codex/skills/skill-creator/SKILL.md",
+                enabled=False,
+            )
+            account = await client.account.read(refresh_token=True)
+            api_key_login = await client.account.login_api_key(api_key="sk-test")
+            chatgpt_login = await client.account.login_chatgpt()
+            chatgpt_tokens_login = await client.account.login_chatgpt_tokens(
+                access_token="access-token",
+                chatgpt_account_id="acct-1",
+                chatgpt_plan_type=protocol.PlanType("enterprise"),
+            )
+            canceled_login = await client.account.cancel_login(login_id="login-1")
+            logout_result = await client.account.logout()
+            rate_limits = await client.account.read_rate_limits()
+            config = await client.config.read(cwd="/repo", include_layers=True)
+            write_result = await client.config.write_value(
+                key_path="model",
+                value="gpt-5.4",
+                merge_strategy="replace",
+                expected_version="v1",
+            )
+            batch_result = await client.config.batch_write(
+                edits=[
+                    protocol.ConfigEdit(
+                        keyPath="apps.demo.enabled",
+                        mergeStrategy="upsert",
+                        value=True,
+                    )
+                ],
+                file_path="/home/user/.codex/config.toml",
+            )
+            requirements = await client.config.read_requirements()
+            reload_result = await client.config.reload_mcp_servers()
+            oauth_result = await client.mcp_servers.oauth_login(
+                client_registration=protocol.McpServerOauthClientRegistration("dcr"),
+                name="github",
+                scopes=["repo"],
+                thread_id="thr-1",
+                timeout_seconds=30,
+            )
+            mcp_status = await client.mcp_servers.list(cursor="cursor-2", limit=5)
+            mcp_status_page = await client.mcp_servers.list_page(cursor="cursor-2", limit=5)
+            mcp_status_alias = await client.mcp_servers.list_status(cursor="cursor-2", limit=5)
+            mcp_status_page_alias = await client.mcp_servers.list_status_page(
+                cursor="cursor-2",
+                limit=5,
+            )
+            feedback = await client.feedback.upload(
+                classification="bug",
+                include_logs=True,
+                extra_log_files=["/tmp/app.log"],
+                reason="Needs follow-up",
+                thread_id="thr-1",
+            )
+            command = await client.command.execute(
+                command=["git", "status"],
+                cwd="/repo",
+                sandbox_policy=protocol.WorkspaceWriteSandboxPolicy(
+                    type="workspaceWrite",
+                    networkAccess=True,
+                ),
+                timeout_ms=5000,
+            )
+            created_dir = await client.fs.create_directory(
+                path="/repo/.codex/skills/generated",
+                recursive=True,
+            )
+            wrote_file = await client.fs.write_file(
+                path="/repo/.codex/skills/generated/SKILL.md",
+                data="# Generated Skill\n",
+            )
+            environment = await client.environment.info(environment_id="environment-1")
+            generated_skill = await client.skills.write_skill(
+                name="generated",
+                directory="/repo/.codex/skills/generated",
+                instructions="# Generated Skill\n",
+                reload_cwds=["/repo"],
+            )
+            detected = await client.external_agent_config.detect(
+                cwds=["/repo"],
+                include_home=True,
+                max_session_age_days=30,
+                max_sessions=100,
+                migration_source="claude",
+            )
+            import_result = await client.external_agent_config.import_items(
+                migration_items=[
+                    protocol.ExternalAgentConfigMigrationItem(
+                        itemType="AGENTS_MD",
+                        description="Import CLAUDE.md",
+                        cwd="/repo",
+                    )
+                ],
+                migration_source="claude",
+                provider_id="provider-1",
+                source="pytest",
+            )
+            recorded_history = await client.external_agent_config.record_history(
+                item_type_results=[
+                    protocol.ExternalAgentConfigImportHistoryRecordTypeResultParams(
+                        itemType="AGENTS_MD",
+                        successes=[],
+                        failures=[],
+                    )
+                ],
+                provider_id="provider-1",
+            )
+            windows_setup = await client.windows_sandbox.setup_start(mode="elevated", cwd="C:/repo")
 
-        models = await client.models.list(limit=20, include_hidden=False)
-        model_page = await client.models.list_page(limit=20, include_hidden=False)
-        apps = await client.apps.list(
-            cursor="cursor-1",
-            force_refetch=True,
-            limit=10,
-            thread_id="thr-1",
-        )
-        app_page = await client.apps.list_page(
-            cursor="cursor-1",
-            force_refetch=True,
-            limit=10,
-            thread_id="thr-1",
-        )
-        skills = await client.skills.list(
-            cwds=["/repo"],
-            force_reload=True,
-        )
-        skills_result = await client.skills.list_page(
-            cwds=["/repo"],
-            force_reload=True,
-        )
-        skill_config = await client.skills.write_config(
-            path="/repo/.codex/skills/skill-creator/SKILL.md",
-            enabled=False,
-        )
-        account = await client.account.read(refresh_token=True)
-        api_key_login = await client.account.login_api_key(api_key="sk-test")
-        chatgpt_login = await client.account.login_chatgpt()
-        chatgpt_tokens_login = await client.account.login_chatgpt_tokens(
-            access_token="access-token",
-            chatgpt_account_id="acct-1",
-            chatgpt_plan_type=protocol.PlanType("enterprise"),
-        )
-        canceled_login = await client.account.cancel_login(login_id="login-1")
-        logout_result = await client.account.logout()
-        rate_limits = await client.account.read_rate_limits()
-        config = await client.config.read(cwd="/repo", include_layers=True)
-        write_result = await client.config.write_value(
-            key_path="model",
-            value="gpt-5.4",
-            merge_strategy="replace",
-            expected_version="v1",
-        )
-        batch_result = await client.config.batch_write(
-            edits=[
-                protocol.ConfigEdit(
-                    keyPath="apps.demo.enabled",
-                    mergeStrategy="upsert",
-                    value=True,
-                )
-            ],
-            file_path="/home/user/.codex/config.toml",
-        )
-        requirements = await client.config.read_requirements()
-        reload_result = await client.config.reload_mcp_servers()
-        oauth_result = await client.mcp_servers.oauth_login(
-            client_registration=protocol.McpServerOauthClientRegistration("dcr"),
-            name="github",
-            scopes=["repo"],
-            thread_id="thr-1",
-            timeout_seconds=30,
-        )
-        mcp_status = await client.mcp_servers.list(cursor="cursor-2", limit=5)
-        mcp_status_page = await client.mcp_servers.list_page(cursor="cursor-2", limit=5)
-        mcp_status_alias = await client.mcp_servers.list_status(cursor="cursor-2", limit=5)
-        mcp_status_page_alias = await client.mcp_servers.list_status_page(
-            cursor="cursor-2",
-            limit=5,
-        )
-        feedback = await client.feedback.upload(
-            classification="bug",
-            include_logs=True,
-            extra_log_files=["/tmp/app.log"],
-            reason="Needs follow-up",
-            thread_id="thr-1",
-        )
-        command = await client.command.execute(
-            command=["git", "status"],
-            cwd="/repo",
-            sandbox_policy=protocol.WorkspaceWriteSandboxPolicy(
-                type="workspaceWrite",
-                networkAccess=True,
-            ),
-            timeout_ms=5000,
-        )
-        created_dir = await client.fs.create_directory(
-            path="/repo/.codex/skills/generated",
-            recursive=True,
-        )
-        wrote_file = await client.fs.write_file(
-            path="/repo/.codex/skills/generated/SKILL.md",
-            data="# Generated Skill\n",
-        )
-        environment = await client.environment.info(environment_id="environment-1")
-        generated_skill = await client.skills.write_skill(
-            name="generated",
-            directory="/repo/.codex/skills/generated",
-            instructions="# Generated Skill\n",
-            reload_cwds=["/repo"],
-        )
-        detected = await client.external_agent_config.detect(
-            cwds=["/repo"],
-            include_home=True,
-            max_session_age_days=30,
-            max_sessions=100,
-            migration_source="claude",
-        )
-        import_result = await client.external_agent_config.import_items(
-            migration_items=[
-                protocol.ExternalAgentConfigMigrationItem(
-                    itemType="AGENTS_MD",
-                    description="Import CLAUDE.md",
-                    cwd="/repo",
-                )
-            ],
-            migration_source="claude",
-            provider_id="provider-1",
-            source="pytest",
-        )
-        recorded_history = await client.external_agent_config.record_history(
-            item_type_results=[
-                protocol.ExternalAgentConfigImportHistoryRecordTypeResultParams(
-                    itemType="AGENTS_MD",
-                    successes=[],
-                    failures=[],
-                )
-            ],
-            provider_id="provider-1",
-        )
-        windows_setup = await client.windows_sandbox.setup_start(mode="elevated", cwd="C:/repo")
-
-        assert models[0].display_name == "GPT-5.4"
-        assert models[0].additional_speed_tiers == ["flex"]
-        assert models[0].model_specialty == "coding"
-        assert models[0].multi_agent_version == protocol.MultiAgentVersion("v2")
-        assert models[0].upgrade_info is not None
-        assert models[0].upgrade_info.retirement_at == 1800000000
-        assert model_page.data[0].display_name == "GPT-5.4"
-        assert model_page.data[0].additional_speed_tiers == ["flex"]
-        assert apps[0].id == "demo-app"
-        assert app_page.data[0].id == "demo-app"
-        assert skills[0].cwd == "/repo"
-        assert skills[0].errors[0].message == "missing dependency"
-        assert skills[0].errors[0].path == "/repo/.codex/skills/broken/SKILL.md"
-        assert skills[0].skills[0].dependencies is not None
-        assert skills[0].skills[0].dependencies.tools[0].value == "git"
-        assert skills[0].skills[0].interface is not None
-        assert skills[0].skills[0].interface.display_name == "Skill Creator"
-        assert skills[0].skills[0].plugin_id == "plugin-1"
-        assert skills[0].skills[0].short_description == "Create or update skills"
-        assert skills_result.data[0].cwd == "/repo"
-        assert skill_config.effective_enabled is False
-        assert account.account is not None
-        assert account.account.type == "chatgpt"
-        assert api_key_login.type == "apiKey"
-        assert chatgpt_login.login_id == "login-1"
-        assert chatgpt_tokens_login.type == "chatgptAuthTokens"
-        assert canceled_login.status == "canceled"
-        assert logout_result == EmptyResult()
-        assert rate_limits.rate_limits.limitId == "codex"
-        assert rate_limits.account_id == "acct-1"
-        assert rate_limits.rate_limit_reset_credits is not None
-        assert rate_limits.rate_limit_reset_credits.availableCount == 2
-        assert rate_limits.rate_limit_upsell == {"banner_type": "usage", "dismissed_at": None}
-        assert config.config.model == "gpt-5.4"
-        assert write_result.version == "v2"
-        assert batch_result.version == "v3"
-        assert requirements.requirements is not None
-        assert (
-            requirements.requirements.additional_developer_instructions == "Follow managed policy."
-        )
-        assert requirements.requirements.allow_browser_and_computer_use is True
-        assert requirements.requirements.auto_review is not None
-        assert requirements.requirements.auto_review.ignoreRules == ["safe-command"]
-        assert requirements.requirements.chatgpt_base_url == "https://chatgpt.example.com"
-        assert requirements.requirements.cli_auth_credentials_store is not None
-        assert requirements.requirements.cli_auth_credentials_store.root == "file"
-        assert requirements.requirements.in_app_browser is not None
-        assert requirements.requirements.in_app_browser.allowExternalBrowserSettingsImport is False
-        assert requirements.requirements.allowed_sandbox_modes is not None
-        assert [mode.root for mode in requirements.requirements.allowed_sandbox_modes] == [
-            "read-only",
-            "workspace-write",
-        ]
-        assert requirements.requirements.allowed_approvals_reviewers is not None
-        assert [
-            reviewer.root for reviewer in requirements.requirements.allowed_approvals_reviewers
-        ] == ["user"]
-        assert requirements.requirements.allowed_web_search_modes is not None
-        assert [mode.root for mode in requirements.requirements.allowed_web_search_modes] == [
-            "disabled",
-            "live",
-        ]
-        assert requirements.requirements.enforce_residency is not None
-        assert requirements.requirements.enforce_residency.root == "us"
-        assert requirements.requirements.feature_requirements == {"personality": {"required": True}}
-        assert requirements.requirements.network is not None
-        assert requirements.requirements.network.enabled is True
-        assert requirements.requirements.network.allowedDomains == ["api.openai.com"]
-        assert requirements.requirements.network.deniedDomains == ["example.invalid"]
-        assert requirements.requirements.network.managedAllowedDomainsOnly is True
-        assert reload_result == EmptyResult()
-        assert oauth_result.authorization_url == "https://example.com/oauth"
-        assert mcp_status[0].name == "github"
-        assert isinstance(mcp_status[0].auth_status, protocol.McpAuthStatus)
-        assert mcp_status[0].auth_status.root == "oAuth"
-        assert mcp_status[0].plugin_id == "plugin-1"
-        assert mcp_status[0].runtime_status == protocol.McpServerConnectionStatus("connected")
-        assert isinstance(mcp_status[0].tools["repo_status"], protocol.Tool)
-        assert mcp_status[0].tools["repo_status"].field_meta == {"origin": "pytest"}
-        assert mcp_status[0].tools["repo_status"].inputSchema == {
-            "type": "object",
-            "properties": {},
-        }
-        assert mcp_status[0].tools["repo_status"].outputSchema == {"type": "object"}
-        assert isinstance(mcp_status[0].resources[0], protocol.Resource)
-        assert mcp_status[0].resources[0].field_meta == {"origin": "pytest"}
-        assert mcp_status[0].resources[0].mimeType == "text/markdown"
-        assert mcp_status[0].resources[0].uri == "file:///repo/README.md"
-        assert isinstance(mcp_status[0].resource_templates[0], protocol.ResourceTemplate)
-        assert mcp_status[0].resource_templates[0].uriTemplate == "file:///repo/{path}"
-        assert mcp_status_page.data[0].name == "github"
-        assert mcp_status_alias[0].name == "github"
-        assert mcp_status_page_alias.data[0].name == "github"
-        assert feedback.thread_id == "thr-feedback"
-        assert command.exit_code == 0
-        assert isinstance(created_dir, protocol.FsCreateDirectoryResponse)
-        assert isinstance(wrote_file, protocol.FsWriteFileResponse)
-        assert environment.cwd == protocol.PathUri("file:///repo")
-        assert environment.shell == protocol.EnvironmentShellInfo(name="zsh", path="/bin/zsh")
-        assert generated_skill == protocol.SkillUserInput(
-            type=protocol.SkillUserInputType("skill"),
-            name="generated",
-            path="/repo/.codex/skills/generated/SKILL.md",
-        )
-        assert detected.connectors[0].name == "knowledge"
-        assert detected.connectors[0].sessionCount == 3
-        assert detected.items[0].itemType.root == "AGENTS_MD"
-        assert import_result.import_id == "import-1"
-        assert recorded_history.import_id == "import-2"
-        assert windows_setup.started is True
-
-        await client.close()
+            assert models[0].display_name == "GPT-5.4"
+            assert models[0].additional_speed_tiers == ["flex"]
+            assert models[0].model_specialty == "coding"
+            assert models[0].multi_agent_version == protocol.MultiAgentVersion("v2")
+            assert models[0].upgrade_info is not None
+            assert models[0].upgrade_info.retirement_at == 1800000000
+            assert model_page.data[0].display_name == "GPT-5.4"
+            assert model_page.data[0].additional_speed_tiers == ["flex"]
+            assert apps[0].id == "demo-app"
+            assert app_page.data[0].id == "demo-app"
+            assert skills[0].cwd == "/repo"
+            assert skills[0].errors[0].message == "missing dependency"
+            assert skills[0].errors[0].path == "/repo/.codex/skills/broken/SKILL.md"
+            assert skills[0].skills[0].dependencies is not None
+            assert skills[0].skills[0].dependencies.tools[0].value == "git"
+            assert skills[0].skills[0].interface is not None
+            assert skills[0].skills[0].interface.display_name == "Skill Creator"
+            assert skills[0].skills[0].plugin_id == "plugin-1"
+            assert skills[0].skills[0].short_description == "Create or update skills"
+            assert skills_result.data[0].cwd == "/repo"
+            assert skill_config.effective_enabled is False
+            assert account.account is not None
+            assert account.account.type == "chatgpt"
+            assert api_key_login.type == "apiKey"
+            assert chatgpt_login.login_id == "login-1"
+            assert chatgpt_tokens_login.type == "chatgptAuthTokens"
+            assert canceled_login.status == "canceled"
+            assert logout_result == EmptyResult()
+            assert rate_limits.rate_limits.limitId == "codex"
+            assert rate_limits.account_id == "acct-1"
+            assert rate_limits.rate_limit_reset_credits is not None
+            assert rate_limits.rate_limit_reset_credits.availableCount == 2
+            assert rate_limits.rate_limit_upsell == {"banner_type": "usage", "dismissed_at": None}
+            assert config.config.model == "gpt-5.4"
+            assert write_result.version == "v2"
+            assert batch_result.version == "v3"
+            assert requirements.requirements is not None
+            assert (
+                requirements.requirements.additional_developer_instructions
+                == "Follow managed policy."
+            )
+            assert requirements.requirements.allow_browser_and_computer_use is True
+            assert requirements.requirements.auto_review is not None
+            assert requirements.requirements.auto_review.ignoreRules == ["safe-command"]
+            assert requirements.requirements.chatgpt_base_url == "https://chatgpt.example.com"
+            assert requirements.requirements.cli_auth_credentials_store is not None
+            assert requirements.requirements.cli_auth_credentials_store.root == "file"
+            assert requirements.requirements.in_app_browser is not None
+            assert (
+                requirements.requirements.in_app_browser.allowExternalBrowserSettingsImport is False
+            )
+            assert requirements.requirements.allowed_sandbox_modes is not None
+            assert [mode.root for mode in requirements.requirements.allowed_sandbox_modes] == [
+                "read-only",
+                "workspace-write",
+            ]
+            assert requirements.requirements.allowed_approvals_reviewers is not None
+            assert [
+                reviewer.root for reviewer in requirements.requirements.allowed_approvals_reviewers
+            ] == ["user"]
+            assert requirements.requirements.allowed_web_search_modes is not None
+            assert [mode.root for mode in requirements.requirements.allowed_web_search_modes] == [
+                "disabled",
+                "live",
+            ]
+            assert requirements.requirements.enforce_residency is not None
+            assert requirements.requirements.enforce_residency.root == "us"
+            assert requirements.requirements.feature_requirements == {
+                "personality": {"required": True}
+            }
+            assert requirements.requirements.network is not None
+            assert requirements.requirements.network.enabled is True
+            assert requirements.requirements.network.allowedDomains == ["api.openai.com"]
+            assert requirements.requirements.network.deniedDomains == ["example.invalid"]
+            assert requirements.requirements.network.managedAllowedDomainsOnly is True
+            assert reload_result == EmptyResult()
+            assert oauth_result.authorization_url == "https://example.com/oauth"
+            assert mcp_status[0].name == "github"
+            assert isinstance(mcp_status[0].auth_status, protocol.McpAuthStatus)
+            assert mcp_status[0].auth_status.root == "oAuth"
+            assert mcp_status[0].plugin_id == "plugin-1"
+            assert mcp_status[0].runtime_status == protocol.McpServerConnectionStatus("connected")
+            assert isinstance(mcp_status[0].tools["repo_status"], protocol.Tool)
+            assert mcp_status[0].tools["repo_status"].field_meta == {"origin": "pytest"}
+            assert mcp_status[0].tools["repo_status"].inputSchema == {
+                "type": "object",
+                "properties": {},
+            }
+            assert mcp_status[0].tools["repo_status"].outputSchema == {"type": "object"}
+            assert isinstance(mcp_status[0].resources[0], protocol.Resource)
+            assert mcp_status[0].resources[0].field_meta == {"origin": "pytest"}
+            assert mcp_status[0].resources[0].mimeType == "text/markdown"
+            assert mcp_status[0].resources[0].uri == "file:///repo/README.md"
+            assert isinstance(mcp_status[0].resource_templates[0], protocol.ResourceTemplate)
+            assert mcp_status[0].resource_templates[0].uriTemplate == "file:///repo/{path}"
+            assert mcp_status_page.data[0].name == "github"
+            assert mcp_status_alias[0].name == "github"
+            assert mcp_status_page_alias.data[0].name == "github"
+            assert feedback.thread_id == "thr-feedback"
+            assert command.exit_code == 0
+            assert isinstance(created_dir, protocol.FsCreateDirectoryResponse)
+            assert isinstance(wrote_file, protocol.FsWriteFileResponse)
+            assert environment.cwd == protocol.PathUri("file:///repo")
+            assert environment.shell == protocol.EnvironmentShellInfo(name="zsh", path="/bin/zsh")
+            assert generated_skill == protocol.SkillUserInput(
+                type=protocol.SkillUserInputType("skill"),
+                name="generated",
+                path="/repo/.codex/skills/generated/SKILL.md",
+            )
+            assert detected.connectors[0].name == "knowledge"
+            assert detected.connectors[0].sessionCount == 3
+            assert detected.items[0].itemType.root == "AGENTS_MD"
+            assert import_result.import_id == "import-1"
+            assert recorded_history.import_id == "import-2"
+            assert windows_setup.started is True
 
     asyncio.run(scenario())
 

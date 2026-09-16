@@ -371,23 +371,27 @@ def test_stdio_transport_receive_raises_for_non_object_payload() -> None:
     asyncio.run(scenario())
 
 
-def test_stdio_transport_close_terminates_and_waits() -> None:
+def test_stdio_transport_close_terminates_and_drains_stderr() -> None:
     async def scenario() -> None:
+        stderr = _FakeStreamReader([b"stderr line\n", b"\xff\xfe\n", b"last line\n"])
         process = _FakeProcess(
             stdin=_FakeStreamWriter(),
             stdout=_FakeStreamReader([]),
-            stderr=_FakeStreamReader([b"stderr line\n"]),
+            stderr=stderr,
         )
         transport = AsyncStdioTransport()
         transport._process = process
-        transport._stderr_task = asyncio.create_task(transport._drain_stderr(process.stderr))
+        drain_task = asyncio.create_task(transport._drain_stderr(stderr))
+        transport._stderr_task = drain_task
 
         await transport.close()
 
         assert process.stdin is not None and process.stdin.closed is True
         assert process.terminated is True
         assert process.wait_calls >= 1
-        assert transport._stderr_lines == ["stderr line"]
+        assert stderr._chunks == []
+        assert drain_task.done()
+        assert transport._stderr_task is None
 
     asyncio.run(scenario())
 

@@ -60,7 +60,6 @@ class AsyncStdioTransport:
         self._options = options or AppServerProcessOptions()
         self._process: asyncio.subprocess.Process | None = None
         self._stderr_task: asyncio.Task[None] | None = None
-        self._stderr_lines: list[str] = []
 
     async def start(self) -> None:
         if self._process is not None:
@@ -96,7 +95,6 @@ class AsyncStdioTransport:
             line = await _readline_with_limit_error(stderr, stream_name="stderr")
             if line == b"":
                 break
-            self._stderr_lines.append(line.decode("utf-8", errors="replace").rstrip())
 
     async def send(self, message: JsonObject) -> None:
         if self._process is None or self._process.stdin is None:
