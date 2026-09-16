@@ -1,6 +1,6 @@
 [package]
 name = "codex_native"
-version = "1.153.4"
+version = "1.153.5"
 edition = "2021"
 
 [lib]
