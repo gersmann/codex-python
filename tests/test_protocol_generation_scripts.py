@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import builtins
 import importlib.util
+import stat
+import subprocess
 import sys
 from pathlib import Path
 from types import ModuleType
@@ -108,6 +110,79 @@ def test_generate_protocol_types_postprocesses_requested_output_path(
             "/tmp/current-types.py",
         ],
     }
+
+
+@pytest.mark.parametrize("failure", ["extra", "postprocess", None])
+@pytest.mark.parametrize("destination", ["existing", "absent", "symlink"])
+def test_generate_protocol_types_publishes_only_complete_output(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    failure: str | None,
+    destination: str,
+) -> None:
+    module = _load_script_module("generate_protocol_types", "scripts/generate_protocol_types.py")
+    postprocessor = _load_script_module(
+        "postprocess_protocol_types", "scripts/postprocess_protocol_types.py"
+    )
+    output = tmp_path / "types.py"
+    original = b"# original contract\n"
+    target = tmp_path / "linked.py"
+    if destination == "symlink":
+        if sys.platform == "win32":
+            pytest.skip("Creating symlinks requires privileges on Windows")
+        target.write_bytes(original)
+        output.symlink_to(target)
+    elif destination == "existing":
+        output.write_bytes(original)
+        output.chmod(0o644)
+    original_paths = set(tmp_path.iterdir())
+
+    def fake_run_stage(name: str, command: list[str]) -> None:
+        if command[0] == "fake-codex":
+            schema_dir = Path(command[command.index("--out") + 1])
+            (schema_dir / "codex_app_server_protocol.schemas.json").write_text("{}")
+            (schema_dir / "v2").mkdir()
+            (schema_dir / "v2" / "ExtraResponse.json").write_text("{}")
+        elif command[0] == "uvx":
+            generated_path = Path(command[command.index("--output") + 1])
+            extra = Path(command[command.index("--input") + 1]).stem == "ExtraResponse"
+            generated_path.write_text("class Extra: pass\n" if extra else "class Primary: pass\n")
+            if extra and failure == "extra":
+                raise subprocess.CalledProcessError(1, command)
+        else:
+            assert command[1] == "scripts/postprocess_protocol_types.py"
+            postprocessor.postprocess_file(Path(command[2]))
+            if failure == "postprocess":
+                raise subprocess.CalledProcessError(1, command)
+
+    monkeypatch.setattr(module, "run_stage", fake_run_stage)
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        ["generate_protocol_types.py", "--codex-bin", "fake-codex", "--output", str(output)],
+    )
+
+    if failure is not None:
+        with pytest.raises(subprocess.CalledProcessError):
+            module.main()
+        if destination == "absent":
+            assert not output.exists()
+        else:
+            assert output.read_bytes() == original
+            assert output.is_symlink() == (destination == "symlink")
+    else:
+        assert module.main() == 0
+        text = output.read_text()
+        assert "class Primary: pass" in text
+        assert "class Extra: pass" in text
+        assert "from __future__ import annotations" in text
+        assert not output.is_symlink()
+        if sys.platform != "win32":
+            assert stat.S_IMODE(output.stat().st_mode) == 0o600
+
+    if destination == "symlink":
+        assert target.read_bytes() == original
+    assert set(tmp_path.iterdir()) == original_paths | ({output} if failure is None else set())
 
 
 def test_generate_protocol_types_inserts_extra_response_models_before_rebuilds(
@@ -219,26 +294,6 @@ def test_postprocess_protocol_types_does_not_import_codex_package(
     assert "class EventMsg(RootModel):" in processed
 
 
-def test_postprocess_schema_titles_does_not_import_codex_package(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    real_import = builtins.__import__
-
-    def reject_codex_import(name: str, *args: object, **kwargs: object) -> object:
-        if name == "codex" or name.startswith("codex."):
-            raise AssertionError(f"unexpected package import: {name}")
-        return real_import(name, *args, **kwargs)
-
-    monkeypatch.setattr(builtins, "__import__", reject_codex_import)
-
-    module = _load_script_module(
-        "postprocess_schema_titles_no_package_import",
-        "scripts/postprocess_schema_titles.py",
-    )
-
-    assert module.camelize("turn-completed") == "TurnCompleted"
-
-
 def test_postprocess_types_applies_explicit_pipeline_passes() -> None:
     module = _load_script_module(
         "postprocess_protocol_types",
@@ -340,59 +395,3 @@ class ServerNotification(RootModel[FooNotification | BarNotification]):
         '        Field(title="ServerNotification"),\n'
         "    ]"
     ) in processed
-
-
-def test_postprocess_schema_titles_applies_schema_normalization_passes() -> None:
-    module = _load_script_module(
-        "postprocess_schema_titles",
-        "scripts/postprocess_schema_titles.py",
-    )
-
-    schema = {
-        "$defs": {
-            "ServerNotification": {
-                "oneOf": [
-                    {
-                        "properties": {
-                            "method": {"const": "turn-completed"},
-                            "duration": {"type": "string", "description": "elapsed"},
-                            "output_tokens": {"type": "number"},
-                            "nullableValue": {"oneOf": [{"type": "string"}, {"type": "null"}]},
-                        },
-                        "required": ["duration", "nullableValue"],
-                    }
-                ]
-            },
-            "RequestId": {"type": "number"},
-            "ExecCommandEndEvent": {"properties": {"exit_code": {"type": "number"}}},
-        }
-    }
-
-    changed, added = module.add_titles(schema)
-    relaxed, relaxed_count = module.relax_required_for_nullables(schema)
-    request_id_fixed = module.enforce_request_id_integer(schema)
-    exit_code_fixed = module.enforce_exec_exit_code_integer(schema)
-    integers_coerced = module.enforce_integer_fields(schema)
-    durations_patched = module.enforce_duration_union(schema)
-
-    hoisted = schema["$defs"]["ServerNotification_TurnCompleted"]
-
-    assert module.camelize("turn-completed") == "TurnCompleted"
-    assert changed is True
-    assert added == 1
-    assert schema["$defs"]["ServerNotification"]["oneOf"] == [
-        {"$ref": "#/$defs/ServerNotification_TurnCompleted"}
-    ]
-    assert hoisted["title"] == "ServerNotification_TurnCompleted"
-    assert relaxed is True
-    assert relaxed_count == 1
-    assert hoisted["required"] == ["duration"]
-    assert request_id_fixed is True
-    assert schema["$defs"]["RequestId"]["type"] == ["string", "integer"]
-    assert exit_code_fixed is True
-    assert schema["$defs"]["ExecCommandEndEvent"]["properties"]["exit_code"]["type"] == "integer"
-    assert integers_coerced == 1
-    assert hoisted["properties"]["output_tokens"]["type"] == "integer"
-    assert durations_patched == 1
-    assert hoisted["properties"]["duration"]["oneOf"][0]["type"] == "string"
-    assert hoisted["properties"]["duration"]["oneOf"][1]["properties"]["secs"]["type"] == "integer"

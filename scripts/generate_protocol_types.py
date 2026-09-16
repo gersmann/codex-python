@@ -209,17 +209,20 @@ def main() -> int:
     output_path = Path(args.output)
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
-    with tempfile.TemporaryDirectory(prefix="codex-app-server-schema-") as temp_dir:
+    with tempfile.TemporaryDirectory(
+        prefix="codex-app-server-schema-", dir=output_path.parent
+    ) as temp_dir:
         schema_dir = Path(temp_dir) / "schemas"
+        candidate_path = Path(temp_dir) / "types.py"
         schema_path = export_protocol_schema(
             codex_bin=args.codex_bin,
             schema_dir=schema_dir,
             experimental=args.experimental,
         )
-        generate_protocol_models(schema_path=schema_path, output_path=output_path)
-        append_extra_protocol_models(schema_dir=schema_dir, output_path=output_path)
-
-    postprocess_protocol_models(output_path)
+        generate_protocol_models(schema_path=schema_path, output_path=candidate_path)
+        append_extra_protocol_models(schema_dir=schema_dir, output_path=candidate_path)
+        postprocess_protocol_models(candidate_path)
+        candidate_path.replace(output_path)
     return 0
 
 

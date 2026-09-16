@@ -58,6 +58,7 @@ class CodexTurnStream:
     ) -> None:
         self._stream = stream
         self._thread_id = thread_id
+        self._owner: Thread | None = None
         self._closed = False
         self._interrupt_requested = False
         self._watcher = _SignalWatcher(self, signal)
@@ -66,7 +67,11 @@ class CodexTurnStream:
         return self
 
     def __next__(self) -> BaseModel:
-        notification: BaseModel = next(self._stream)
+        try:
+            notification: BaseModel = next(self._stream)
+        except BaseException:
+            self._watcher.stop()
+            raise
         if self.final_turn is not None:
             self._watcher.stop()
         return notification
@@ -174,7 +179,10 @@ class Thread:
             raise ThreadRunError("Turn aborted: interrupted")
         thread = self._ensure_thread()
         stream = thread.run(input, _to_app_server_turn_options(effective_turn_options))
-        return CodexTurnStream(stream, thread_id=thread.id, signal=signal)
+        turn_stream = CodexTurnStream(stream, thread_id=thread.id, signal=signal)
+        # The bound client factory keeps temporary Codex owners alive.
+        turn_stream._owner = self
+        return turn_stream
 
     def run_text(
         self,

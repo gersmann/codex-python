@@ -89,7 +89,7 @@ class _AsyncSession:
         self._transport = transport
         self._initialize_options = initialize_options or AppServerInitializeOptions()
         self._started = False
-        self._closed = False
+        self._close_task: asyncio.Task[Exception | None] | None = None
         self._next_request_id = 0
         self._pending: dict[int | str, asyncio.Future[object]] = {}
         self._request_handlers: dict[str, _RegisteredHandler] = {}
@@ -101,7 +101,7 @@ class _AsyncSession:
         self._initialize_result: InitializeResult | None = None
 
     async def start(self) -> InitializeResult:
-        if self._closed:
+        if self._close_task is not None:
             raise AppServerClosedError("app-server client is closed")
         if self._started:
             if self._initialize_result is None:
@@ -126,9 +126,15 @@ class _AsyncSession:
         return result
 
     async def close(self) -> None:
-        if self._closed:
+        if self._close_task is None:
+            self._close_task = asyncio.create_task(self._close())
+        elif self._close_task.done():
             return
-        self._closed = True
+        close_error = await asyncio.shield(self._close_task)
+        if close_error is not None:
+            raise close_error
+
+    async def _close(self) -> Exception | None:
         close_error: Exception | None = None if self._reader_error_reported else self._reader_error
         if self._reader_task is not None:
             if not self._reader_task.done():
@@ -150,8 +156,7 @@ class _AsyncSession:
             for sink in list(self._notification_sinks):
                 await sink.queue.put(None)
             self._notification_sinks.clear()
-        if close_error is not None:
-            raise close_error
+        return close_error
 
     async def _close_for_start_failure(self) -> Exception | None:
         try:
@@ -182,9 +187,6 @@ class _AsyncSession:
         await self._ensure_started_or_starting()
         request_id_value = self._next_request_id
         self._next_request_id += 1
-        loop = asyncio.get_running_loop()
-        future: asyncio.Future[object] = loop.create_future()
-        self._pending[request_id_value] = future
         message: JsonObject = {"id": request_id_value, "method": method}
         if params is not None:
             serialized = serialize_value(params)
@@ -193,8 +195,17 @@ class _AsyncSession:
                     f"Request params must serialize to an object, got {type(serialized).__name__}"
                 )
             message["params"] = cast(JsonObject, serialized)
-        await self._transport.send(message)
-        return await self._await_future(future)
+        future: asyncio.Future[object] = asyncio.get_running_loop().create_future()
+        self._pending[request_id_value] = future
+        try:
+            await self._transport.send(message)
+            return await self._await_future(future)
+        finally:
+            self._pending.pop(request_id_value, None)
+            if not future.done():
+                future.cancel()
+            elif not future.cancelled():
+                future.exception()
 
     async def request_typed(
         self,
@@ -227,7 +238,7 @@ class _AsyncSession:
         return _AsyncNotificationSubscription(sink, sink.queue, lambda: self._remove_sink(sink))
 
     async def _ensure_started_or_starting(self) -> None:
-        if self._closed:
+        if self._close_task is not None:
             raise AppServerClosedError("app-server client is closed")
         if self._reader_task is None:
             raise AppServerClosedError("app-server client is not started")
@@ -290,6 +301,8 @@ class _AsyncSession:
             return self._reader_error
         if self._reader_task is None:
             return AppServerClosedError("app-server client is not started")
+        if self._reader_task.cancelled():
+            return AppServerClosedError("app-server reader was cancelled")
         task_exception = self._reader_task.exception()
         if task_exception is not None:
             if isinstance(task_exception, Exception):

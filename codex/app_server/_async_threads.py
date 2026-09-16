@@ -140,7 +140,6 @@ class AsyncTurnStream:
         self._item_index: dict[str, int] = {}
         self._text_deltas: list[str] = []
         self._retryable_error_notifications: list[protocol.ErrorNotificationModel] = []
-        self._done = False
         self._closed = False
 
     @classmethod
@@ -191,14 +190,16 @@ class AsyncTurnStream:
         return self
 
     async def __anext__(self) -> Notification:
-        if self._done:
-            await self.close()
+        if self._closed:
             raise StopAsyncIteration
-        notification = await self._subscription.next()
+        try:
+            notification = await self._subscription.next()
+        except Exception:
+            await self.close()
+            raise
         self._apply(notification)
         if isinstance(notification, protocol.ErrorNotificationModel):
             if not notification.params.willRetry:
-                self._done = True
                 await self.close()
                 error = notification.params.error
                 message = error.message
@@ -207,15 +208,14 @@ class AsyncTurnStream:
                 raise AppServerTurnError(message, error=error)
             self._retryable_error_notifications.append(notification)
         if isinstance(notification, protocol.TurnCompletedNotificationModel):
-            self._done = True
+            await self.close()
         return notification
 
     async def wait(self) -> AsyncTurnStream:
         """Consume the stream to completion and return `self`."""
         try:
-            if not self._done:
-                async for _ in self:
-                    pass
+            async for _ in self:
+                pass
             self._require_terminal_turn()
         finally:
             await self.close()

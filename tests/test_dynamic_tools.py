@@ -5,7 +5,7 @@ import json
 from typing import Annotated
 
 import pytest
-from pydantic import Field
+from pydantic import BaseModel, Field, field_serializer
 
 from codex.dynamic_tools import (
     _DynamicToolRuntime,
@@ -13,6 +13,14 @@ from codex.dynamic_tools import (
     resolve_dynamic_tools,
 )
 from codex.protocol import types as protocol
+
+
+class _Ticket(BaseModel):
+    id: int
+
+    @field_serializer("id")
+    def serialize_id(self, value: int) -> str:
+        raise AssertionError("Callback arguments must not be serialized")
 
 
 def test_dynamic_tool_derives_schema_from_typed_parameters() -> None:
@@ -107,6 +115,33 @@ def test_dynamic_tool_runtime_supports_async_tools_and_structured_content_items(
 
     assert response.success is True
     assert response.contentItems[0].root.imageUrl == "https://example.test/image.png"
+
+
+def test_dynamic_tool_runtime_preserves_validated_nested_arguments() -> None:
+    @dynamic_tool(description="Sum ticket identifiers.")
+    def sum_tickets(ticket: _Ticket, related: list[_Ticket], extra: int = 1) -> int:
+        return ticket.id + sum(item.id for item in related) + extra
+
+    runtime = _DynamicToolRuntime(lambda method, handler, request_model: None)
+    runtime.activate("thr-1", resolve_dynamic_tools([sum_tickets]))
+    request = protocol.ItemToolCallRequest.model_validate(
+        {
+            "id": "req-1",
+            "method": "item/tool/call",
+            "params": {
+                "callId": "call-1",
+                "threadId": "thr-1",
+                "turnId": "turn-1",
+                "tool": "sum_tickets",
+                "arguments": {"ticket": {"id": "2"}, "related": [{"id": "3"}]},
+            },
+        }
+    )
+
+    response = asyncio.run(runtime.dispatch(request))
+
+    assert response.success is True
+    assert json.loads(response.contentItems[0].root.text) == 6
 
 
 def test_dynamic_tool_rejects_invalid_signatures() -> None:

@@ -1,8 +1,23 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Coroutine, Mapping, Sequence
-from typing import Any, Protocol
+from typing import Any
 
+from codex.app_server._async_services import (
+    AsyncAccountClient,
+    AsyncAppsClient,
+    AsyncCommandClient,
+    AsyncConfigClient,
+    AsyncEnvironmentClient,
+    AsyncExternalAgentConfigClient,
+    AsyncFeedbackClient,
+    AsyncFsClient,
+    AsyncMcpServersClient,
+    AsyncModelsClient,
+    AsyncSkillsClient,
+    AsyncThreadSectionsClient,
+    AsyncWindowsSandboxClient,
+)
 from codex.app_server._sync_support import _SyncRunner
 from codex.app_server.models import (
     AccountCancelLoginResult,
@@ -33,315 +48,10 @@ from codex.app_server.models import (
 from codex.protocol import types as protocol
 
 
-class _AsyncModelsClientLike(Protocol):
-    async def list(
-        self,
-        *,
-        cursor: str | None = None,
-        include_hidden: bool | None = None,
-        limit: int | None = None,
-    ) -> list[ModelInfo]: ...
-
-    async def list_page(
-        self,
-        *,
-        cursor: str | None = None,
-        include_hidden: bool | None = None,
-        limit: int | None = None,
-    ) -> ModelListResult: ...
-
-
-class _AsyncAppsClientLike(Protocol):
-    async def list(
-        self,
-        *,
-        cursor: str | None = None,
-        force_refetch: bool | None = None,
-        limit: int | None = None,
-        thread_id: str | None = None,
-    ) -> list[protocol.AppInfo]: ...
-
-    async def list_page(
-        self,
-        *,
-        cursor: str | None = None,
-        force_refetch: bool | None = None,
-        limit: int | None = None,
-        thread_id: str | None = None,
-    ) -> AppListResult: ...
-
-
-class _AsyncThreadSectionsClientLike(Protocol):
-    async def list(
-        self,
-        *,
-        cursor: str | None = None,
-        limit: int | None = None,
-    ) -> list[protocol.ThreadSection]: ...
-
-    async def list_page(
-        self,
-        *,
-        cursor: str | None = None,
-        limit: int | None = None,
-    ) -> protocol.ThreadSectionListResponse: ...
-
-    async def create(
-        self,
-        *,
-        name: str,
-        appearance: protocol.ThreadSectionAppearance | None = None,
-    ) -> protocol.ThreadSection: ...
-
-    async def rename(self, *, section_id: str, name: str) -> protocol.ThreadSection: ...
-
-    async def delete(self, *, section_id: str) -> EmptyResult: ...
-
-
-class _AsyncSkillsClientLike(Protocol):
-    def input(self, *, name: str, path: str) -> protocol.SkillUserInput: ...
-
-    async def list(
-        self,
-        *,
-        cwds: Sequence[str] | None = None,
-        force_reload: bool | None = None,
-    ) -> list[SkillsListEntry]: ...
-
-    async def list_page(
-        self,
-        *,
-        cwds: Sequence[str] | None = None,
-        force_reload: bool | None = None,
-    ) -> SkillsListResult: ...
-
-    async def reload(self, *, cwds: Sequence[str] | None = None) -> Sequence[SkillsListEntry]: ...
-
-    async def write_config(self, *, path: str, enabled: bool) -> SkillsConfigWriteResult: ...
-
-    async def write_skill(
-        self,
-        *,
-        name: str,
-        directory: str,
-        instructions: str | bytes,
-        reload_cwds: Sequence[str] | None = None,
-    ) -> protocol.SkillUserInput: ...
-
-
-class _AsyncFsClientLike(Protocol):
-    async def create_directory(
-        self,
-        *,
-        path: str,
-        recursive: bool | None = True,
-    ) -> protocol.FsCreateDirectoryResponse: ...
-
-    async def write_file(
-        self,
-        *,
-        path: str,
-        data: str | bytes,
-        encoding: str = "utf-8",
-    ) -> protocol.FsWriteFileResponse: ...
-
-
-class _AsyncEnvironmentClientLike(Protocol):
-    async def info(self, *, environment_id: str) -> protocol.EnvironmentInfoResponse: ...
-
-
-class _AsyncAccountClientLike(Protocol):
-    async def read(self, *, refresh_token: bool | None = None) -> AccountReadResult: ...
-
-    async def login_api_key(self, *, api_key: str) -> ApiKeyLoginResult: ...
-
-    async def login_chatgpt(self) -> ChatGptLoginResult: ...
-
-    async def login_chatgpt_tokens(
-        self,
-        *,
-        access_token: str,
-        chatgpt_account_id: str,
-        chatgpt_plan_type: protocol.PlanType | None = None,
-    ) -> ChatGptAuthTokensLoginResult: ...
-
-    async def cancel_login(self, *, login_id: str) -> AccountCancelLoginResult: ...
-
-    async def logout(self) -> EmptyResult: ...
-
-    async def read_rate_limits(self) -> AccountRateLimitsResult: ...
-
-
-class _AsyncConfigClientLike(Protocol):
-    async def read(
-        self,
-        *,
-        cwd: str | None = None,
-        include_layers: bool | None = None,
-    ) -> ConfigReadResult: ...
-
-    async def reload_mcp_servers(self) -> EmptyResult: ...
-
-    async def write_value(
-        self,
-        *,
-        key_path: str,
-        value: Any,
-        merge_strategy: protocol.MergeStrategy,
-        expected_version: str | None = None,
-        file_path: str | None = None,
-    ) -> ConfigWriteResult: ...
-
-    async def batch_write(
-        self,
-        *,
-        edits: Sequence[protocol.ConfigEdit],
-        expected_version: str | None = None,
-        file_path: str | None = None,
-    ) -> ConfigWriteResult: ...
-
-    async def read_requirements(self) -> ConfigRequirementsReadResult: ...
-
-
-class _AsyncMcpServersClientLike(Protocol):
-    async def set_enabled_tools(
-        self,
-        *,
-        name: str,
-        tools: Sequence[str],
-        plugin_id: str | None = None,
-        reload: bool = True,
-        file_path: str | None = None,
-    ) -> ConfigWriteResult: ...
-
-    async def set_disabled_tools(
-        self,
-        *,
-        name: str,
-        tools: Sequence[str],
-        plugin_id: str | None = None,
-        reload: bool = True,
-        file_path: str | None = None,
-    ) -> ConfigWriteResult: ...
-
-    async def oauth_login(
-        self,
-        *,
-        client_registration: protocol.McpServerOauthClientRegistration | None = None,
-        name: str,
-        scopes: Sequence[str] | None = None,
-        thread_id: str | None = None,
-        timeout_seconds: int | None = None,
-    ) -> McpServerOauthLoginResult: ...
-
-    async def list(
-        self,
-        *,
-        cursor: str | None = None,
-        limit: int | None = None,
-    ) -> list[McpServerStatus]: ...
-
-    async def list_page(
-        self,
-        *,
-        cursor: str | None = None,
-        limit: int | None = None,
-    ) -> McpServerStatusListResult: ...
-
-
-class _AsyncFeedbackClientLike(Protocol):
-    async def upload(
-        self,
-        *,
-        classification: str,
-        include_logs: bool,
-        extra_log_files: Sequence[str] | None = None,
-        reason: str | None = None,
-        thread_id: str | None = None,
-    ) -> FeedbackUploadResult: ...
-
-
-class _AsyncCommandClientLike(Protocol):
-    async def execute(
-        self,
-        *,
-        command: Sequence[str],
-        cwd: str | None = None,
-        disable_output_cap: bool | None = None,
-        disable_timeout: bool | None = None,
-        env: Mapping[str, object | None] | None = None,
-        output_bytes_cap: int | None = None,
-        permission_profile: str | None = None,
-        process_id: str | None = None,
-        sandbox_policy: protocol.SandboxPolicy | None = None,
-        size: protocol.CommandExecTerminalSize | None = None,
-        stream_stdin: bool | None = None,
-        stream_stdout_stderr: bool | None = None,
-        timeout_ms: int | None = None,
-        tty: bool | None = None,
-    ) -> CommandExecResult: ...
-
-    async def write_stdin(
-        self,
-        *,
-        process_id: str,
-        close_stdin: bool | None = None,
-        delta_base64: str | None = None,
-    ) -> EmptyResult: ...
-
-    async def resize_terminal(
-        self,
-        *,
-        process_id: str,
-        size: protocol.CommandExecTerminalSize,
-    ) -> EmptyResult: ...
-
-    async def terminate_process(self, *, process_id: str) -> EmptyResult: ...
-
-
-class _AsyncExternalAgentConfigClientLike(Protocol):
-    async def detect(
-        self,
-        *,
-        cwds: Sequence[str] | None = None,
-        include_home: bool | None = None,
-        max_session_age_days: int | None = None,
-        max_sessions: int | None = None,
-        migration_source: str | None = None,
-    ) -> ExternalAgentConfigDetectResult: ...
-
-    async def import_items(
-        self,
-        *,
-        migration_items: Sequence[protocol.ExternalAgentConfigMigrationItem],
-        migration_source: str | None = None,
-        provider_id: str | None = None,
-        source: str | None = None,
-    ) -> ExternalAgentConfigImportResult: ...
-
-    async def record_history(
-        self,
-        *,
-        item_type_results: Sequence[
-            protocol.ExternalAgentConfigImportHistoryRecordTypeResultParams
-        ],
-        provider_id: str,
-    ) -> ExternalAgentConfigImportResult: ...
-
-
-class _AsyncWindowsSandboxClientLike(Protocol):
-    async def setup_start(
-        self,
-        *,
-        mode: protocol.WindowsSandboxSetupMode,
-        cwd: str | None = None,
-    ) -> WindowsSandboxSetupStartResult: ...
-
-
 class _ModelsClient(_SyncRunner):
     def __init__(
         self,
-        async_client: _AsyncModelsClientLike,
+        async_client: AsyncModelsClient,
         runner: Callable[[Coroutine[Any, Any, Any]], Any],
     ) -> None:
         super().__init__(runner)
@@ -381,7 +91,7 @@ class _ModelsClient(_SyncRunner):
 class _AppsClient(_SyncRunner):
     def __init__(
         self,
-        async_client: _AsyncAppsClientLike,
+        async_client: AsyncAppsClient,
         runner: Callable[[Coroutine[Any, Any, Any]], Any],
     ) -> None:
         super().__init__(runner)
@@ -425,7 +135,7 @@ class _AppsClient(_SyncRunner):
 class _ThreadSectionsClient(_SyncRunner):
     def __init__(
         self,
-        async_client: _AsyncThreadSectionsClientLike,
+        async_client: AsyncThreadSectionsClient,
         runner: Callable[[Coroutine[Any, Any, Any]], Any],
     ) -> None:
         super().__init__(runner)
@@ -465,7 +175,7 @@ class _ThreadSectionsClient(_SyncRunner):
 class _SkillsClient(_SyncRunner):
     def __init__(
         self,
-        async_client: _AsyncSkillsClientLike,
+        async_client: AsyncSkillsClient,
         runner: Callable[[Coroutine[Any, Any, Any]], Any],
     ) -> None:
         super().__init__(runner)
@@ -527,7 +237,7 @@ class _SkillsClient(_SyncRunner):
 class _FsClient(_SyncRunner):
     def __init__(
         self,
-        async_client: _AsyncFsClientLike,
+        async_client: AsyncFsClient,
         runner: Callable[[Coroutine[Any, Any, Any]], Any],
     ) -> None:
         super().__init__(runner)
@@ -554,7 +264,7 @@ class _FsClient(_SyncRunner):
 class _EnvironmentClient(_SyncRunner):
     def __init__(
         self,
-        async_client: _AsyncEnvironmentClientLike,
+        async_client: AsyncEnvironmentClient,
         runner: Callable[[Coroutine[Any, Any, Any]], Any],
     ) -> None:
         super().__init__(runner)
@@ -567,7 +277,7 @@ class _EnvironmentClient(_SyncRunner):
 class _AccountClient(_SyncRunner):
     def __init__(
         self,
-        async_client: _AsyncAccountClientLike,
+        async_client: AsyncAccountClient,
         runner: Callable[[Coroutine[Any, Any, Any]], Any],
     ) -> None:
         super().__init__(runner)
@@ -610,7 +320,7 @@ class _AccountClient(_SyncRunner):
 class _ConfigClient(_SyncRunner):
     def __init__(
         self,
-        async_client: _AsyncConfigClientLike,
+        async_client: AsyncConfigClient,
         runner: Callable[[Coroutine[Any, Any, Any]], Any],
     ) -> None:
         super().__init__(runner)
@@ -668,7 +378,7 @@ class _ConfigClient(_SyncRunner):
 class _McpServersClient(_SyncRunner):
     def __init__(
         self,
-        async_client: _AsyncMcpServersClientLike,
+        async_client: AsyncMcpServersClient,
         runner: Callable[[Coroutine[Any, Any, Any]], Any],
     ) -> None:
         super().__init__(runner)
@@ -755,7 +465,7 @@ class _McpServersClient(_SyncRunner):
 class _FeedbackClient(_SyncRunner):
     def __init__(
         self,
-        async_client: _AsyncFeedbackClientLike,
+        async_client: AsyncFeedbackClient,
         runner: Callable[[Coroutine[Any, Any, Any]], Any],
     ) -> None:
         super().__init__(runner)
@@ -784,7 +494,7 @@ class _FeedbackClient(_SyncRunner):
 class _CommandClient(_SyncRunner):
     def __init__(
         self,
-        async_client: _AsyncCommandClientLike,
+        async_client: AsyncCommandClient,
         runner: Callable[[Coroutine[Any, Any, Any]], Any],
     ) -> None:
         super().__init__(runner)
@@ -875,7 +585,7 @@ class _CommandClient(_SyncRunner):
 class _ExternalAgentConfigClient(_SyncRunner):
     def __init__(
         self,
-        async_client: _AsyncExternalAgentConfigClientLike,
+        async_client: AsyncExternalAgentConfigClient,
         runner: Callable[[Coroutine[Any, Any, Any]], Any],
     ) -> None:
         super().__init__(runner)
@@ -936,7 +646,7 @@ class _ExternalAgentConfigClient(_SyncRunner):
 class _WindowsSandboxClient(_SyncRunner):
     def __init__(
         self,
-        async_client: _AsyncWindowsSandboxClientLike,
+        async_client: AsyncWindowsSandboxClient,
         runner: Callable[[Coroutine[Any, Any, Any]], Any],
     ) -> None:
         super().__init__(runner)

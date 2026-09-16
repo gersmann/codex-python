@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import gc
 import threading
+import weakref
 from collections.abc import Sequence
 from typing import Any
 
@@ -10,6 +12,7 @@ from pydantic import BaseModel
 from codex import (
     Codex,
     CodexOptions,
+    CodexTurnStream,
     ThreadResumeOptions,
     ThreadStartOptions,
     TurnOptions,
@@ -519,6 +522,55 @@ def test_codex_run_passes_annotation_driven_tools_through(monkeypatch: pytest.Mo
     ]
 
 
+@pytest.mark.parametrize("use_temporary_thread", [False, True])
+def test_stream_keeps_temporary_owner_alive_until_released(
+    monkeypatch: pytest.MonkeyPatch, use_temporary_thread: bool
+) -> None:
+    class CloseSensitiveStream(_FakeAppTurnStream):
+        def __next__(self) -> BaseModel:
+            if fake_client.closed:
+                raise RuntimeError("client closed during streaming")
+            return super().__next__()
+
+    app_stream = CloseSensitiveStream(
+        [_item_completed_notification("answer"), _turn_completed_notification()]
+    )
+    fake_client = _FakeAppServerClient(_FakeAppThread("thr-1", [app_stream]))
+    _patch_connect_stdio(monkeypatch, fake_client=fake_client, capture={})
+
+    if use_temporary_thread:
+        stream = Codex().start_thread().run("hello")
+    else:
+        stream = Codex().run("hello")
+    stream_reference = weakref.ref(stream)
+
+    gc.collect()
+    stream.wait()
+    assert stream.final_text == "answer"
+    assert not fake_client.closed
+    stream.close()
+    assert app_stream.closed
+
+    del stream
+    gc.collect()
+    assert stream_reference() is None
+    assert fake_client.closed
+
+
+def test_explicit_codex_close_closes_client_with_reachable_stream(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    fake_client = _FakeAppServerClient(_FakeAppThread("thr-1", [_FakeAppTurnStream([])]))
+    _patch_connect_stdio(monkeypatch, fake_client=fake_client, capture={})
+    client = Codex()
+    stream = client.run("hello")
+
+    client.close()
+
+    assert fake_client.closed
+    assert stream.thread_id == "thr-1"
+
+
 def test_run_preserves_usage_when_turn_completed_omits_usage(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -793,6 +845,65 @@ def test_run_turn_signal_interrupts_in_flight_turn(monkeypatch: pytest.MonkeyPat
 
     fake_stream = fake_thread.run_calls[0]
     _ = fake_stream
+
+
+@pytest.mark.parametrize(
+    "error",
+    [
+        StopIteration(),
+        AppServerTurnError("turn failed"),
+        RuntimeError("reader failed"),
+        KeyboardInterrupt(),
+    ],
+)
+def test_stream_iteration_failure_stops_signal_watcher(error: BaseException) -> None:
+    class FailingStream(_FakeAppTurnStream):
+        def __next__(self) -> BaseModel:
+            raise error
+
+    stream = CodexTurnStream(FailingStream([]), thread_id="thr-1", signal=threading.Event())
+    watcher = stream._watcher._thread
+    assert watcher is not None
+    try:
+        assert watcher.is_alive()
+        with pytest.raises(type(error)) as exc_info:
+            next(stream)
+        assert exc_info.value is error
+        watcher.join(timeout=1)
+        assert not watcher.is_alive()
+    finally:
+        stream.close()
+
+
+def test_stream_signal_watcher_survives_retryable_events_until_terminal_delivery() -> None:
+    retryable_error = protocol.ErrorNotificationModel.model_validate(
+        {
+            "method": "error",
+            "params": {
+                "threadId": "thr-1",
+                "turnId": "turn-1",
+                "willRetry": True,
+                "error": {"message": "temporary outage"},
+            },
+        }
+    )
+    notifications = [_turn_started_notification(), retryable_error, _turn_completed_notification()]
+    app_stream = _FakeAppTurnStream(notifications)
+    stream = CodexTurnStream(app_stream, thread_id="thr-1", signal=threading.Event())
+    watcher = stream._watcher._thread
+    assert watcher is not None
+    try:
+        for notification in notifications[:-1]:
+            assert next(stream) is notification
+            assert watcher.is_alive()
+        assert next(stream) is notifications[-1]
+        watcher.join(timeout=1)
+        assert not watcher.is_alive()
+        stream.close()
+        stream.close()
+        assert app_stream.closed
+    finally:
+        stream.close()
 
 
 def test_run_raises_thread_run_error_for_failed_turn(monkeypatch: pytest.MonkeyPatch) -> None:

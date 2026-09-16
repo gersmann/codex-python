@@ -142,8 +142,7 @@ class _DynamicToolRuntime:
             )
 
         validated = tool.input_model.model_validate(request.params.arguments)
-        arguments = validated.model_dump(mode="python")
-        result = tool.callable(**arguments)
+        result = tool.callable(**dict(validated))
         if inspect.isawaitable(result):
             result = await cast(Awaitable[object], result)
         return _normalize_tool_result(result)

@@ -5,6 +5,8 @@ import asyncio
 import pytest
 
 from codex.app_server._async_client import AsyncEventsClient, AsyncTurnStream
+from codex.app_server._session import _AsyncNotificationSubscription, _NotificationSink
+from codex.app_server._sync_threads import TurnStream
 from codex.app_server.errors import AppServerProtocolError, AppServerTurnError
 from codex.app_server.models import ReviewResult
 from codex.protocol import types as protocol
@@ -372,21 +374,112 @@ def test_async_turn_stream_apply_replaces_existing_item_state() -> None:
         _ = stream.final_text
 
 
-def test_async_turn_stream_wait_returns_immediately_when_done() -> None:
+def test_async_turn_stream_terminal_delivery_unsubscribes_before_returning() -> None:
     async def scenario() -> None:
-        subscription = _FakeSubscription()
+        sink = _NotificationSink()
+        active_sinks = [sink]
+        subscription = _AsyncNotificationSubscription(
+            sink, sink.queue, lambda: active_sinks.remove(sink)
+        )
+        terminal = protocol.TurnCompletedNotificationModel.model_validate(
+            {
+                "method": "turn/completed",
+                "params": {"threadId": "thr-1", "turn": _turn_payload()},
+            }
+        )
+        sink.queue.put_nowait(terminal)
         stream = AsyncTurnStream(
             _FakeThread(),  # type: ignore[arg-type]
-            subscription,  # type: ignore[arg-type]
+            subscription,
             protocol.Turn.model_validate(_turn_payload(status="inProgress")),
         )
-        stream._done = True
-        stream.final_turn = protocol.Turn.model_validate(_turn_payload(status="completed"))
 
-        assert await stream.wait() is stream
-        assert subscription.closed is True
+        assert await anext(stream) is terminal
+        assert active_sinks == []
+        assert stream.final_turn is terminal.params.turn
+        for _ in range(2):
+            with pytest.raises(StopAsyncIteration):
+                await asyncio.wait_for(anext(stream), timeout=1)
+            assert await asyncio.wait_for(stream.wait(), timeout=1) is stream
+        await stream.close()
 
     asyncio.run(scenario())
+
+
+@pytest.mark.parametrize("ending", ["close", "eof", "reader_error"])
+def test_async_turn_stream_remains_exhausted_without_terminal_result(ending: str) -> None:
+    async def scenario() -> None:
+        sink = _NotificationSink()
+        active_sinks = [sink]
+        subscription = _AsyncNotificationSubscription(
+            sink, sink.queue, lambda: active_sinks.remove(sink)
+        )
+        stream = AsyncTurnStream(
+            _FakeThread(),  # type: ignore[arg-type]
+            subscription,
+            protocol.Turn.model_validate(_turn_payload(status="inProgress")),
+        )
+        if ending == "close":
+            await stream.close()
+        elif ending == "eof":
+            sink.queue.put_nowait(None)
+        else:
+            error = AppServerProtocolError("reader failed")
+            sink.queue.put_nowait(error)
+            with pytest.raises(AppServerProtocolError) as exc_info:
+                await anext(stream)
+            assert exc_info.value is error
+
+        for _ in range(2):
+            with pytest.raises(StopAsyncIteration):
+                await asyncio.wait_for(anext(stream), timeout=1)
+            assert active_sinks == []
+            with pytest.raises(ValueError, match="No terminal turn is available yet"):
+                await asyncio.wait_for(stream.wait(), timeout=1)
+        assert stream.final_turn is None
+        await stream.close()
+
+    asyncio.run(scenario())
+
+
+@pytest.mark.parametrize("complete_turn", [False, True])
+def test_sync_turn_stream_preserves_exhaustion_and_completion(complete_turn: bool) -> None:
+    sink = _NotificationSink()
+    active_sinks = [sink]
+    subscription = _AsyncNotificationSubscription(
+        sink, sink.queue, lambda: active_sinks.remove(sink)
+    )
+    async_stream = AsyncTurnStream(
+        _FakeThread(),  # type: ignore[arg-type]
+        subscription,
+        protocol.Turn.model_validate(_turn_payload(status="inProgress")),
+    )
+    with asyncio.Runner() as runner:
+        stream = TurnStream(
+            async_stream, lambda coro: runner.run(asyncio.wait_for(coro, timeout=1))
+        )
+        if complete_turn:
+            terminal = protocol.TurnCompletedNotificationModel.model_validate(
+                {
+                    "method": "turn/completed",
+                    "params": {"threadId": "thr-1", "turn": _turn_payload()},
+                }
+            )
+            sink.queue.put_nowait(terminal)
+            assert next(stream) is terminal
+        else:
+            stream.close()
+        assert active_sinks == []
+
+        for _ in range(2):
+            with pytest.raises(StopIteration):
+                next(stream)
+            if complete_turn:
+                assert stream.wait() is stream
+            else:
+                with pytest.raises(ValueError, match="No terminal turn is available yet"):
+                    stream.wait()
+        stream.close()
 
 
 def test_async_turn_stream_wait_closes_subscription_after_terminal_notification() -> None:
