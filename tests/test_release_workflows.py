@@ -27,27 +27,54 @@ def test_release_workflow_builds_split_macos_wheels() -> None:
 
     assert "macos-aarch64" in workflow
     assert "macos-x86_64" in workflow
-    assert "codex-targets: aarch64-apple-darwin" in workflow
-    assert "codex-targets: x86_64-apple-darwin" in workflow
+    assert "rust-target: aarch64-apple-darwin" in workflow
+    assert "rust-target: x86_64-apple-darwin" in workflow
     assert "os: macos-15-intel" in workflow
     assert "os: macos-13" not in workflow
     assert "macos-universal2" not in workflow
     assert "universal2-apple-darwin" not in workflow
 
 
+def test_release_workflow_bundles_only_linux_and_macos_arm64() -> None:
+    workflow = Path(".github/workflows/release-published.yml").read_text()
+
+    for platform, target in {
+        "linux-x86_64": "x86_64-unknown-linux-musl",
+        "linux-aarch64": "aarch64-unknown-linux-musl",
+        "linux-musl-x86_64": "x86_64-unknown-linux-musl",
+        "linux-musl-aarch64": "aarch64-unknown-linux-musl",
+        "macos-aarch64": "aarch64-apple-darwin",
+        "macos-x86_64": None,
+        "windows-amd64": None,
+        "windows-arm64": None,
+    }.items():
+        entry = workflow.split(f"          - platform: {platform}\n", 1)[1]
+        entry = entry.split("\n          - platform:", 1)[0].split("\n    runs-on:", 1)[0]
+        if target is None:
+            assert "codex-targets:" not in entry
+        else:
+            assert f"codex-targets: {target}" in entry
+
+    for name in (
+        "Install binary fetch dependencies",
+        "Fetch bundled codex binaries",
+        "Verify bundled binaries",
+    ):
+        step = workflow.split(f"      - name: {name}\n", 1)[1].split("\n      - name:", 1)[0]
+        assert "if: ${{ matrix.codex-targets != '' }}" in step
+
+    assert "Build Windows wheel" in workflow
+    assert "Build Windows ARM64 wheel" in workflow
+    assert "Compress Windows x64 app-server binary" not in workflow
+
+
 def test_release_workflow_rejects_pypi_oversized_files_before_publish() -> None:
     workflow = Path(".github/workflows/release-published.yml").read_text()
 
-    assert "Compress Windows x64 app-server binary" in workflow
-    assert '$version = "5.2.0"' in workflow
-    assert "github.com/upx/upx/releases/download/v$version/upx-$version-win64.zip" in workflow
     assert "zipfile.ZIP_BZIP2" not in workflow
     assert "Verify PyPI file size limit" in workflow
     assert "100 * 1024 * 1024" in workflow
     assert "pypa/gh-action-pypi-publish" in workflow
-    assert workflow.index("Compress Windows x64 app-server binary") < workflow.index(
-        "Build Windows wheel"
-    )
     assert workflow.index("Verify PyPI file size limit") < workflow.index(
         "pypa/gh-action-pypi-publish"
     )

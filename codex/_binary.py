@@ -41,6 +41,6 @@ def bundled_app_server_path(target_triple: str | None = None) -> Path:
     if not binary_path.exists():
         raise BundledAppServerNotFoundError(
             "Bundled codex app-server binary not found at "
-            f"{binary_path}. Install a platform wheel or provide codex_path_override."
+            f"{binary_path}. Install Codex on PATH or provide codex_path_override."
         )
     return binary_path

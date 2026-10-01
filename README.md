@@ -1,6 +1,6 @@
 # codex-python
 
-Python SDK for Codex with bundled `codex` binaries inside platform wheels.
+Python SDK for Codex with optional bundled app-server binaries inside platform wheels.
 
 This package exposes two supported APIs:
 
@@ -17,6 +17,10 @@ Canonical import paths:
 ```bash
 pip install codex-python
 ```
+
+Starting with the next release after `1.159.2`, Windows (x64 and ARM64) and Intel macOS
+wheels no longer bundle Codex. Install Codex separately and ensure `codex` is on `PATH`,
+or set `codex_path_override`. Linux and Apple Silicon macOS wheels retain bundled binaries.
 
 ## Which API should I use?
 
@@ -222,8 +226,9 @@ By default, the SDK resolves the bundled binary at:
 
 `codex/vendor/<target-triple>/codex-app-server/{codex-app-server|codex-app-server.exe}`
 
-The bundled app-server runs directly. If it is not present, for example in a source checkout, the
-SDK falls back to `codex app-server` using `codex` on `PATH`.
+The bundled app-server runs directly. If it is not present, for example in a source checkout or
+a Windows/Intel macOS wheel after `1.159.2`, the SDK falls back to `codex app-server` using
+`codex` on `PATH`. Use the Codex version targeted by your SDK release for protocol compatibility.
 
 You can override the executable path with:
 

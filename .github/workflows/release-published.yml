@@ -205,16 +205,13 @@ jobs:
           - platform: macos-x86_64
             os: macos-15-intel
             python-interpreter: 3.12
-            codex-targets: x86_64-apple-darwin
             rust-target: x86_64-apple-darwin
           - platform: windows-amd64
             os: windows-latest
             python-interpreter: 3.12
-            codex-targets: x86_64-pc-windows-msvc
           - platform: windows-arm64
             os: windows-latest
             python-interpreter: 3.12
-            codex-targets: aarch64-pc-windows-msvc
     runs-on: ${{ matrix.os }}
     steps:
       - name: Checkout repository
@@ -232,6 +229,7 @@ jobs:
           python-version: ${{ matrix.python-interpreter }}
 
       - name: Install binary fetch dependencies
+        if: ${{ matrix.codex-targets != '' }}
         run: |
           python -m pip install --upgrade pip
           pip install zstandard
@@ -246,6 +244,7 @@ jobs:
         uses: docker/setup-qemu-action@v3
 
       - name: Fetch bundled codex binaries
+        if: ${{ matrix.codex-targets != '' }}
         shell: bash
         env:
           CODEX_BINARY_RELEASE_TAG: ${{ vars.CODEX_BINARY_RELEASE_TAG || 'rust-v0.159.2' }}
@@ -260,45 +259,16 @@ jobs:
           python scripts/fetch_codex_binary.py --release-tag "$CODEX_BINARY_RELEASE_TAG" "${args[@]}"
 
       - name: Verify bundled binaries
+        if: ${{ matrix.codex-targets != '' }}
         shell: bash
         run: |
           set -euo pipefail
           IFS=',' read -r -a targets <<< "${{ matrix.codex-targets }}"
           for target in "${targets[@]}"; do
-            if [[ "$target" == *windows* ]]; then
-              bin="codex/vendor/$target/codex-app-server/codex-app-server.exe"
-            else
-              bin="codex/vendor/$target/codex-app-server/codex-app-server"
-            fi
+            bin="codex/vendor/$target/codex-app-server/codex-app-server"
             test -f "$bin"
             echo "Found $bin"
           done
-
-      - name: Compress Windows x64 app-server binary
-        if: ${{ matrix.platform == 'windows-amd64' }}
-        shell: pwsh
-        run: |
-          $ErrorActionPreference = "Stop"
-          $version = "5.2.0"
-          $binary = "codex/vendor/x86_64-pc-windows-msvc/codex-app-server/codex-app-server.exe"
-          if (!(Test-Path $binary)) {
-            throw "Bundled Codex app-server binary not found at $binary"
-          }
-
-          $archive = Join-Path $env:RUNNER_TEMP "upx-$version-win64.zip"
-          $extractDir = Join-Path $env:RUNNER_TEMP "upx"
-          Invoke-WebRequest `
-            -Uri "https://github.com/upx/upx/releases/download/v$version/upx-$version-win64.zip" `
-            -OutFile $archive
-          Expand-Archive -Path $archive -DestinationPath $extractDir -Force
-
-          $upxDir = Join-Path $extractDir "upx-$version-win64"
-          $upx = Join-Path $upxDir "upx.exe"
-          & $upx $binary
-          if ($LASTEXITCODE -ne 0) {
-            exit $LASTEXITCODE
-          }
-          Get-Item $binary | Format-List FullName,Length
 
       - name: Build Linux x86_64 wheel (manylinux2014)
         if: ${{ matrix.platform == 'linux-x86_64' }}
