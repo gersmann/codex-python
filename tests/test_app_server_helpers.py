@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import pytest
-from pydantic import BaseModel
+from pydantic import BaseModel, Field, RootModel, field_serializer
 
 from codex._config_types import CodexConfig
 from codex.app_server._payloads import normalize_input_item, normalize_turn_input, serialize_value
@@ -61,7 +61,65 @@ def test_serialize_value_handles_models_model_classes_and_sequences() -> None:
     assert serialize_value(
         protocol.TurnSettingsUpdateParams(threadId="thread-1", turnId="turn-1")
     ) == {"threadId": "thread-1", "turnId": "turn-1"}
+    assert serialize_value(
+        protocol.ThreadSettingsUpdateParams(serviceTier=None, threadId="thread-1")
+    ) == {"serviceTier": None, "threadId": "thread-1"}
+    assert serialize_value(protocol.ThreadSettingsUpdateParams(threadId="thread-1")) == {
+        "threadId": "thread-1"
+    }
     assert serialize_value(CodexConfig(custom_setting=True)) == {"custom_setting": True}
+
+
+def test_serialize_value_preserves_nested_required_nulls() -> None:
+    params = protocol.McpResourceReadParams(
+        server="apps",
+        uri="ui://resource",
+        threadId=None,
+        target=protocol.McpResourceReadTarget(connectorId="connector-1", linkId=None),
+    )
+    expected = {
+        "server": "apps",
+        "uri": "ui://resource",
+        "target": {"connectorId": "connector-1", "linkId": None},
+    }
+
+    assert serialize_value(params) == expected
+    assert serialize_value(RootModel[list[protocol.McpResourceReadParams]]([params])) == [expected]
+    assert serialize_value(
+        RootModel[dict[str, protocol.McpResourceReadParams | None]](
+            {"request": params, "other": None}
+        )
+    ) == {"request": expected, "other": None}
+
+
+def test_serialize_value_preserves_pydantic_serializers_and_exclusions() -> None:
+    class Payload(BaseModel):
+        required_null: str | None = Field(serialization_alias="requiredNull")
+        omitted: str | None = None
+        hidden: str | None = Field(exclude=True)
+        number: int
+
+        @field_serializer("number")
+        def serialize_number(self, value: int) -> str:
+            return f"number-{value}"
+
+    payload = Payload(required_null=None, omitted=None, hidden=None, number=3)
+    assert serialize_value(RootModel[Payload](payload)) == {
+        "requiredNull": None,
+        "number": "number-3",
+    }
+    assert serialize_value(CodexConfig(custom_setting=None)) == {}
+
+
+@pytest.mark.parametrize("reference", [{"url": "https://example.com/image.png"}, {"fileId": "f-1"}])
+def test_normalize_turn_input_accepts_image_root_models(reference: dict[str, str]) -> None:
+    payload = {"type": "image", "detail": None, **reference}
+    image = protocol.ImageUserInput.model_validate(payload)
+    expected = [{"type": "image", **reference}]
+
+    assert normalize_turn_input(image) == expected
+    assert normalize_turn_input(image.root) == expected
+    assert normalize_turn_input(protocol.UserInput(image)) == expected
 
 
 def test_normalize_turn_input_wraps_strings_and_objects() -> None:

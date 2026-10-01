@@ -174,8 +174,6 @@ class _AsyncThreadLike(Protocol):
 
     async def revert(self, before_turn_id: str) -> protocol.ThreadRevertResponse: ...
 
-    async def rollback(self, num_turns: int) -> protocol.Thread: ...
-
     async def compact(self) -> EmptyResult: ...
 
     async def set_name(self, name: str) -> EmptyResult: ...
@@ -534,9 +532,6 @@ class AppServerThread(_SyncRunner):
 
     def revert(self, before_turn_id: str) -> protocol.ThreadRevertResponse:
         return self._run(self._async_thread.revert(before_turn_id))
-
-    def rollback(self, num_turns: int) -> protocol.Thread:
-        return self._run(self._async_thread.rollback(num_turns))
 
     def compact(self) -> EmptyResult:
         """Trigger thread compaction."""

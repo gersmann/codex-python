@@ -169,6 +169,7 @@ def _model_list_payload() -> JsonObject:
                     "upgradeCopy": None,
                 },
                 "availabilityNux": None,
+                "availableAccessPrograms": {"cyber": []},
             }
         ],
         "nextCursor": None,
@@ -1598,13 +1599,6 @@ def test_async_client_exposes_public_thread_operations() -> None:
             assert message["params"] == {"beforeTurnId": "turn-2", "threadId": "thr-1"}
             return {"id": message["id"], "result": _thread_revert_result_payload()}
 
-        def rollback_thread(message: JsonObject) -> JsonObject:
-            assert message["params"] == {"threadId": "thr-1", "numTurns": 2}
-            return {
-                "id": message["id"],
-                "result": {"thread": {**_thread_payload(), "name": "Rolled back thread"}},
-            }
-
         def compact_thread(message: JsonObject) -> JsonObject:
             assert message["params"] == {"threadId": "thr-1"}
             return {"id": message["id"], "result": {}}
@@ -1627,7 +1621,6 @@ def test_async_client_exposes_public_thread_operations() -> None:
         transport.responses["thread/archive"] = archive_thread
         transport.responses["thread/unarchive"] = unarchive_thread
         transport.responses["thread/revert"] = revert_thread
-        transport.responses["thread/rollback"] = rollback_thread
         transport.responses["thread/compact/start"] = compact_thread
         transport.responses["thread/name/set"] = set_thread_name
         transport.responses["thread/unsubscribe"] = unsubscribe_thread
@@ -1672,8 +1665,6 @@ def test_async_client_exposes_public_thread_operations() -> None:
         assert thread.snapshot.name == "Unarchived thread"
         reverted = await thread.revert("turn-2")
         assert thread.snapshot.name == "Reverted thread"
-        rolled_back = await thread.rollback(2)
-        assert thread.snapshot.name == "Rolled back thread"
         compacted = await thread.compact()
         renamed = await thread.set_name("Renamed thread")
         unsubscribed = await thread.unsubscribe()
@@ -1713,7 +1704,6 @@ def test_async_client_exposes_public_thread_operations() -> None:
         assert unarchived.name == "Unarchived thread"
         assert reverted.itemsBackwardsCursor == "items-reverted"
         assert reverted.turnsBackwardsCursor == "turns-reverted"
-        assert rolled_back.name == "Rolled back thread"
         assert compacted == EmptyResult()
         assert renamed == EmptyResult()
         assert unsubscribed == EmptyResult()
@@ -1937,6 +1927,11 @@ def test_async_client_exposes_typed_rpc_domain_clients() -> None:
                         "planType": "pro",
                     },
                     "requiresOpenaiAuth": True,
+                    "workspaceRouting": {
+                        "accountRoutingOverride": "us",
+                        "backendOrigin": "https://chatgpt.example.com",
+                        "chatgptAccountId": "acct-1",
+                    },
                 },
             }
 
@@ -1990,6 +1985,7 @@ def test_async_client_exposes_typed_rpc_domain_clients() -> None:
                     "rateLimits": snapshot,
                     "rateLimitsByLimitId": {"codex": snapshot},
                     "accountId": "acct-1",
+                    "ordinaryUsageAllowed": False,
                     "rateLimitResetCredits": {"availableCount": 2, "credits": None},
                     "rateLimitUpsell": {"banner_type": "usage", "dismissed_at": None},
                 },
@@ -2067,6 +2063,10 @@ def test_async_client_exposes_typed_rpc_domain_clients() -> None:
                         "allowBrowserAndComputerUse": True,
                         "allowedApprovalPolicies": ["on-request", "never"],
                         "allowedApprovalsReviewers": ["user"],
+                        "allowedLoginMethods": ["chatgpt"],
+                        "application": {"network": {"domains": {}, "enabled": True}},
+                        "modelProvider": "openai",
+                        "modelProviders": {"openai": {"base_url": "https://api.openai.com"}},
                         "allowedSandboxModes": ["read-only", "workspace-write"],
                         "allowedWebSearchModes": ["disabled", "live"],
                         "autoReview": {"ignoreRules": ["safe-command"]},
@@ -2113,6 +2113,9 @@ def test_async_client_exposes_typed_rpc_domain_clients() -> None:
                             "authStatus": "oAuth",
                             "pluginId": "plugin-1",
                             "runtimeStatus": "connected",
+                            "httpOrigin": "https://mcp.example.com",
+                            "serverCapabilities": {"tools": {"listChanged": True}},
+                            "toolsError": None,
                             "tools": {
                                 "repo_status": {
                                     "_meta": {"origin": "pytest"},
@@ -2158,7 +2161,10 @@ def test_async_client_exposes_typed_rpc_domain_clients() -> None:
                 "reason": "Needs follow-up",
                 "threadId": "thr-1",
             }
-            return {"id": message["id"], "result": {"threadId": "thr-feedback"}}
+            return {
+                "id": message["id"],
+                "result": {"threadId": "thr-feedback", "promptHash": "a" * 64},
+            }
 
         def command_exec(message: JsonObject) -> JsonObject:
             assert message["params"] == {
@@ -2420,6 +2426,7 @@ def test_async_client_exposes_typed_rpc_domain_clients() -> None:
             assert models[0].display_name == "GPT-5.4"
             assert models[0].additional_speed_tiers == ["flex"]
             assert models[0].model_specialty == "coding"
+            assert models[0].available_access_programs == protocol.ModelAccessPrograms(cyber=[])
             assert models[0].multi_agent_version == protocol.MultiAgentVersion("v2")
             assert models[0].upgrade_info is not None
             assert models[0].upgrade_info.retirement_at == 1800000000
@@ -2440,6 +2447,8 @@ def test_async_client_exposes_typed_rpc_domain_clients() -> None:
             assert skill_config.effective_enabled is False
             assert account.account is not None
             assert account.account.type == "chatgpt"
+            assert account.workspace_routing is not None
+            assert account.workspace_routing.chatgptAccountId == "acct-1"
             assert api_key_login.type == "apiKey"
             assert chatgpt_login.login_id == "login-1"
             assert chatgpt_tokens_login.type == "chatgptAuthTokens"
@@ -2447,6 +2456,7 @@ def test_async_client_exposes_typed_rpc_domain_clients() -> None:
             assert logout_result == EmptyResult()
             assert rate_limits.rate_limits.limitId == "codex"
             assert rate_limits.account_id == "acct-1"
+            assert rate_limits.ordinary_usage_allowed is False
             assert rate_limits.rate_limit_reset_credits is not None
             assert rate_limits.rate_limit_reset_credits.availableCount == 2
             assert rate_limits.rate_limit_upsell == {"banner_type": "usage", "dismissed_at": None}
@@ -2459,6 +2469,16 @@ def test_async_client_exposes_typed_rpc_domain_clients() -> None:
                 == "Follow managed policy."
             )
             assert requirements.requirements.allow_browser_and_computer_use is True
+            assert requirements.requirements.allowed_login_methods == [
+                protocol.ForcedLoginMethod("chatgpt")
+            ]
+            assert requirements.requirements.application is not None
+            assert requirements.requirements.application.network is not None
+            assert requirements.requirements.application.network.enabled is True
+            assert requirements.requirements.model_provider == "openai"
+            assert requirements.requirements.model_providers == {
+                "openai": {"base_url": "https://api.openai.com"}
+            }
             assert requirements.requirements.auto_review is not None
             assert requirements.requirements.auto_review.ignoreRules == ["safe-command"]
             assert requirements.requirements.chatgpt_base_url == "https://chatgpt.example.com"
@@ -2499,6 +2519,9 @@ def test_async_client_exposes_typed_rpc_domain_clients() -> None:
             assert mcp_status[0].auth_status.root == "oAuth"
             assert mcp_status[0].plugin_id == "plugin-1"
             assert mcp_status[0].runtime_status == protocol.McpServerConnectionStatus("connected")
+            assert mcp_status[0].http_origin == "https://mcp.example.com"
+            assert mcp_status[0].server_capabilities == {"tools": {"listChanged": True}}
+            assert mcp_status[0].tools_error is None
             assert isinstance(mcp_status[0].tools["repo_status"], protocol.Tool)
             assert mcp_status[0].tools["repo_status"].field_meta == {"origin": "pytest"}
             assert mcp_status[0].tools["repo_status"].inputSchema == {
@@ -2516,6 +2539,7 @@ def test_async_client_exposes_typed_rpc_domain_clients() -> None:
             assert mcp_status_alias[0].name == "github"
             assert mcp_status_page_alias.data[0].name == "github"
             assert feedback.thread_id == "thr-feedback"
+            assert feedback.prompt_hash == "a" * 64
             assert command.exit_code == 0
             assert isinstance(created_dir, protocol.FsCreateDirectoryResponse)
             assert isinstance(wrote_file, protocol.FsWriteFileResponse)
@@ -3286,13 +3310,6 @@ def test_sync_client_exposes_public_thread_operations() -> None:
         assert message["params"] == {"beforeTurnId": "turn-2", "threadId": "thr-1"}
         return {"id": message["id"], "result": _thread_revert_result_payload()}
 
-    def rollback_thread(message: JsonObject) -> JsonObject:
-        assert message["params"] == {"threadId": "thr-1", "numTurns": 2}
-        return {
-            "id": message["id"],
-            "result": {"thread": {**_thread_payload(), "name": "Rolled back thread"}},
-        }
-
     def compact_thread(message: JsonObject) -> JsonObject:
         assert message["params"] == {"threadId": "thr-1"}
         return {"id": message["id"], "result": {}}
@@ -3315,7 +3332,6 @@ def test_sync_client_exposes_public_thread_operations() -> None:
     transport.responses["thread/archive"] = archive_thread
     transport.responses["thread/unarchive"] = unarchive_thread
     transport.responses["thread/revert"] = revert_thread
-    transport.responses["thread/rollback"] = rollback_thread
     transport.responses["thread/compact/start"] = compact_thread
     transport.responses["thread/name/set"] = set_thread_name
     transport.responses["thread/unsubscribe"] = unsubscribe_thread
@@ -3351,8 +3367,6 @@ def test_sync_client_exposes_public_thread_operations() -> None:
         assert thread.snapshot.name == "Unarchived thread"
         reverted = thread.revert("turn-2")
         assert thread.snapshot.name == "Reverted thread"
-        rolled_back = thread.rollback(2)
-        assert thread.snapshot.name == "Rolled back thread"
         compacted = thread.compact()
         renamed = thread.set_name("Renamed thread")
         unsubscribed = thread.unsubscribe()
@@ -3388,7 +3402,6 @@ def test_sync_client_exposes_public_thread_operations() -> None:
         assert unarchived.name == "Unarchived thread"
         assert reverted.itemsBackwardsCursor == "items-reverted"
         assert reverted.turnsBackwardsCursor == "turns-reverted"
-        assert rolled_back.name == "Rolled back thread"
         assert compacted == EmptyResult()
         assert renamed == EmptyResult()
         assert unsubscribed == EmptyResult()

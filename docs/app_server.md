@@ -2,9 +2,14 @@
 
 `AppServerClient` connects to `codex app-server` and exposes a thread and stream API on top of the JSON-RPC protocol.
 
-SDK `1.153.4` bundles Codex app-server `0.153.4`; its generated protocol models
+SDK `1.159.2` bundles Codex app-server `0.159.2`; its generated protocol models
 include that version's experimental schema. Experimental RPCs still require
 `AppServerInitializeOptions(experimental_api=True)`.
+
+In `1.159.2`, generated `ImageUserInput` is a union wrapper for URL and file-ID images.
+Construct `protocol.UrlUserInput(type="image", url=...)` or
+`protocol.FileIdUserInput(type="image", fileId=...)`, or validate a wire payload with
+`protocol.ImageUserInput.model_validate(...)`.
 
 Use it when you need a deeper integration than `Codex` provides: persistent connections, typed protocol notifications, or server-driven requests.
 
@@ -99,8 +104,9 @@ A new thread is materialized when its first user message starts; history paginat
 before that point.
 
 Use `thread.revert("turn_123")` to remove that turn and every later turn. The returned
-`ThreadRevertResponse` includes the updated thread and both backwards cursors. `rollback()` is the
-deprecated count-based operation and only works with legacy-history threads.
+`ThreadRevertResponse` includes the updated thread and both backwards cursors. Upstream removed
+the count-based `thread/rollback` RPC, so SDK `1.159.2` removes `rollback()`. Legacy history mode
+remains supported.
 
 Resume with `exclude_turns=True` to avoid returning the entire history. The generated resume
 response retained on `thread.resume_response` contains `turnsBackwardsCursor` and

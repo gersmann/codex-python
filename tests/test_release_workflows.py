@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-PINNED_CODEX_BINARY_RELEASE_TAG = "rust-v0.153.4"
+PINNED_CODEX_BINARY_RELEASE_TAG = "rust-v0.159.2"
 
 
 def test_binary_fetch_workflows_default_to_pinned_codex_release() -> None:

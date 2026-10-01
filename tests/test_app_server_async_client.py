@@ -654,6 +654,41 @@ def test_async_turn_stream_wait_preserves_retryable_error_notifications() -> Non
     asyncio.run(scenario())
 
 
+@pytest.mark.parametrize("with_error", [False, True])
+def test_async_turn_stream_preserves_interruption_error(with_error: bool) -> None:
+    async def scenario() -> None:
+        terminal = protocol.TurnCompletedNotificationModel.model_validate(
+            {
+                "method": "turn/completed",
+                "params": {
+                    "threadId": "thr-1",
+                    "turn": {
+                        **_turn_payload(status="interrupted"),
+                        "error": {
+                            "message": "Too many denied approvals",
+                            "codexErrorInfo": "tooManyDenials",
+                        }
+                        if with_error
+                        else None,
+                    },
+                },
+            }
+        )
+        stream = AsyncTurnStream(
+            _FakeThread(),  # type: ignore[arg-type]
+            _QueuedSubscription([terminal]),  # type: ignore[arg-type]
+            protocol.Turn.model_validate(_turn_payload(status="inProgress")),
+        )
+        await stream.wait()
+        message = "Too many denied approvals" if with_error else "Turn aborted: interrupted"
+        with pytest.raises(AppServerTurnError, match=message) as exc_info:
+            stream.raise_for_terminal_status()
+        assert exc_info.value.error is terminal.params.turn.error
+        assert exc_info.value.terminal_status == "interrupted"
+
+    asyncio.run(scenario())
+
+
 def test_async_turn_stream_raise_for_terminal_status_requires_completion() -> None:
     stream = AsyncTurnStream(
         _FakeThread(),  # type: ignore[arg-type]

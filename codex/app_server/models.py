@@ -67,6 +67,7 @@ DEFAULT_INPUT_MODALITIES: tuple[Literal["text", "image"], Literal["text", "image
 
 
 class ModelInfo(AppServerResultModel):
+    available_access_programs: protocol.ModelAccessPrograms | None = None
     additional_speed_tiers: list[str] | None = Field(default_factory=list)
     availability_nux: ModelAvailabilityNux | None = None
     default_reasoning_effort: protocol.ReasoningEffort
@@ -145,6 +146,7 @@ class ChatGptAccountInfo(AppServerResultModel):
 class AccountReadResult(AppServerResultModel):
     account: ApiKeyAccountInfo | ChatGptAccountInfo | None = None
     requires_openai_auth: bool
+    workspace_routing: protocol.WorkspaceRouting | None = None
 
 
 class ApiKeyLoginResult(AppServerResultModel):
@@ -167,6 +169,7 @@ class AccountCancelLoginResult(AppServerResultModel):
 
 class AccountRateLimitsResult(AppServerResultModel):
     account_id: str | None = None
+    ordinary_usage_allowed: bool | None = None
     rate_limit_reset_credits: protocol.RateLimitResetCreditsSummary | None = None
     rate_limit_upsell: JsonValue = None
     rate_limits: protocol.RateLimitSnapshot
@@ -213,14 +216,18 @@ class ConfigRequirements(AppServerResultModel):
     allow_browser_and_computer_use: bool | None = None
     allowed_approval_policies: list[protocol.AskForApproval] | None = None
     allowed_approvals_reviewers: list[protocol.ApprovalsReviewer] | None = None
+    allowed_login_methods: list[protocol.ForcedLoginMethod] | None = None
     allowed_sandbox_modes: list[protocol.SandboxMode] | None = None
     allowed_web_search_modes: list[protocol.WebSearchMode] | None = None
+    application: protocol.ApplicationRequirements | None = None
     auto_review: protocol.AutoReviewRequirements | None = None
     chatgpt_base_url: str | None = None
     cli_auth_credentials_store: protocol.CliAuthCredentialsStoreMode | None = None
     enforce_residency: protocol.ResidencyRequirement | None = None
     feature_requirements: dict[str, object] | None = None
     in_app_browser: protocol.InAppBrowserRequirements | None = None
+    model_provider: str | None = None
+    model_providers: dict[str, JsonValue] | None = None
     network: protocol.NetworkRequirements | None = None
 
 
@@ -230,12 +237,15 @@ class ConfigRequirementsReadResult(AppServerResultModel):
 
 class McpServerStatus(AppServerResultModel):
     auth_status: protocol.McpAuthStatus
+    http_origin: str | None = None
     name: str
     plugin_id: str | None = None
     resource_templates: list[protocol.ResourceTemplate]
     resources: list[protocol.Resource]
     runtime_status: protocol.McpServerConnectionStatus | None = None
+    server_capabilities: JsonValue = None
     tools: dict[str, protocol.Tool]
+    tools_error: str | None = None
 
 
 class McpServerStatusListResult(AppServerResultModel):
@@ -248,6 +258,7 @@ class McpServerOauthLoginResult(AppServerResultModel):
 
 
 class FeedbackUploadResult(AppServerResultModel):
+    prompt_hash: str | None = None
     thread_id: str
 
 

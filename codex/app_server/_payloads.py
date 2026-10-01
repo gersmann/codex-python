@@ -3,7 +3,7 @@ from __future__ import annotations
 from collections.abc import Mapping, Sequence
 from typing import Any, cast
 
-from pydantic import BaseModel
+from pydantic import BaseModel, RootModel
 
 from codex.app_server._types import JsonObject
 from codex.protocol import types as protocol
@@ -14,6 +14,8 @@ InputItem = (
     | protocol.UserInput
     | protocol.TextUserInput
     | protocol.ImageUserInput
+    | protocol.UrlUserInput
+    | protocol.FileIdUserInput
     | protocol.LocalImageUserInput
     | protocol.SkillUserInput
     | protocol.MentionUserInput
@@ -21,32 +23,53 @@ InputItem = (
 TurnInput = InputItem | Sequence[InputItem]
 
 type ParamsModel = BaseModel
+type _FieldExclusions = (
+    Mapping[str, bool | _FieldExclusions] | Mapping[int, bool | _FieldExclusions]
+)
+
+
+def _optional_none_fields(value: object) -> _FieldExclusions:
+    if isinstance(value, RootModel):
+        return _optional_none_fields(value.root)
+    if isinstance(value, BaseModel):
+        exclusions: dict[str, bool | _FieldExclusions] = {}
+        fields = type(value).model_fields
+        settings_update = isinstance(
+            value, (protocol.TurnSettingsUpdateParams, protocol.ThreadSettingsUpdateParams)
+        )
+        for name, child in value:
+            field = fields.get(name)
+            if name not in value.model_fields_set or (field is not None and field.exclude is True):
+                continue
+            if child is None:
+                if (field is None or not field.is_required()) and not (
+                    settings_update and name == "serviceTier"
+                ):
+                    exclusions[name] = True
+            elif nested := _optional_none_fields(child):
+                exclusions[name] = nested
+        return exclusions
+    elif isinstance(value, (list, tuple)):
+        return {
+            index: nested
+            for index, child in enumerate(value)
+            if (nested := _optional_none_fields(child))
+        }
+    elif isinstance(value, Mapping):
+        return {
+            key: nested for key, child in value.items() if (nested := _optional_none_fields(child))
+        }
+    return {}
 
 
 def serialize_value(value: object) -> object:
     if isinstance(value, BaseModel):
-        serialized = value.model_dump(
+        return value.model_dump(
             mode="json",
             by_alias=True,
-            exclude_none=True,
+            exclude=_optional_none_fields(value),
             exclude_unset=True,
         )
-        fields = type(value).model_fields
-        for name in value.model_fields_set:
-            field = fields.get(name)
-            if (
-                field is not None
-                and value.__dict__[name] is None
-                and (
-                    field.is_required()
-                    or (
-                        isinstance(value, protocol.TurnSettingsUpdateParams)
-                        and name == "serviceTier"
-                    )
-                )
-            ):
-                serialized[field.serialization_alias or field.alias or name] = None
-        return serialized
     if isinstance(value, type) and issubclass(value, BaseModel):
         return value.model_json_schema()
     if isinstance(value, list):

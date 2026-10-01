@@ -39,6 +39,8 @@ type InputItem = (
     | protocol.UserInput
     | protocol.TextUserInput
     | protocol.ImageUserInput
+    | protocol.UrlUserInput
+    | protocol.FileIdUserInput
     | protocol.LocalImageUserInput
     | protocol.SkillUserInput
     | protocol.MentionUserInput

@@ -238,7 +238,8 @@ class AsyncTurnStream:
                 message = turn.error.message
             raise AppServerTurnError(message, turn=turn, error=turn.error)
         if turn.status.root == "interrupted":
-            raise AppServerTurnError("Turn aborted: interrupted", turn=turn)
+            message = "Turn aborted: interrupted" if turn.error is None else turn.error.message
+            raise AppServerTurnError(message, turn=turn, error=turn.error)
 
     async def close(self) -> None:
         """Close the underlying notification subscription early."""
@@ -459,7 +460,7 @@ class AsyncAppServerThread:
         return await self._client.rpc.request_typed(
             "thread/items/list",
             protocol.ThreadItemsListParams(
-                cursor=cursor,
+                cursor=protocol.ThreadItemsListCursor(cursor) if cursor is not None else None,
                 limit=limit,
                 sortDirection=sort_direction,
                 threadId=self.id,
@@ -653,16 +654,6 @@ class AsyncAppServerThread:
         )
         self._snapshot = result.thread
         return result
-
-    async def rollback(self, num_turns: int) -> protocol.Thread:
-        """Roll back the last `num_turns` turns on a legacy-history thread."""
-        result = await self._client.rpc.request_typed(
-            "thread/rollback",
-            protocol.ThreadRollbackParams(threadId=self.id, numTurns=num_turns),
-            ThreadResult,
-        )
-        self._snapshot = result.thread
-        return self.snapshot
 
     async def compact(self) -> EmptyResult:
         return await self._client.rpc.request_typed(
