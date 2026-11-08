@@ -19,6 +19,9 @@ class EmptyResult(AppServerResultModel):
 
 
 class InitializeResult(AppServerResultModel):
+    codex_home: protocol.AbsolutePathBuf | None = None
+    platform_family: str | None = None
+    platform_os: str | None = None
     user_agent: str
 
 
@@ -60,7 +63,7 @@ class ReasoningEffortOption(AppServerResultModel):
     reasoning_effort: protocol.ReasoningEffort
 
 
-DEFAULT_INPUT_MODALITIES: tuple[Literal["text", "image"], Literal["text", "image"]] = (
+DEFAULT_INPUT_MODALITIES: tuple[Literal["text", "image", "audio"], ...] = (
     "text",
     "image",
 )
@@ -71,17 +74,19 @@ class ModelInfo(AppServerResultModel):
     additional_speed_tiers: list[str] | None = Field(default_factory=list)
     availability_nux: ModelAvailabilityNux | None = None
     default_reasoning_effort: protocol.ReasoningEffort
+    default_service_tier: str | None = None
     description: str
     display_name: str
     hidden: bool
     id: str
-    input_modalities: list[Literal["text", "image"]] | None = Field(
+    input_modalities: list[Literal["text", "image", "audio"]] | None = Field(
         default_factory=lambda: list(DEFAULT_INPUT_MODALITIES)
     )
     is_default: bool
     model: str
     model_specialty: str | None = None
     multi_agent_version: protocol.MultiAgentVersion | None = None
+    service_tiers: list[protocol.ModelServiceTier] | None = None
     supported_reasoning_efforts: list[ReasoningEffortOption]
     supports_personality: bool | None = False
     upgrade: str | None = None
@@ -100,6 +105,8 @@ class AppListResult(AppServerResultModel):
 
 class SkillInterface(AppServerResultModel):
     display_name: str | None = None
+    icon_large_url: str | None = None
+    icon_small_url: str | None = None
     short_description: str | None = None
     icon_small: str | None = None
     icon_large: str | None = None
@@ -138,13 +145,20 @@ class ApiKeyAccountInfo(AppServerResultModel):
 
 
 class ChatGptAccountInfo(AppServerResultModel):
-    email: str
+    email: str | None = None
     plan_type: protocol.PlanType
     type: Literal["chatgpt"]
+    workspace_name: str | None = None
 
 
 class AccountReadResult(AppServerResultModel):
-    account: ApiKeyAccountInfo | ChatGptAccountInfo | None = None
+    account: (
+        ApiKeyAccountInfo
+        | ChatGptAccountInfo
+        | protocol.AmazonBedrockAccount
+        | protocol.GcpAccount
+        | None
+    ) = None
     requires_openai_auth: bool
     workspace_routing: protocol.WorkspaceRouting | None = None
 
@@ -213,26 +227,46 @@ class ConfigWriteResult(AppServerResultModel):
 
 class ConfigRequirements(AppServerResultModel):
     additional_developer_instructions: str | None = None
+    allow_appshots: bool | None = None
     allow_browser_and_computer_use: bool | None = None
+    allow_login_shell: bool | None = None
+    allow_managed_hooks_only: bool | None = None
+    allow_remote_control: bool | None = None
     allowed_approval_policies: list[protocol.AskForApproval] | None = None
     allowed_approvals_reviewers: list[protocol.ApprovalsReviewer] | None = None
     allowed_login_methods: list[protocol.ForcedLoginMethod] | None = None
+    allowed_permission_profiles: dict[str, object] | None = None
     allowed_sandbox_modes: list[protocol.SandboxMode] | None = None
     allowed_web_search_modes: list[protocol.WebSearchMode] | None = None
+    allowed_windows_sandbox_implementations: list[protocol.WindowsSandboxImplementation] | None = (
+        None
+    )
     application: protocol.ApplicationRequirements | None = None
     auto_review: protocol.AutoReviewRequirements | None = None
+    browser_use: protocol.BrowserUseRequirements | None = None
     chatgpt_base_url: str | None = None
+    check_for_update_on_startup: bool | None = None
     cli_auth_credentials_store: protocol.CliAuthCredentialsStoreMode | None = None
+    computer_use: protocol.ComputerUseRequirements | None = None
+    default_permissions: str | None = None
     enforce_residency: protocol.ResidencyRequirement | None = None
     feature_requirements: dict[str, object] | None = None
+    feedback: protocol.FeedbackRequirements | None = None
+    hooks: protocol.ManagedHooksRequirements | None = None
     in_app_browser: protocol.InAppBrowserRequirements | None = None
+    log_dir: str | None = None
+    model_catalog_json: str | None = None
     model_provider: str | None = None
     model_providers: dict[str, JsonValue] | None = None
+    models: protocol.ModelsRequirements | None = None
     network: protocol.NetworkRequirements | None = None
+    otel: protocol.OtelRequirements | None = None
+    sqlite_home: str | None = None
 
 
 class ConfigRequirementsReadResult(AppServerResultModel):
     requirements: ConfigRequirements | None = None
+    supports_independent_speed_modes: bool | None = None
 
 
 class McpServerStatus(AppServerResultModel):
@@ -244,6 +278,8 @@ class McpServerStatus(AppServerResultModel):
     resources: list[protocol.Resource]
     runtime_status: protocol.McpServerConnectionStatus | None = None
     server_capabilities: JsonValue = None
+    server_info: protocol.McpServerInfo | None = None
+    tool_list_meta: JsonValue = None
     tools: dict[str, protocol.Tool]
     tools_error: str | None = None
 
@@ -255,6 +291,7 @@ class McpServerStatusListResult(AppServerResultModel):
 
 class McpServerOauthLoginResult(AppServerResultModel):
     authorization_url: str
+    login_id: str | None = None
 
 
 class FeedbackUploadResult(AppServerResultModel):

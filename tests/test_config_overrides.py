@@ -1,39 +1,64 @@
 from __future__ import annotations
 
+import sys
+import types
 from pathlib import Path
 
 import pytest
 
-from codex import _binary
-from codex._binary import bundled_app_server_path, resolve_target_triple
-from codex.errors import CodexExecError
+from codex._binary import BundledCodexNotFoundError, bundled_codex_path, bundled_path_dirs
 
 
-def test_resolve_target_triple() -> None:
-    assert resolve_target_triple("linux", "x86_64") == "x86_64-unknown-linux-musl"
-    assert resolve_target_triple("linux", "aarch64") == "aarch64-unknown-linux-musl"
-    assert resolve_target_triple("darwin", "arm64") == "aarch64-apple-darwin"
-    assert resolve_target_triple("win32", "AMD64") == "x86_64-pc-windows-msvc"
+def _fake_runtime(
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    codex_path: Path | Exception,
+    path_dir: Path | None = None,
+) -> None:
+    module = types.ModuleType("codex_cli_bin")
+
+    def fake_codex_path() -> Path:
+        if isinstance(codex_path, Exception):
+            raise codex_path
+        return codex_path
+
+    module.bundled_codex_path = fake_codex_path  # type: ignore[attr-defined]
+    module.bundled_path_dir = lambda: path_dir  # type: ignore[attr-defined]
+    monkeypatch.setitem(sys.modules, "codex_cli_bin", module)
 
 
-def test_resolve_target_triple_rejects_unsupported() -> None:
-    with pytest.raises(CodexExecError, match="Unsupported platform"):
-        resolve_target_triple("freebsd", "x86_64")
-
-
-def test_bundled_app_server_path_resolves_when_binary_exists(
+def test_bundled_codex_path_comes_from_runtime_package(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    target = "x86_64-unknown-linux-musl"
-    package_root = tmp_path / "codex"
-    monkeypatch.setattr(_binary, "__file__", str(package_root / "_binary.py"))
-    binary_path = package_root / "vendor" / target / "codex-app-server" / "codex-app-server"
-    binary_path.parent.mkdir(parents=True, exist_ok=True)
-    binary_path.write_text("test", encoding="utf-8")
+    _fake_runtime(monkeypatch, codex_path=tmp_path / "bin" / "codex", path_dir=tmp_path / "rg")
 
-    assert bundled_app_server_path(target) == binary_path
+    assert bundled_codex_path() == tmp_path / "bin" / "codex"
+    assert bundled_path_dirs() == (tmp_path / "rg",)
 
 
-def test_bundled_app_server_path_raises_when_missing() -> None:
-    with pytest.raises(CodexExecError, match="Bundled codex app-server binary not found"):
-        bundled_app_server_path("missing-target")
+def test_bundled_codex_path_explains_missing_runtime_package(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setitem(sys.modules, "codex_cli_bin", None)
+
+    with pytest.raises(BundledCodexNotFoundError, match="openai-codex-cli-bin is not installed"):
+        bundled_codex_path()
+    assert bundled_path_dirs() == ()
+
+
+def test_bundled_codex_path_reports_incomplete_runtime_package(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _fake_runtime(monkeypatch, codex_path=FileNotFoundError("missing packaged codex binary"))
+
+    with pytest.raises(BundledCodexNotFoundError, match="missing packaged codex binary"):
+        bundled_codex_path()
+
+
+def test_installed_runtime_ships_code_mode_host_and_sandbox() -> None:
+    codex = bundled_codex_path()
+
+    assert codex.is_file()
+    assert (codex.parent / "codex-code-mode-host").is_file() or (
+        codex.parent / "codex-code-mode-host.exe"
+    ).is_file()

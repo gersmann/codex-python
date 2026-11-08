@@ -19,7 +19,22 @@ from codex.app_server._protocol_helpers import (
     request_id,
 )
 from codex.app_server.errors import AppServerProtocolError
-from codex.app_server.models import EmptyResult, GenericNotification, GenericServerRequest
+from codex.app_server.models import (
+    AccountReadResult,
+    ChatGptAccountInfo,
+    ConfigReadResult,
+    EmptyResult,
+    GenericNotification,
+    GenericServerRequest,
+    ModelInfo,
+)
+from codex.app_server.options import (
+    AppServerClientInfo,
+    AppServerInitializeOptions,
+    AppServerThreadForkOptions,
+    AppServerThreadListOptions,
+    AppServerTurnOptions,
+)
 from codex.protocol import types as protocol
 
 
@@ -80,6 +95,7 @@ def test_serialize_value_preserves_nested_required_nulls() -> None:
     expected = {
         "server": "apps",
         "uri": "ui://resource",
+        "threadId": None,
         "target": {"connectorId": "connector-1", "linkId": None},
     }
 
@@ -115,7 +131,7 @@ def test_serialize_value_preserves_pydantic_serializers_and_exclusions() -> None
 def test_normalize_turn_input_accepts_image_root_models(reference: dict[str, str]) -> None:
     payload = {"type": "image", "detail": None, **reference}
     image = protocol.ImageUserInput.model_validate(payload)
-    expected = [{"type": "image", **reference}]
+    expected = [payload]
 
     assert normalize_turn_input(image) == expected
     assert normalize_turn_input(image.root) == expected
@@ -323,3 +339,142 @@ def test_extract_helpers_read_item_deltas_and_usage() -> None:
     usage = extract_token_usage(usage_notification)
     assert usage is not None
     assert usage.total.totalTokens == 3
+
+
+@pytest.mark.parametrize(
+    ("payload", "expected_type"),
+    [
+        ({"type": "amazonBedrock", "usesCodexManagedCredentials": True}, "amazonBedrock"),
+        ({"type": "gcp"}, "gcp"),
+    ],
+)
+def test_account_read_result_accepts_cloud_provider_accounts(
+    payload: dict[str, object], expected_type: str
+) -> None:
+    result = parse_result(
+        {"account": payload, "requiresOpenaiAuth": False},
+        AccountReadResult,
+    )
+
+    assert result.account is not None
+    account_type = result.account.type
+    assert getattr(account_type, "root", account_type) == expected_type
+
+
+def test_initialize_options_send_required_human_approval_capability() -> None:
+    params = AppServerInitializeOptions(
+        client_info=AppServerClientInfo(name="test", version="1"),
+        experimental_api=True,
+        required_human_approval=True,
+    ).to_params()
+
+    assert params["capabilities"] == {"experimentalApi": True, "requiredHumanApproval": True}
+
+
+def test_options_forward_codex_0_167_protocol_fields() -> None:
+    thread_list = AppServerThreadListOptions(
+        attached_to_thread_id="thr-1", excluded_thread_ids=["thr-2"]
+    ).to_params()
+    fork = AppServerThreadForkOptions(
+        attach_to_source=True,
+        ephemeral=True,
+        experimental_disable_prediction_mcp=True,
+        experimental_prediction_mode=True,
+    ).to_params(thread_id="thr-1")
+    turn = AppServerTurnOptions(
+        cyber_access_program=protocol.CyberAccessProgram("standard"),
+        parent_turn_id="turn-1",
+        responsesapi_client_metadata_patch={"trace_id": "trace-1"},
+        root_turn_id="turn-0",
+    ).to_params(thread_id="thr-1", input=[])
+
+    assert thread_list.attachedToThreadId == "thr-1"
+    assert thread_list.excludedThreadIds == ["thr-2"]
+    assert fork.attachToSource is True
+    assert fork.experimentalDisablePredictionMcp is True
+    assert fork.experimentalPredictionMode is True
+    assert turn.cyberAccessProgram == protocol.CyberAccessProgram("standard")
+    assert turn.parentTurnId == "turn-1"
+    assert turn.responsesapiClientMetadataPatch == {"trace_id": "trace-1"}
+    assert turn.rootTurnId == "turn-0"
+
+
+def _model_payload(**overrides: object) -> dict[str, object]:
+    return {
+        "defaultReasoningEffort": "low",
+        "description": "Test model",
+        "displayName": "Test",
+        "hidden": False,
+        "id": "test-model",
+        "isDefault": True,
+        "model": "test-model",
+        "supportedReasoningEfforts": [],
+        **overrides,
+    }
+
+
+def test_model_info_accepts_audio_input_modality() -> None:
+    model = parse_result(_model_payload(inputModalities=["text", "audio"]), ModelInfo)
+
+    assert model.input_modalities == ["text", "audio"]
+
+
+def test_model_info_keeps_service_tiers() -> None:
+    model = parse_result(_model_payload(serviceTiers=[], defaultServiceTier="fast"), ModelInfo)
+
+    assert model.service_tiers == []
+    assert model.default_service_tier == "fast"
+
+
+def test_config_read_accepts_multiple_forced_workspaces() -> None:
+    result = parse_result(
+        {"config": {"forced_chatgpt_workspace_id": ["a", "b"]}, "origins": {}},
+        ConfigReadResult,
+    )
+
+    assert result.config.forced_chatgpt_workspace_id == ["a", "b"]
+
+
+def test_account_read_accepts_chatgpt_account_without_email() -> None:
+    result = parse_result(
+        {
+            "account": {"type": "chatgpt", "email": None, "planType": "plus"},
+            "requiresOpenaiAuth": False,
+        },
+        AccountReadResult,
+    )
+
+    assert isinstance(result.account, ChatGptAccountInfo)
+    assert result.account.email is None
+
+
+def test_serialize_value_sends_explicit_null_for_clearable_fields() -> None:
+    params = protocol.ThreadMetadataUpdateParams(
+        threadId="thread-1",
+        gitInfo=protocol.ThreadMetadataGitInfoUpdateParams(branch=None, sha="abc"),
+    )
+
+    assert serialize_value(params) == {
+        "threadId": "thread-1",
+        "gitInfo": {"branch": None, "sha": "abc"},
+    }
+
+
+def test_serialize_value_omits_explicit_none_on_fields_that_reject_null() -> None:
+    assert ("AppsListParams", "forceRefetch") in protocol.NON_NULLABLE_OPTIONAL_FIELDS
+
+    assert serialize_value(protocol.AppsListParams(forceRefetch=None, limit=5)) == {"limit": 5}
+
+
+def test_serialize_value_keeps_stripping_none_on_non_protocol_models() -> None:
+    class Payload(BaseModel):
+        note: str | None = None
+
+    assert serialize_value(Payload(note=None)) == {}
+
+
+def test_non_nullable_optional_fields_resolve_to_generated_fields() -> None:
+    for model_name, field_name in protocol.NON_NULLABLE_OPTIONAL_FIELDS:
+        model = getattr(protocol, model_name)
+        wire_names = {field.alias or name for name, field in model.model_fields.items()}
+        assert field_name in wire_names, (model_name, field_name)

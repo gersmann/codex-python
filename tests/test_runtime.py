@@ -1,11 +1,12 @@
 from __future__ import annotations
 
+import tomllib
 from pathlib import Path
 
 import pytest
 
 from codex import _runtime
-from codex._binary import BundledAppServerNotFoundError
+from codex._binary import BundledCodexNotFoundError
 
 
 class _ResolveError(RuntimeError):
@@ -47,7 +48,7 @@ def test_resolve_codex_path_prefers_explicit_path() -> None:
 def test_resolve_codex_path_falls_back_to_path_lookup() -> None:
     resolved = _runtime.resolve_codex_path(
         None,
-        bundled_path=lambda: (_ for _ in ()).throw(BundledAppServerNotFoundError("bundle missing")),
+        bundled_path=lambda: (_ for _ in ()).throw(BundledCodexNotFoundError("bundle missing")),
         which=lambda name: "/usr/bin/codex" if name == "codex" else None,
         error_type=_ResolveError,
     )
@@ -59,9 +60,7 @@ def test_resolve_codex_path_raises_error_when_nothing_available() -> None:
     with pytest.raises(_ResolveError, match="Also failed to find `codex` on PATH"):
         _runtime.resolve_codex_path(
             None,
-            bundled_path=lambda: (_ for _ in ()).throw(
-                BundledAppServerNotFoundError("bundle missing")
-            ),
+            bundled_path=lambda: (_ for _ in ()).throw(BundledCodexNotFoundError("bundle missing")),
             which=lambda name: None,
             error_type=_ResolveError,
         )
@@ -110,3 +109,26 @@ def test_serialize_config_overrides_rejects_invalid_shapes() -> None:
 
     with pytest.raises(ValueError, match="finite number"):
         _runtime.serialize_config_overrides({"threshold": float("inf")})
+
+
+@pytest.mark.parametrize(
+    "value",
+    [
+        "Explain \U0001f600 now",
+        "Erkl\u00e4re \u00fc",
+        'quote " and back\\slash',
+        "line\nbreak\ttab",
+        "delete\x7fcontrol",
+        "bell\x07control",
+    ],
+)
+def test_config_override_strings_round_trip_through_toml(value: str) -> None:
+    override = _runtime.serialize_config_overrides({"developer_instructions": value})[0]
+
+    assert tomllib.loads(override) == {"developer_instructions": value}
+
+
+def test_config_override_keys_round_trip_through_toml() -> None:
+    override = _runtime.serialize_config_overrides({"tools": [{"\U0001f600 key": 1}]})[0]
+
+    assert tomllib.loads(override) == {"tools": [{"\U0001f600 key": 1}]}

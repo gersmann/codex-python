@@ -69,6 +69,13 @@ class AppServerInitializeOptions(_AppServerOptionsModel):
             "Exact notification method names to suppress for this connection."
         ),
     )
+    required_human_approval: bool = Field(
+        default=False,
+        description=(
+            "Sent as initialize.params.capabilities.requiredHumanApproval. "
+            "Requires experimental_api; opts into humanCommand approval requests."
+        ),
+    )
     strict_protocol: bool = Field(
         default=False,
         exclude=True,
@@ -90,6 +97,8 @@ class AppServerInitializeOptions(_AppServerOptionsModel):
         capabilities: dict[str, object] = {}
         if self.experimental_api:
             capabilities["experimentalApi"] = True
+        if self.required_human_approval:
+            capabilities["requiredHumanApproval"] = True
         if self.extensions:
             capabilities["extensions"] = self.extensions
         if self.opt_out_notification_methods:
@@ -216,6 +225,10 @@ class AppServerTurnOptions(_AppServerOptionsModel):
         default=None,
         description="Sent as turn/start collaborationMode.",
     )
+    cyber_access_program: protocol.CyberAccessProgram | None = Field(
+        default=None,
+        description="Sent as turn/start cyberAccessProgram.",
+    )
     cwd: str | None = Field(
         default=None,
         description="Sent as turn/start cwd.",
@@ -239,6 +252,10 @@ class AppServerTurnOptions(_AppServerOptionsModel):
             "Accepts raw JSON Schema or a Pydantic model class."
         ),
     )
+    parent_turn_id: str | None = Field(
+        default=None,
+        description="Sent as turn/start parentTurnId.",
+    )
     personality: protocol.Personality | None = Field(
         default=None,
         description="Sent as turn/start personality.",
@@ -250,6 +267,14 @@ class AppServerTurnOptions(_AppServerOptionsModel):
     responsesapi_client_metadata: dict[str, object] | None = Field(
         default=None,
         description="Sent as turn/start responsesapiClientMetadata.",
+    )
+    responsesapi_client_metadata_patch: dict[str, object] | None = Field(
+        default=None,
+        description="Sent as turn/start responsesapiClientMetadataPatch.",
+    )
+    root_turn_id: str | None = Field(
+        default=None,
+        description="Sent as turn/start rootTurnId.",
     )
     runtime_workspace_roots: list[protocol.AbsolutePathBuf] | None = Field(
         default=None,
@@ -501,6 +526,10 @@ class AppServerThreadForkOptions(_AppServerOptionsModel):
         default=None,
         description="Sent as thread/fork approvalsReviewer.",
     )
+    attach_to_source: bool | None = Field(
+        default=None,
+        description="Sent as thread/fork attachToSource.",
+    )
     base_instructions: str | None = Field(
         default=None,
         description="Sent as thread/fork baseInstructions.",
@@ -532,6 +561,14 @@ class AppServerThreadForkOptions(_AppServerOptionsModel):
     exclude_turns: bool | None = Field(
         default=None,
         description="Sent as thread/fork excludeTurns.",
+    )
+    experimental_disable_prediction_mcp: bool | None = Field(
+        default=None,
+        description="Sent as thread/fork experimentalDisablePredictionMcp.",
+    )
+    experimental_prediction_mode: bool | None = Field(
+        default=None,
+        description="Sent as thread/fork experimentalPredictionMode.",
     )
     last_turn_id: str | None = Field(
         default=None,
@@ -590,6 +627,10 @@ class AppServerThreadListOptions(_AppServerOptionsModel):
         default=None,
         description="Sent as thread/list archived.",
     )
+    attached_to_thread_id: str | None = Field(
+        default=None,
+        description="Sent as thread/list attachedToThreadId.",
+    )
     cursor: str | None = Field(
         default=None,
         description="Sent as thread/list cursor.",
@@ -597,6 +638,10 @@ class AppServerThreadListOptions(_AppServerOptionsModel):
     cwd: str | list[str] | None = Field(
         default=None,
         description="Sent as thread/list cwd.",
+    )
+    excluded_thread_ids: list[str] | None = Field(
+        default=None,
+        description="Sent as thread/list excludedThreadIds.",
     )
     limit: int | None = Field(
         default=None,

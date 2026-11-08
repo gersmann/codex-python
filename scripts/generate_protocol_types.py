@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import ast
+import json
 import re
 import subprocess  # nosec B404
 import sys
@@ -132,6 +133,25 @@ def generated_model_definitions(text: str) -> list[ModelDefinition]:
     raise ValueError("generated model file does not contain any class definitions")
 
 
+def declared_fields(text: str) -> dict[str, set[str]]:
+    """Map each generated class to the wire names of the fields it declares."""
+    fields: dict[str, set[str]] = {}
+    for node in ast.parse(text).body:
+        if not isinstance(node, ast.ClassDef):
+            continue
+        names: set[str] = set()
+        for statement in node.body:
+            if isinstance(statement, ast.AnnAssign) and isinstance(statement.target, ast.Name):
+                names.add(statement.target.id)
+                for call in ast.walk(statement):
+                    if isinstance(call, ast.Call):
+                        for keyword in call.keywords:
+                            if keyword.arg == "alias" and isinstance(keyword.value, ast.Constant):
+                                names.add(str(keyword.value.value))
+        fields[node.name] = names
+    return fields
+
+
 def class_names(text: str) -> set[str]:
     return {match.group(1) for match in re.finditer(r"^class\s+(\w+)\b", text, flags=re.M)}
 
@@ -197,6 +217,79 @@ def build_postprocess_command(*, output_path: Path) -> list[str]:
     return [sys.executable, "scripts/postprocess_protocol_types.py", str(output_path)]
 
 
+def _schema_nullable(node: object, definitions: dict[str, object], seen: frozenset[str]) -> bool:
+    if not isinstance(node, dict):
+        return True
+    kind = node.get("type")
+    if kind == "null" or (isinstance(kind, list) and "null" in kind):
+        return True
+    if not node:
+        return True
+    ref = node.get("$ref")
+    if isinstance(ref, str):
+        name = ref.rsplit("/", 1)[-1]
+        if name not in seen and _schema_nullable(definitions.get(name), definitions, seen | {name}):
+            return True
+    return any(
+        _schema_nullable(member, definitions, seen)
+        for key in ("anyOf", "oneOf")
+        for member in node.get(key, [])
+    )
+
+
+def non_nullable_optional_fields(schema: dict[str, object]) -> list[tuple[str, str]]:
+    """Return (model title, wire field) pairs that may be omitted but must never be null."""
+    raw_definitions = schema.get("definitions") or schema.get("$defs") or {}
+    definitions = raw_definitions if isinstance(raw_definitions, dict) else {}
+    found: set[tuple[str, str]] = set()
+
+    def visit(node: object, name: str | None) -> None:
+        if isinstance(node, list):
+            for child in node:
+                visit(child, None)
+            return
+        if not isinstance(node, dict):
+            return
+        title = node.get("title", name)
+        properties = node.get("properties")
+        if isinstance(title, str) and isinstance(properties, dict):
+            required = set(node.get("required", []))
+            for field, prop in properties.items():
+                if field not in required and not _schema_nullable(prop, definitions, frozenset()):
+                    found.add((title, field))
+        for key, child in node.items():
+            if key not in ("definitions", "$defs"):
+                visit(child, None)
+
+    for definition_name, definition in definitions.items():
+        visit(definition, definition_name)
+    return sorted(found)
+
+
+def append_nullability_metadata(*, schema_path: Path, output_path: Path) -> None:
+    schema = json.loads(schema_path.read_text())
+    text = output_path.read_text()
+    declared = declared_fields(text)
+    entries = [
+        (model, field)
+        for model, field in non_nullable_optional_fields(schema)
+        if field in declared.get(model, set())
+    ]
+    lines = [
+        "",
+        "",
+        "# Optional wire fields whose schema rejects null; the SDK omits them instead of sending null.",
+        "NON_NULLABLE_OPTIONAL_FIELDS: frozenset[tuple[str, str]] = frozenset(",
+        "    {",
+        *(f"        ({json.dumps(model)}, {json.dumps(field)})," for model, field in entries),
+        "    }",
+        ")",
+        "",
+    ]
+    output_path.write_text(text.rstrip("\n") + "\n".join(lines))
+    print(f"[protocol-gen] recorded {len(entries)} non-nullable optional fields")
+
+
 def postprocess_protocol_models(output_path: Path) -> None:
     run_stage(
         "postprocess generated protocol types",
@@ -222,6 +315,7 @@ def main() -> int:
         generate_protocol_models(schema_path=schema_path, output_path=candidate_path)
         append_extra_protocol_models(schema_dir=schema_dir, output_path=candidate_path)
         postprocess_protocol_models(candidate_path)
+        append_nullability_metadata(schema_path=schema_path, output_path=candidate_path)
         candidate_path.replace(output_path)
     return 0
 

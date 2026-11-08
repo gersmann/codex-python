@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import threading
 from typing import Annotated
 
 import pytest
@@ -205,3 +206,36 @@ def test_dynamic_tool_runtime_rejects_conflicting_handlers_and_duplicate_names()
         match="Cannot activate annotation-driven dynamic tools after registering a manual",
     ):
         manual_runtime.prepare_activation(resolve_dynamic_tools([lookup_ticket]))
+
+
+def test_sync_dynamic_tool_runs_off_the_event_loop_thread() -> None:
+    tool_threads: list[int] = []
+
+    @dynamic_tool(description="Record the executing thread.")
+    def record_thread() -> str:
+        tool_threads.append(threading.get_ident())
+        return "ok"
+
+    runtime = _DynamicToolRuntime(lambda method, handler, request_model: None)
+    runtime.activate("thr-1", resolve_dynamic_tools([record_thread]))
+    request = protocol.ItemToolCallRequest.model_validate(
+        {
+            "id": "req-1",
+            "method": "item/tool/call",
+            "params": {
+                "callId": "call-1",
+                "threadId": "thr-1",
+                "turnId": "turn-1",
+                "tool": "record_thread",
+                "arguments": {},
+            },
+        }
+    )
+
+    async def scenario() -> protocol.DynamicToolCallResponse:
+        return await runtime.dispatch(request)
+
+    response = asyncio.run(scenario())
+
+    assert response.success is True
+    assert tool_threads[0] != threading.get_ident()

@@ -1,46 +1,39 @@
 from __future__ import annotations
 
-import platform
 from pathlib import Path
 
 from codex.errors import CodexExecError
 
-
-class BundledAppServerNotFoundError(CodexExecError):
-    """The platform wheel does not contain a bundled app-server binary."""
+RUNTIME_PACKAGE = "openai-codex-cli-bin"
 
 
-def resolve_target_triple(system_name: str | None = None, machine_name: str | None = None) -> str:
-    system = (system_name or platform.system()).lower()
-    machine = (machine_name or platform.machine()).lower()
-
-    if system in {"linux", "android"}:
-        if machine in {"x86_64", "amd64"}:
-            return "x86_64-unknown-linux-musl"
-        if machine in {"aarch64", "arm64"}:
-            return "aarch64-unknown-linux-musl"
-    elif system == "darwin":
-        if machine in {"x86_64", "amd64"}:
-            return "x86_64-apple-darwin"
-        if machine in {"aarch64", "arm64"}:
-            return "aarch64-apple-darwin"
-    elif system in {"windows", "win32"}:
-        if machine in {"x86_64", "amd64"}:
-            return "x86_64-pc-windows-msvc"
-        if machine in {"aarch64", "arm64"}:
-            return "aarch64-pc-windows-msvc"
-
-    raise CodexExecError(f"Unsupported platform: {system} ({machine})")
+class BundledCodexNotFoundError(CodexExecError):
+    """The pinned Codex runtime package is not installed or is incomplete."""
 
 
-def bundled_app_server_path(target_triple: str | None = None) -> Path:
-    triple = target_triple or resolve_target_triple()
-    package_root = Path(__file__).resolve().parent
-    binary_name = "codex-app-server.exe" if "windows" in triple else "codex-app-server"
-    binary_path = package_root / "vendor" / triple / "codex-app-server" / binary_name
-    if not binary_path.exists():
-        raise BundledAppServerNotFoundError(
-            "Bundled codex app-server binary not found at "
-            f"{binary_path}. Install Codex on PATH or provide codex_path_override."
-        )
-    return binary_path
+def bundled_codex_path() -> Path:
+    """Return the `codex` executable shipped by the pinned runtime package."""
+    try:
+        from codex_cli_bin import bundled_codex_path as runtime_codex_path
+    except ImportError as exc:
+        raise BundledCodexNotFoundError(
+            f"{RUNTIME_PACKAGE} is not installed. Reinstall codex-python, install Codex on PATH, "
+            "or provide codex_path_override."
+        ) from exc
+    try:
+        return Path(runtime_codex_path())
+    except FileNotFoundError as exc:
+        raise BundledCodexNotFoundError(str(exc)) from exc
+
+
+def bundled_path_dirs() -> tuple[Path, ...]:
+    """Return helper directories (such as ripgrep) to put on the bundled Codex PATH."""
+    try:
+        from codex_cli_bin import bundled_path_dir
+    except ImportError:
+        return ()
+    try:
+        path_dir = bundled_path_dir()
+    except FileNotFoundError:
+        return ()
+    return () if path_dir is None else (Path(path_dir),)

@@ -33,17 +33,22 @@ def _optional_none_fields(value: object) -> _FieldExclusions:
         return _optional_none_fields(value.root)
     if isinstance(value, BaseModel):
         exclusions: dict[str, bool | _FieldExclusions] = {}
-        fields = type(value).model_fields
-        settings_update = isinstance(
-            value, (protocol.TurnSettingsUpdateParams, protocol.ThreadSettingsUpdateParams)
-        )
+        model_type = type(value)
+        fields = model_type.model_fields
+        # Protocol fields accept an explicit null (for some it clears the value) unless the
+        # schema forbids it; other models keep omitting None.
+        protocol_model = model_type.__module__ == protocol.__name__
         for name, child in value:
             field = fields.get(name)
             if name not in value.model_fields_set or (field is not None and field.exclude is True):
                 continue
             if child is None:
-                if (field is None or not field.is_required()) and not (
-                    settings_update and name == "serviceTier"
+                if field is not None and field.is_required():
+                    continue
+                wire_name = name if field is None else field.alias or name
+                if (
+                    not protocol_model
+                    or (model_type.__name__, wire_name) in protocol.NON_NULLABLE_OPTIONAL_FIELDS
                 ):
                     exclusions[name] = True
             elif nested := _optional_none_fields(child):
@@ -60,6 +65,21 @@ def _optional_none_fields(value: object) -> _FieldExclusions:
             key: nested for key, child in value.items() if (nested := _optional_none_fields(child))
         }
     return {}
+
+
+def protocol_params[ModelT: BaseModel](model: type[ModelT], /, **values: object) -> ModelT:
+    """Build wrapper params, leaving out arguments the caller did not provide.
+
+    serialize_value sends an explicitly set None as null, which clears some protocol fields.
+    """
+    fields = model.model_fields
+    return model(
+        **{
+            name: value
+            for name, value in values.items()
+            if value is not None or (name in fields and fields[name].is_required())
+        }
+    )
 
 
 def serialize_value(value: object) -> object:

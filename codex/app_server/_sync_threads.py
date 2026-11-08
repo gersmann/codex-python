@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Collection, Coroutine, Mapping, Sequence
-from typing import Any, Protocol, TypeVar
+from typing import Any, Literal, Protocol, TypeVar
 
 from pydantic import BaseModel
 
@@ -54,6 +54,7 @@ class _AsyncTurnStreamLike(Protocol):
         input: TurnInput,
         *,
         responsesapi_client_metadata: Mapping[str, object] | None = None,
+        responsesapi_client_metadata_patch: Mapping[str, object] | None = None,
         skills: Sequence[protocol.SkillUserInput] | None = None,
     ) -> TurnIdResult: ...
 
@@ -74,6 +75,19 @@ class _AsyncThreadLike(Protocol):
 
     async def refresh(self, *, include_turns: bool = False) -> protocol.Thread: ...
 
+    async def read_state(self) -> protocol.ThreadReadState | None: ...
+
+    async def update_read_state(
+        self,
+        operation: Literal["read", "unread"],
+        *,
+        expected_revision: str,
+    ) -> protocol.ThreadReadState: ...
+
+    async def read_memory_summary(self) -> str | None: ...
+
+    async def set_memory_mode(self, mode: Literal["enabled", "disabled"]) -> EmptyResult: ...
+
     async def list_items(
         self,
         *,
@@ -91,6 +105,13 @@ class _AsyncThreadLike(Protocol):
         sort_direction: protocol.SortDirection | None = None,
         turn_id: str | None = None,
     ) -> protocol.ThreadItemsListResponse: ...
+
+    async def read_items(
+        self,
+        item_ids: Sequence[str],
+        *,
+        turn_id: str,
+    ) -> list[protocol.ThreadItem]: ...
 
     async def list_turns(
         self,
@@ -316,12 +337,14 @@ class TurnStream(_SyncRunner):
         input: TurnInput,
         *,
         responsesapi_client_metadata: Mapping[str, object] | None = None,
+        responsesapi_client_metadata_patch: Mapping[str, object] | None = None,
         skills: Sequence[protocol.SkillUserInput] | None = None,
     ) -> TurnIdResult:
         return self._run(
             self._async_stream.steer(
                 input,
                 responsesapi_client_metadata=responsesapi_client_metadata,
+                responsesapi_client_metadata_patch=responsesapi_client_metadata_patch,
                 skills=skills,
             )
         )
@@ -359,6 +382,25 @@ class AppServerThread(_SyncRunner):
     def refresh(self, *, include_turns: bool = False) -> protocol.Thread:
         return self._run(self._async_thread.refresh(include_turns=include_turns))
 
+    def read_state(self) -> protocol.ThreadReadState | None:
+        return self._run(self._async_thread.read_state())
+
+    def update_read_state(
+        self,
+        operation: Literal["read", "unread"],
+        *,
+        expected_revision: str,
+    ) -> protocol.ThreadReadState:
+        return self._run(
+            self._async_thread.update_read_state(operation, expected_revision=expected_revision)
+        )
+
+    def read_memory_summary(self) -> str | None:
+        return self._run(self._async_thread.read_memory_summary())
+
+    def set_memory_mode(self, mode: Literal["enabled", "disabled"]) -> EmptyResult:
+        return self._run(self._async_thread.set_memory_mode(mode))
+
     def list_items(
         self,
         *,
@@ -392,6 +434,14 @@ class AppServerThread(_SyncRunner):
                 turn_id=turn_id,
             )
         )
+
+    def read_items(
+        self,
+        item_ids: Sequence[str],
+        *,
+        turn_id: str,
+    ) -> list[protocol.ThreadItem]:
+        return self._run(self._async_thread.read_items(item_ids, turn_id=turn_id))
 
     def list_turns(
         self,

@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 import asyncio
+import os
 import sys
+from pathlib import Path
 from typing import Any
 
 import pytest
 
-from codex._binary import BundledAppServerNotFoundError
+from codex._binary import BundledCodexNotFoundError
 from codex.app_server.errors import (
     AppServerClosedError,
     AppServerConnectionError,
@@ -124,8 +126,8 @@ def test_resolve_codex_path_prefers_override() -> None:
 
 def test_resolve_codex_path_falls_back_to_path(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(
-        "codex.app_server.transports.bundled_app_server_path",
-        lambda: (_ for _ in ()).throw(BundledAppServerNotFoundError("missing bundled")),
+        "codex.app_server.transports.bundled_codex_path",
+        lambda: (_ for _ in ()).throw(BundledCodexNotFoundError("missing bundled")),
     )
     monkeypatch.setattr("codex.app_server.transports.shutil.which", lambda _: "/usr/bin/codex")
 
@@ -136,8 +138,8 @@ def test_resolve_codex_path_raises_when_no_binary_available(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(
-        "codex.app_server.transports.bundled_app_server_path",
-        lambda: (_ for _ in ()).throw(BundledAppServerNotFoundError("missing bundled")),
+        "codex.app_server.transports.bundled_codex_path",
+        lambda: (_ for _ in ()).throw(BundledCodexNotFoundError("missing bundled")),
     )
     monkeypatch.setattr("codex.app_server.transports.shutil.which", lambda _: None)
 
@@ -149,7 +151,7 @@ def test_resolve_codex_path_preserves_non_missing_bundle_failures(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(
-        "codex.app_server.transports.bundled_app_server_path",
+        "codex.app_server.transports.bundled_codex_path",
         lambda: (_ for _ in ()).throw(RuntimeError("permission denied")),
     )
     monkeypatch.setattr("codex.app_server.transports.shutil.which", lambda _: "/usr/bin/codex")
@@ -662,3 +664,67 @@ def test_websocket_transport_send_raises_when_not_connected() -> None:
             await transport.send({"method": "ping"})
 
     asyncio.run(scenario())
+
+
+def test_websocket_transport_send_keeps_connection_on_unserializable_payload() -> None:
+    class Connection:
+        closed = False
+
+        async def send(self, _payload: str) -> None:
+            raise AssertionError("nothing should be sent")
+
+        async def close(self) -> None:
+            self.closed = True
+
+    async def scenario() -> None:
+        connection = Connection()
+        transport = AsyncWebSocketTransport("ws://localhost:1234")
+        transport._connection = connection
+
+        with pytest.raises(TypeError, match="not JSON serializable"):
+            await transport.send({"params": object()})
+
+        assert transport._connection is connection
+        await transport.close()
+        assert connection.closed is True
+
+    asyncio.run(scenario())
+
+
+@pytest.mark.parametrize(
+    ("override", "expect_bundled_path"),
+    [(None, True), ("/opt/custom/codex", False)],
+)
+def test_stdio_transport_puts_bundled_helpers_on_path(
+    monkeypatch: pytest.MonkeyPatch, override: str | None, expect_bundled_path: bool
+) -> None:
+    captured: dict[str, Any] = {}
+
+    async def fake_create_subprocess_exec(*cmd: str, **kwargs: object) -> _FakeProcess:
+        captured["env"] = kwargs["env"]
+        return _FakeProcess(
+            stdin=_FakeStreamWriter(),
+            stdout=_FakeStreamReader([]),
+            stderr=_FakeStreamReader([]),
+        )
+
+    monkeypatch.setattr("codex.app_server.transports._resolve_codex_path", lambda _: "/tmp/codex")
+    monkeypatch.setattr(
+        "codex.app_server.transports.bundled_path_dirs", lambda: (Path("/bundle/codex-path"),)
+    )
+    monkeypatch.setattr(
+        "codex.app_server.transports.asyncio.create_subprocess_exec",
+        fake_create_subprocess_exec,
+    )
+
+    async def scenario() -> None:
+        transport = AsyncStdioTransport(
+            AppServerProcessOptions(codex_path_override=override, env={"PATH": "/usr/bin"})
+        )
+        await transport.start()
+        await transport.close()
+
+    asyncio.run(scenario())
+
+    expected = os.pathsep.join(["/bundle/codex-path", "/usr/bin"])
+    assert captured["env"]["PATH"] == (expected if expect_bundled_path else "/usr/bin")

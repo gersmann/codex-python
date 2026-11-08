@@ -17,6 +17,7 @@ from codex.app_server._async_services import (
     AsyncFeedbackClient,
     AsyncFsClient,
     AsyncMcpServersClient,
+    AsyncMemoryClient,
     AsyncModelsClient,
     AsyncSkillsClient,
     AsyncThreadSectionsClient,
@@ -178,6 +179,7 @@ class AsyncAppServerClient:
         self.config = AsyncConfigClient(self.rpc)
         self.mcp_servers = AsyncMcpServersClient(self.rpc)
         self.feedback = AsyncFeedbackClient(self.rpc)
+        self.memory = AsyncMemoryClient(self.rpc)
         self.command = AsyncCommandClient(self.rpc)
         self.external_agent_config = AsyncExternalAgentConfigClient(self.rpc)
         self.windows_sandbox = AsyncWindowsSandboxClient(self.rpc)

@@ -395,3 +395,36 @@ class ServerNotification(RootModel[FooNotification | BarNotification]):
         '        Field(title="ServerNotification"),\n'
         "    ]"
     ) in processed
+
+
+def test_generate_protocol_types_finds_optional_fields_that_reject_null() -> None:
+    module = _load_script_module("generate_protocol_types", "scripts/generate_protocol_types.py")
+    schema = {
+        "definitions": {
+            "Params": {
+                "title": "Params",
+                "type": "object",
+                "required": ["id"],
+                "properties": {
+                    "id": {"type": "string"},
+                    "flag": {"type": "boolean"},
+                    "clearable": {"type": ["string", "null"]},
+                    "mode": {"$ref": "#/definitions/Mode"},
+                    "maybeMode": {"anyOf": [{"$ref": "#/definitions/Mode"}, {"type": "null"}]},
+                    "nested": {
+                        "title": "Nested",
+                        "type": "object",
+                        "properties": {"count": {"type": "integer"}},
+                    },
+                },
+            },
+            "Mode": {"type": "string", "enum": ["a", "b"]},
+        }
+    }
+
+    assert module.non_nullable_optional_fields(schema) == [
+        ("Nested", "count"),
+        ("Params", "flag"),
+        ("Params", "mode"),
+        ("Params", "nested"),
+    ]

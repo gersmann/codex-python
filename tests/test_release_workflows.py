@@ -3,78 +3,55 @@ from __future__ import annotations
 import os
 import subprocess
 import textwrap
+import tomllib
 from pathlib import Path
 
 import pytest
 
-PINNED_CODEX_BINARY_RELEASE_TAG = "rust-v0.159.2"
+
+def _runtime_pin() -> str:
+    dependencies = tomllib.loads(Path("pyproject.toml").read_text())["project"]["dependencies"]
+    pins = [dep for dep in dependencies if dep.startswith("openai-codex-cli-bin==")]
+    assert len(pins) == 1
+    return pins[0].removeprefix("openai-codex-cli-bin==")
 
 
-def test_binary_fetch_workflows_default_to_pinned_codex_release() -> None:
-    for workflow_path in (
-        Path(".github/workflows/ci.yml"),
-        Path(".github/workflows/release-published.yml"),
-        Path(".github/workflows/codex-autoreview.yml"),
-    ):
+def test_autoreview_installs_the_pinned_codex_runtime() -> None:
+    workflow = Path(".github/workflows/codex-autoreview.yml").read_text()
+
+    assert workflow.count(f'pip install "openai-codex-cli-bin=={_runtime_pin()}"') == 2
+    assert workflow.index("Install Codex runtime") < workflow.index(
+        "gersmann/codex-review-action@v1"
+    )
+
+
+def test_workflows_no_longer_bundle_codex_binaries() -> None:
+    for workflow_path in Path(".github/workflows").glob("*.yml"):
         workflow = workflow_path.read_text()
 
-        assert f"vars.CODEX_BINARY_RELEASE_TAG || '{PINNED_CODEX_BINARY_RELEASE_TAG}'" in workflow
-        assert "vars.CODEX_BINARY_RELEASE_TAG || 'latest'" not in workflow
+        for retired in (
+            "fetch_codex_binary",
+            "codex/vendor",
+            "maturin",
+            "CODEX_BINARY_RELEASE_TAG",
+        ):
+            assert retired not in workflow, f"{workflow_path} still uses {retired}"
 
 
-def test_release_workflow_builds_split_macos_wheels() -> None:
+def test_release_workflow_builds_one_pure_python_wheel() -> None:
     workflow = Path(".github/workflows/release-published.yml").read_text()
 
-    assert "macos-aarch64" in workflow
-    assert "macos-x86_64" in workflow
-    assert "rust-target: aarch64-apple-darwin" in workflow
-    assert "rust-target: x86_64-apple-darwin" in workflow
-    assert "os: macos-15-intel" in workflow
-    assert "os: macos-13" not in workflow
-    assert "macos-universal2" not in workflow
-    assert "universal2-apple-darwin" not in workflow
-
-
-def test_release_workflow_bundles_only_linux_and_macos_arm64() -> None:
-    workflow = Path(".github/workflows/release-published.yml").read_text()
-
-    for platform, target in {
-        "linux-x86_64": "x86_64-unknown-linux-musl",
-        "linux-aarch64": "aarch64-unknown-linux-musl",
-        "linux-musl-x86_64": "x86_64-unknown-linux-musl",
-        "linux-musl-aarch64": "aarch64-unknown-linux-musl",
-        "macos-aarch64": "aarch64-apple-darwin",
-        "macos-x86_64": None,
-        "windows-amd64": None,
-        "windows-arm64": None,
-    }.items():
-        entry = workflow.split(f"          - platform: {platform}\n", 1)[1]
-        entry = entry.split("\n          - platform:", 1)[0].split("\n    runs-on:", 1)[0]
-        if target is None:
-            assert "codex-targets:" not in entry
-        else:
-            assert f"codex-targets: {target}" in entry
-
-    for name in (
-        "Install binary fetch dependencies",
-        "Fetch bundled codex binaries",
-        "Verify bundled binaries",
-    ):
-        step = workflow.split(f"      - name: {name}\n", 1)[1].split("\n      - name:", 1)[0]
-        assert "if: ${{ matrix.codex-targets != '' }}" in step
-
-    assert "Build Windows wheel" in workflow
-    assert "Build Windows ARM64 wheel" in workflow
-    assert "Compress Windows x64 app-server binary" not in workflow
+    assert "run: uv build" in workflow
+    assert "-py3-none-any.whl" in workflow
+    assert "needs: [prepare, build]" in workflow
+    assert workflow.index("Verify Codex runtime pin is published") < workflow.index("run: uv build")
 
 
 def test_release_workflow_rejects_pypi_oversized_files_before_publish() -> None:
     workflow = Path(".github/workflows/release-published.yml").read_text()
 
-    assert "zipfile.ZIP_BZIP2" not in workflow
     assert "Verify PyPI file size limit" in workflow
     assert "100 * 1024 * 1024" in workflow
-    assert "pypa/gh-action-pypi-publish" in workflow
     assert workflow.index("Verify PyPI file size limit") < workflow.index(
         "pypa/gh-action-pypi-publish"
     )
@@ -115,10 +92,9 @@ def test_next_release_uses_selected_commit_after_branch_advances(
     git("config", "user.email", "release@example.invalid", cwd=repo)
     git("config", "commit.gpgsign", "false", cwd=repo)
     git("config", "tag.gpgsign", "false", cwd=repo)
-    for relative in ("crates/codex_native/Cargo.toml", "codex/__init__.py"):
-        path = repo / relative
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text("1.2.2" if version_changed else "1.2.3")
+    path = repo / "codex/__init__.py"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("1.2.2" if version_changed else "1.2.3")
     git("add", ".", cwd=repo)
     git("commit", "-m", "Initial version", cwd=repo)
     original_sha = git("rev-parse", "HEAD", cwd=repo)
@@ -127,7 +103,6 @@ def test_next_release_uses_selected_commit_after_branch_advances(
     git("push", "origin", "main", "next", cwd=repo)
 
     if version_changed:
-        (repo / "crates/codex_native/Cargo.toml").write_text("1.2.3")
         (repo / "codex/__init__.py").write_text("1.2.3")
     output = tmp_path / "output"
     env = dict(os.environ, GITHUB_OUTPUT=str(output), GITHUB_ENV=str(tmp_path / "env"))
@@ -158,7 +133,7 @@ def test_next_release_uses_selected_commit_after_branch_advances(
 
     assert git("rev-parse", "refs/tags/v1.2.3^{commit}", cwd=origin) == build_sha
     assert git("rev-parse", "refs/heads/main", cwd=origin) != build_sha
-    assert workflow.count("ref: ${{ needs.prepare.outputs.build_sha }}") == 2
+    assert workflow.count("ref: ${{ needs.prepare.outputs.build_sha }}") == 1
     assert "BUILD_SHA: ${{ steps.build_sha.outputs.sha }}" in step(
         "Create new semver tag and repoint release"
     )
@@ -168,19 +143,3 @@ def test_next_release_uses_selected_commit_after_branch_advances(
     # Explicit releases retain their existing tags.
     for name in ("Create new semver tag and repoint release", "Update GitHub Release to new tag"):
         assert "if: ${{ steps.resolve.outputs.mode == 'bump' }}" in step(name)
-
-
-def test_autoreview_workflow_fetches_codex_binary_before_action() -> None:
-    workflow = Path(".github/workflows/codex-autoreview.yml").read_text()
-
-    assert workflow.count("Fetch bundled codex binary") == 2
-    assert workflow.count("--target-triple x86_64-unknown-linux-musl") == 2
-    assert (
-        workflow.count(
-            "test -x codex/vendor/x86_64-unknown-linux-musl/codex-app-server/codex-app-server"
-        )
-        == 2
-    )
-    assert workflow.index("Fetch bundled codex binary") < workflow.index(
-        "gersmann/codex-review-action@v1"
-    )

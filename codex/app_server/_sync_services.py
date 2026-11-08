@@ -13,6 +13,7 @@ from codex.app_server._async_services import (
     AsyncFeedbackClient,
     AsyncFsClient,
     AsyncMcpServersClient,
+    AsyncMemoryClient,
     AsyncModelsClient,
     AsyncSkillsClient,
     AsyncThreadSectionsClient,
@@ -489,6 +490,51 @@ class _FeedbackClient(_SyncRunner):
                 thread_id=thread_id,
             )
         )
+
+    def save(
+        self,
+        *,
+        classification: str,
+        save_path: str,
+        extra_log_files: Sequence[str] | None = None,
+        include_logs: bool | None = None,
+        reason: str | None = None,
+        tags: Mapping[str, object] | None = None,
+        thread_id: str | None = None,
+    ) -> protocol.FeedbackSaveResponse:
+        return self._run(
+            self._async_client.save(
+                classification=classification,
+                save_path=save_path,
+                extra_log_files=extra_log_files,
+                include_logs=include_logs,
+                reason=reason,
+                tags=tags,
+                thread_id=thread_id,
+            )
+        )
+
+
+class _MemoryClient(_SyncRunner):
+    def __init__(
+        self,
+        async_client: AsyncMemoryClient,
+        runner: Callable[[Coroutine[Any, Any, Any]], Any],
+    ) -> None:
+        super().__init__(runner)
+        self._async_client = async_client
+
+    def status(
+        self,
+        *,
+        min_consolidated_threads: int | None = None,
+    ) -> protocol.MemoryStatusResponse:
+        return self._run(
+            self._async_client.status(min_consolidated_threads=min_consolidated_threads)
+        )
+
+    def reset(self) -> EmptyResult:
+        return self._run(self._async_client.reset())
 
 
 class _CommandClient(_SyncRunner):

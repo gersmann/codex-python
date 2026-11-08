@@ -6,7 +6,7 @@ import re
 from collections.abc import Callable, Mapping
 from pathlib import Path
 
-from codex._binary import BundledAppServerNotFoundError
+from codex._binary import BundledCodexNotFoundError
 from codex._config_types import CodexConfig, CodexConfigObject, CodexConfigValue
 
 INTERNAL_ORIGINATOR_ENV = "CODEX_INTERNAL_ORIGINATOR_OVERRIDE"
@@ -41,7 +41,7 @@ def resolve_codex_path(
         return str(Path(executable_path))
     try:
         return str(bundled_path())
-    except BundledAppServerNotFoundError as bundled_error:
+    except BundledCodexNotFoundError as bundled_error:
         system_codex = which("codex")
         if system_codex is None:
             raise error_type(
@@ -91,7 +91,7 @@ def _flatten_config_overrides(
 
 def _to_toml_value(value: CodexConfigValue, path: str) -> str:
     if isinstance(value, str):
-        return json.dumps(value)
+        return _toml_string(value)
     if isinstance(value, bool):
         return format_toml_bool(value)
     if isinstance(value, int):
@@ -120,7 +120,12 @@ def _to_toml_value(value: CodexConfigValue, path: str) -> str:
 def format_toml_key(key: str) -> str:
     if TOML_BARE_KEY.match(key):
         return key
-    return json.dumps(key)
+    return _toml_string(key)
+
+
+def _toml_string(value: str) -> str:
+    # JSON's surrogate pairs are invalid in TOML, and raw DEL is the one control JSON leaves alone.
+    return json.dumps(value, ensure_ascii=False).replace("\x7f", "\\u007f")
 
 
 def format_toml_bool(value: bool) -> str:

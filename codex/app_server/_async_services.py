@@ -8,7 +8,7 @@ from typing import Any, Literal, Protocol, TypeVar
 
 from pydantic import BaseModel
 
-from codex.app_server._payloads import skill_input
+from codex.app_server._payloads import protocol_params, skill_input
 from codex.app_server.models import (
     AccountCancelLoginResult,
     AccountRateLimitsResult,
@@ -104,7 +104,9 @@ class AsyncModelsClient(_AsyncServiceClient):
         include_hidden: bool | None = None,
         limit: int | None = None,
     ) -> ModelListResult:
-        params = protocol.ModelListParams(cursor=cursor, includeHidden=include_hidden, limit=limit)
+        params = protocol_params(
+            protocol.ModelListParams, cursor=cursor, includeHidden=include_hidden, limit=limit
+        )
         return await self._rpc.request_typed("model/list", params, ModelListResult)
 
 
@@ -134,7 +136,8 @@ class AsyncAppsClient(_AsyncServiceClient):
         limit: int | None = None,
         thread_id: str | None = None,
     ) -> AppListResult:
-        params = protocol.AppsListParams(
+        params = protocol_params(
+            protocol.AppsListParams,
             cursor=cursor,
             forceRefetch=force_refetch,
             limit=limit,
@@ -158,7 +161,7 @@ class AsyncThreadSectionsClient(_AsyncServiceClient):
         cursor: str | None = None,
         limit: int | None = None,
     ) -> protocol.ThreadSectionListResponse:
-        params = protocol.ThreadSectionListParams(cursor=cursor, limit=limit)
+        params = protocol_params(protocol.ThreadSectionListParams, cursor=cursor, limit=limit)
         return await self._rpc.request_typed(
             "threadSection/list",
             params,
@@ -173,7 +176,7 @@ class AsyncThreadSectionsClient(_AsyncServiceClient):
     ) -> protocol.ThreadSection:
         result = await self._rpc.request_typed(
             "threadSection/create",
-            protocol.ThreadSectionCreateParams(name=name, appearance=appearance),
+            protocol_params(protocol.ThreadSectionCreateParams, name=name, appearance=appearance),
             protocol.ThreadSectionCreateResponse,
         )
         return result.section
@@ -201,7 +204,8 @@ class AsyncFsClient(_AsyncServiceClient):
         path: str,
         recursive: bool | None = True,
     ) -> protocol.FsCreateDirectoryResponse:
-        params = protocol.FsCreateDirectoryParams(
+        params = protocol_params(
+            protocol.FsCreateDirectoryParams,
             path=protocol.AbsolutePathBuf(path),
             recursive=recursive,
         )
@@ -266,7 +270,8 @@ class AsyncSkillsClient(_AsyncServiceClient):
         cwds: Sequence[str] | None = None,
         force_reload: bool | None = None,
     ) -> SkillsListResult:
-        params = protocol.SkillsListParams(
+        params = protocol_params(
+            protocol.SkillsListParams,
             cwds=list(cwds) if cwds is not None else None,
             forceReload=force_reload,
         )
@@ -299,7 +304,7 @@ class AsyncSkillsClient(_AsyncServiceClient):
 
 class AsyncAccountClient(_AsyncServiceClient):
     async def read(self, *, refresh_token: bool | None = None) -> AccountReadResult:
-        params = protocol.GetAccountParams(refreshToken=refresh_token)
+        params = protocol_params(protocol.GetAccountParams, refreshToken=refresh_token)
         return await self._rpc.request_typed("account/read", params, AccountReadResult)
 
     async def login_api_key(self, *, api_key: str) -> ApiKeyLoginResult:
@@ -317,16 +322,14 @@ class AsyncAccountClient(_AsyncServiceClient):
         chatgpt_account_id: str,
         chatgpt_plan_type: protocol.PlanType | None = None,
     ) -> ChatGptAuthTokensLoginResult:
-        params = protocol.LoginAccountParams.model_validate(
-            {
-                "type": "chatgptAuthTokens",
-                "accessToken": access_token,
-                "chatgptAccountId": chatgpt_account_id,
-                "chatgptPlanType": (
-                    chatgpt_plan_type.root if chatgpt_plan_type is not None else None
-                ),
-            }
-        )
+        payload: dict[str, object] = {
+            "type": "chatgptAuthTokens",
+            "accessToken": access_token,
+            "chatgptAccountId": chatgpt_account_id,
+        }
+        if chatgpt_plan_type is not None:
+            payload["chatgptPlanType"] = chatgpt_plan_type.root
+        params = protocol.LoginAccountParams.model_validate(payload)
         return await self._rpc.request_typed(
             "account/login/start",
             params,
@@ -359,7 +362,7 @@ class AsyncConfigClient(_AsyncServiceClient):
         cwd: str | None = None,
         include_layers: bool | None = None,
     ) -> ConfigReadResult:
-        params = protocol.ConfigReadParams(cwd=cwd, includeLayers=include_layers)
+        params = protocol_params(protocol.ConfigReadParams, cwd=cwd, includeLayers=include_layers)
         return await self._rpc.request_typed("config/read", params, ConfigReadResult)
 
     async def reload_mcp_servers(self) -> EmptyResult:
@@ -374,7 +377,8 @@ class AsyncConfigClient(_AsyncServiceClient):
         expected_version: str | None = None,
         file_path: str | None = None,
     ) -> ConfigWriteResult:
-        params = protocol.ConfigValueWriteParams(
+        params = protocol_params(
+            protocol.ConfigValueWriteParams,
             expectedVersion=expected_version,
             filePath=file_path,
             keyPath=key_path,
@@ -390,7 +394,8 @@ class AsyncConfigClient(_AsyncServiceClient):
         expected_version: str | None = None,
         file_path: str | None = None,
     ) -> ConfigWriteResult:
-        params = protocol.ConfigBatchWriteParams(
+        params = protocol_params(
+            protocol.ConfigBatchWriteParams,
             edits=list(edits),
             expectedVersion=expected_version,
             filePath=file_path,
@@ -451,7 +456,8 @@ class AsyncMcpServersClient(_AsyncServiceClient):
         thread_id: str | None = None,
         timeout_seconds: int | None = None,
     ) -> McpServerOauthLoginResult:
-        params = protocol.McpServerOauthLoginParams(
+        params = protocol_params(
+            protocol.McpServerOauthLoginParams,
             clientRegistration=client_registration,
             name=name,
             scopes=list(scopes) if scopes is not None else None,
@@ -478,7 +484,7 @@ class AsyncMcpServersClient(_AsyncServiceClient):
         cursor: str | None = None,
         limit: int | None = None,
     ) -> McpServerStatusListResult:
-        params = protocol.ListMcpServerStatusParams(cursor=cursor, limit=limit)
+        params = protocol_params(protocol.ListMcpServerStatusParams, cursor=cursor, limit=limit)
         return await self._rpc.request_typed(
             "mcpServerStatus/list",
             params,
@@ -499,7 +505,8 @@ class AsyncMcpServersClient(_AsyncServiceClient):
         reload: bool,
         file_path: str | None,
     ) -> ConfigWriteResult:
-        params = protocol.ConfigValueWriteParams(
+        params = protocol_params(
+            protocol.ConfigValueWriteParams,
             filePath=file_path,
             keyPath=_mcp_tools_key_path(name=name, plugin_id=plugin_id, field_name=field_name),
             mergeStrategy=protocol.MergeStrategy("replace"),
@@ -525,7 +532,8 @@ class AsyncFeedbackClient(_AsyncServiceClient):
         reason: str | None = None,
         thread_id: str | None = None,
     ) -> FeedbackUploadResult:
-        params = protocol.FeedbackUploadParams(
+        params = protocol_params(
+            protocol.FeedbackUploadParams,
             classification=classification,
             extraLogFiles=list(extra_log_files) if extra_log_files is not None else None,
             includeLogs=include_logs,
@@ -533,6 +541,47 @@ class AsyncFeedbackClient(_AsyncServiceClient):
             threadId=thread_id,
         )
         return await self._rpc.request_typed("feedback/upload", params, FeedbackUploadResult)
+
+    async def save(
+        self,
+        *,
+        classification: str,
+        save_path: str,
+        extra_log_files: Sequence[str] | None = None,
+        include_logs: bool | None = None,
+        reason: str | None = None,
+        tags: Mapping[str, object] | None = None,
+        thread_id: str | None = None,
+    ) -> protocol.FeedbackSaveResponse:
+        """Write a feedback ZIP to an unused absolute path on the app-server host."""
+        params = protocol_params(
+            protocol.FeedbackSaveParams,
+            classification=classification,
+            extraLogFiles=list(extra_log_files) if extra_log_files is not None else None,
+            includeLogs=include_logs,
+            reason=reason,
+            savePath=protocol.LegacyAppPathString(save_path),
+            tags=dict(tags) if tags is not None else None,
+            threadId=thread_id,
+        )
+        return await self._rpc.request_typed("feedback/save", params, protocol.FeedbackSaveResponse)
+
+
+class AsyncMemoryClient(_AsyncServiceClient):
+    async def status(
+        self,
+        *,
+        min_consolidated_threads: int | None = None,
+    ) -> protocol.MemoryStatusResponse:
+        """Report memory v2 readiness. Experimental."""
+        params = protocol_params(
+            protocol.MemoryStatusParams, minConsolidatedThreads=min_consolidated_threads
+        )
+        return await self._rpc.request_typed("memory/status", params, protocol.MemoryStatusResponse)
+
+    async def reset(self) -> EmptyResult:
+        """Irreversibly delete all stored memories for this `CODEX_HOME`. Experimental."""
+        return await self._rpc.request_typed("memory/reset", None, EmptyResult)
 
 
 class AsyncCommandClient(_AsyncServiceClient):
@@ -554,7 +603,8 @@ class AsyncCommandClient(_AsyncServiceClient):
         timeout_ms: int | None = None,
         tty: bool | None = None,
     ) -> CommandExecResult:
-        params = protocol.CommandExecParams(
+        params = protocol_params(
+            protocol.CommandExecParams,
             command=list(command),
             cwd=cwd,
             disableOutputCap=disable_output_cap,
@@ -587,7 +637,8 @@ class AsyncCommandClient(_AsyncServiceClient):
         is optional base64-encoded stdin data; `close_stdin` closes the
         process stdin after the optional write.
         """
-        params = protocol.CommandExecWriteParams(
+        params = protocol_params(
+            protocol.CommandExecWriteParams,
             closeStdin=close_stdin,
             deltaBase64=delta_base64,
             processId=process_id,
@@ -628,7 +679,8 @@ class AsyncExternalAgentConfigClient(_AsyncServiceClient):
         max_sessions: int | None = None,
         migration_source: str | None = None,
     ) -> ExternalAgentConfigDetectResult:
-        params = protocol.ExternalAgentConfigDetectParams(
+        params = protocol_params(
+            protocol.ExternalAgentConfigDetectParams,
             cwds=list(cwds) if cwds is not None else None,
             includeHome=include_home,
             maxSessionAgeDays=max_session_age_days,
@@ -649,7 +701,8 @@ class AsyncExternalAgentConfigClient(_AsyncServiceClient):
         provider_id: str | None = None,
         source: str | None = None,
     ) -> ExternalAgentConfigImportResult:
-        params = protocol.ExternalAgentConfigImportParams(
+        params = protocol_params(
+            protocol.ExternalAgentConfigImportParams,
             migrationItems=list(migration_items),
             migrationSource=migration_source,
             providerId=provider_id,
@@ -687,7 +740,8 @@ class AsyncWindowsSandboxClient(_AsyncServiceClient):
         mode: protocol.WindowsSandboxSetupMode,
         cwd: str | None = None,
     ) -> WindowsSandboxSetupStartResult:
-        params = protocol.WindowsSandboxSetupStartParams(
+        params = protocol_params(
+            protocol.WindowsSandboxSetupStartParams,
             cwd=protocol.AbsolutePathBuf(cwd) if cwd is not None else None,
             mode=mode,
         )

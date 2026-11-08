@@ -401,6 +401,7 @@ def test_sync_connect_websocket_passes_explicit_options_to_async_client(
             self.config = fake_service
             self.mcp_servers = fake_service
             self.feedback = fake_service
+            self.memory = fake_service
             self.command = fake_service
             self.fs = fake_service
             self.environment = fake_service
@@ -824,6 +825,7 @@ def test_async_turn_stream_yields_typed_events_and_aggregates_final_text() -> No
                 "expectedTurnId": "turn-1",
                 "input": [{"type": "text", "text": "Add detail."}],
                 "responsesapiClientMetadata": {"trace_id": "trace-2"},
+                "responsesapiClientMetadataPatch": {"team": "sdk"},
             }
             return {"id": message["id"], "result": {"turnId": "turn-1"}}
 
@@ -837,6 +839,7 @@ def test_async_turn_stream_yields_typed_events_and_aggregates_final_text() -> No
         steered = await stream.steer(
             "Add detail.",
             responsesapi_client_metadata={"trace_id": "trace-2"},
+            responsesapi_client_metadata_patch={"team": "sdk"},
         )
 
         transport.push(
@@ -1374,7 +1377,7 @@ def test_async_thread_review_uses_protocol_delivery_type() -> None:
             assert message["params"] == {
                 "threadId": "thr-1",
                 "target": {"type": "commit", "sha": "deadbeef", "title": "Review this commit"},
-                "delivery": "detached",
+                "delivery": "inline",
             }
             return {
                 "id": message["id"],
@@ -1395,7 +1398,7 @@ def test_async_thread_review_uses_protocol_delivery_type() -> None:
                 sha="deadbeef",
                 title="Review this commit",
             ),
-            delivery="detached",
+            delivery="inline",
         )
 
         assert stream.thread_id == "thr-review-1"
@@ -1437,7 +1440,7 @@ def test_async_thread_review_stream_does_not_buffer_unscoped_notifications() -> 
                 sha="deadbeef",
                 title="Review this commit",
             ),
-            delivery="detached",
+            delivery="inline",
         )
 
         transport.push(
@@ -3733,3 +3736,418 @@ def test_sync_client_close_surfaces_reader_failure() -> None:
         client.close()
 
     assert transport.closed is True
+
+
+READ_STATE: JsonObject = {"firstUnread": {"type": "turn", "turnId": "turn-1"}, "revision": "rev-1"}
+
+
+def _script_read_state_and_item_wrappers(transport: ScriptedTransport) -> None:
+    def read_thread(message: JsonObject) -> JsonObject:
+        assert message["params"] == {"includeTurns": False, "threadId": "thr-1"}
+        result: JsonObject = {"thread": _thread_payload(), "readState": READ_STATE}
+        return {"id": message["id"], "result": result}
+
+    def update_read_state(message: JsonObject) -> JsonObject:
+        assert message["params"] == {
+            "expectedRevision": "rev-1",
+            "operation": {"type": "read"},
+            "threadId": "thr-1",
+        }
+        result: JsonObject = {"readState": {"firstUnread": None, "revision": "rev-2"}}
+        return {"id": message["id"], "result": result}
+
+    def read_items(message: JsonObject) -> JsonObject:
+        assert message["params"] == {
+            "itemIds": ["item-1"],
+            "threadId": "thr-1",
+            "turnId": "turn-1",
+        }
+        entry: JsonObject = {"turnId": "turn-1", "item": _agent_message_item("First")}
+        return {"id": message["id"], "result": {"data": [entry]}}
+
+    def save_feedback(message: JsonObject) -> JsonObject:
+        assert message["params"] == {
+            "classification": "bug",
+            "includeLogs": True,
+            "savePath": "/tmp/feedback.zip",
+            "tags": {"area": "sdk"},
+            "threadId": "thr-1",
+        }
+        result: JsonObject = {"savedPath": "/tmp/feedback.zip", "threadId": "thr-1"}
+        return {"id": message["id"], "result": result}
+
+    transport.responses["thread/start"] = {"thread": _thread_payload()}
+    transport.responses["thread/read"] = read_thread
+    transport.responses["thread/readState/update"] = update_read_state
+    transport.responses["thread/items/read"] = read_items
+    transport.responses["feedback/save"] = save_feedback
+
+
+def test_async_read_state_item_and_feedback_save_wrappers() -> None:
+    async def scenario() -> None:
+        transport = ScriptedTransport()
+        _script_read_state_and_item_wrappers(transport)
+        client = AsyncAppServerClient(transport)
+        await client.start()
+        try:
+            thread = await client.start_thread()
+
+            read_state = await thread.read_state()
+            updated = await thread.update_read_state("read", expected_revision="rev-1")
+            items = await thread.read_items(["item-1"], turn_id="turn-1")
+            saved = await client.feedback.save(
+                classification="bug",
+                include_logs=True,
+                save_path="/tmp/feedback.zip",
+                tags={"area": "sdk"},
+                thread_id="thr-1",
+            )
+        finally:
+            await client.close()
+
+        assert read_state is not None
+        assert read_state.revision == "rev-1"
+        assert updated.firstUnread is None
+        assert updated.revision == "rev-2"
+        assert len(items) == 1
+        assert items[0].root.id == "item-1"
+        assert saved.savedPath.root == "/tmp/feedback.zip"
+
+    asyncio.run(scenario())
+
+
+def test_sync_read_state_item_and_feedback_save_wrappers() -> None:
+    transport = ScriptedTransport()
+    _script_read_state_and_item_wrappers(transport)
+    loop = _LoopThread()
+    async_client = AsyncAppServerClient(transport)
+    loop.run(async_client.start())
+    client = AppServerClient(async_client, loop)
+
+    try:
+        thread = client.start_thread()
+
+        read_state = thread.read_state()
+        updated = thread.update_read_state("read", expected_revision="rev-1")
+        items = thread.read_items(["item-1"], turn_id="turn-1")
+        saved = client.feedback.save(
+            classification="bug",
+            include_logs=True,
+            save_path="/tmp/feedback.zip",
+            tags={"area": "sdk"},
+            thread_id="thr-1",
+        )
+    finally:
+        client.close()
+
+    assert read_state is not None
+    assert read_state.revision == "rev-1"
+    assert updated.revision == "rev-2"
+    assert items[0].root.id == "item-1"
+    assert saved.threadId == "thr-1"
+
+
+def test_read_state_is_none_when_server_omits_it() -> None:
+    async def scenario() -> None:
+        transport = ScriptedTransport()
+        transport.responses["thread/start"] = {"thread": _thread_payload()}
+        transport.responses["thread/read"] = {"thread": _thread_payload()}
+        client = AsyncAppServerClient(transport)
+        await client.start()
+        try:
+            thread = await client.start_thread()
+            assert await thread.read_state() is None
+        finally:
+            await client.close()
+
+    asyncio.run(scenario())
+
+
+def test_update_read_state_conflict_surfaces_current_read_state() -> None:
+    async def scenario() -> None:
+        transport = ScriptedTransport()
+        transport.responses["thread/start"] = {"thread": _thread_payload()}
+
+        def reject(message: JsonObject) -> JsonObject:
+            data: JsonObject = {"reason": "readStateConflict", "readState": READ_STATE}
+            error: JsonObject = {"code": -32600, "message": "stale revision", "data": data}
+            return {"id": message["id"], "error": error}
+
+        transport.responses["thread/readState/update"] = reject
+        client = AsyncAppServerClient(transport)
+        await client.start()
+        try:
+            thread = await client.start_thread()
+            with pytest.raises(AppServerRpcError) as exc_info:
+                await thread.update_read_state("unread", expected_revision="rev-0")
+        finally:
+            await client.close()
+
+        assert exc_info.value.code == -32600
+        assert exc_info.value.data["reason"] == "readStateConflict"
+        assert exc_info.value.data["readState"]["revision"] == "rev-1"
+
+    asyncio.run(scenario())
+
+
+def _script_memory_wrappers(transport: ScriptedTransport) -> None:
+    def read_memory(message: JsonObject) -> JsonObject:
+        assert message["params"] == {"threadId": "thr-1"}
+        return {"id": message["id"], "result": {"summary": "Prefers uv."}}
+
+    def set_memory_mode(message: JsonObject) -> JsonObject:
+        assert message["params"] == {"mode": "disabled", "threadId": "thr-1"}
+        return {"id": message["id"], "result": {}}
+
+    def memory_status(message: JsonObject) -> JsonObject:
+        assert message["params"] == {"minConsolidatedThreads": 5}
+        result: JsonObject = {"v2ConsolidatedThreads": 7, "v2Ready": True}
+        return {"id": message["id"], "result": result}
+
+    def memory_reset(message: JsonObject) -> JsonObject:
+        assert message.get("params") is None
+        return {"id": message["id"], "result": {}}
+
+    transport.responses["thread/start"] = {"thread": _thread_payload()}
+    transport.responses["thread/memory/read"] = read_memory
+    transport.responses["thread/memoryMode/set"] = set_memory_mode
+    transport.responses["memory/status"] = memory_status
+    transport.responses["memory/reset"] = memory_reset
+
+
+def test_async_memory_wrappers() -> None:
+    async def scenario() -> None:
+        transport = ScriptedTransport()
+        _script_memory_wrappers(transport)
+        client = AsyncAppServerClient(transport)
+        await client.start()
+        try:
+            thread = await client.start_thread()
+
+            summary = await thread.read_memory_summary()
+            mode_result = await thread.set_memory_mode("disabled")
+            status = await client.memory.status(min_consolidated_threads=5)
+            reset_result = await client.memory.reset()
+        finally:
+            await client.close()
+
+        assert summary == "Prefers uv."
+        assert isinstance(mode_result, EmptyResult)
+        assert status.v2ConsolidatedThreads == 7
+        assert status.v2Ready is True
+        assert isinstance(reset_result, EmptyResult)
+
+    asyncio.run(scenario())
+
+
+def test_sync_memory_wrappers() -> None:
+    transport = ScriptedTransport()
+    _script_memory_wrappers(transport)
+    loop = _LoopThread()
+    async_client = AsyncAppServerClient(transport)
+    loop.run(async_client.start())
+    client = AppServerClient(async_client, loop)
+
+    try:
+        thread = client.start_thread()
+
+        summary = thread.read_memory_summary()
+        mode_result = thread.set_memory_mode("disabled")
+        status = client.memory.status(min_consolidated_threads=5)
+        reset_result = client.memory.reset()
+    finally:
+        client.close()
+
+    assert summary == "Prefers uv."
+    assert isinstance(mode_result, EmptyResult)
+    assert status.v2Ready is True
+    assert isinstance(reset_result, EmptyResult)
+
+
+def test_turn_stream_replaces_started_image_generation_item() -> None:
+    def image_item(status: str, result: str) -> JsonObject:
+        return {
+            "id": "image-1",
+            "type": "imageGeneration",
+            "revisedPrompt": None,
+            "result": result,
+            "status": status,
+            "transparentBackground": False,
+        }
+
+    async def scenario() -> None:
+        transport = ScriptedTransport()
+        transport.responses["thread/start"] = {"thread": _thread_payload()}
+        transport.responses["turn/start"] = {"turn": _turn_payload()}
+        client = AsyncAppServerClient(transport)
+        await client.start()
+        try:
+            thread = await client.start_thread()
+            stream = await thread.run("Draw a cat.")
+            base: JsonObject = {
+                "threadId": "thr-1",
+                "turnId": "turn-1",
+                "startedAtMs": 1,
+                "completedAtMs": 2,
+            }
+            transport.push(
+                {
+                    "method": "item/started",
+                    "params": {**base, "item": image_item("in_progress", "")},
+                }
+            )
+            transport.push(
+                {
+                    "method": "item/completed",
+                    "params": {**base, "item": image_item("completed", "image-bytes")},
+                }
+            )
+            transport.push(
+                {
+                    "method": "turn/completed",
+                    "params": {
+                        "threadId": "thr-1",
+                        "turn": _turn_payload(status="completed"),
+                    },
+                }
+            )
+            await stream.wait()
+        finally:
+            await client.close()
+
+        assert len(stream.items) == 1
+        image = stream.items[0].root.root
+        assert image.status == "completed"
+        assert image.result == "image-bytes"
+
+    asyncio.run(scenario())
+
+
+class BurstTransport(ScriptedTransport):
+    """Deliver queued messages without yielding, like a filled stdio buffer."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self._burst: asyncio.Queue[JsonObject | None] = asyncio.Queue()
+        self.after: dict[str, list[JsonObject]] = {}
+
+    async def send(self, message: JsonObject) -> None:
+        await super().send(message)
+        method = message.get("method")
+        if "id" in message and isinstance(method, str):
+            for follow_up in self.after.pop(method, []):
+                self.push(follow_up)
+
+    async def receive(self) -> JsonObject | None:
+        return await self._burst.get()
+
+    def push(self, message: JsonObject | None) -> None:
+        self._burst.put_nowait(message)
+
+
+def test_review_stream_keeps_notifications_delivered_with_its_response() -> None:
+    async def scenario() -> None:
+        transport = BurstTransport()
+        transport.responses["thread/start"] = {"thread": _thread_payload()}
+        transport.responses["review/start"] = {"turn": _turn_payload(), "reviewThreadId": "thr-1"}
+        scope: JsonObject = {"threadId": "thr-1", "turnId": "turn-1"}
+        transport.after["review/start"] = [
+            {
+                "method": "item/started",
+                "params": {**scope, "item": _agent_message_item("Reviewing"), "startedAtMs": 1},
+            },
+            {
+                "method": "turn/completed",
+                "params": {"threadId": "thr-1", "turn": _turn_payload(status="completed")},
+            },
+        ]
+        client = AsyncAppServerClient(transport)
+        await client.start()
+        try:
+            thread = await client.start_thread()
+            stream = await thread.review(
+                target=protocol.CommitReviewTarget(type="commit", sha="deadbeef", title="Review")
+            )
+            await asyncio.wait_for(stream.wait(), 1)
+        finally:
+            await client.close()
+
+        assert stream.final_turn is not None
+        assert len(stream.items) == 1
+
+    asyncio.run(scenario())
+
+
+def test_sync_handler_can_call_the_sync_client() -> None:
+    transport = ScriptedTransport()
+    transport.responses["nested/call"] = {"ok": True}
+    loop = _LoopThread()
+    async_client = AsyncAppServerClient(
+        transport, AppServerInitializeOptions(strict_protocol=False)
+    )
+    loop.run(async_client.start())
+    client = AppServerClient(async_client, loop)
+
+    try:
+        client.on_request(
+            "custom/request",
+            lambda _request: {"nested": client.rpc.request("nested/call")},
+        )
+        transport.push({"id": "req-1", "method": "custom/request", "params": {}})
+        reply = transport.wait_for_message(lambda message: message.get("id") == "req-1")
+    finally:
+        client.close()
+
+    assert reply == {"id": "req-1", "result": {"nested": {"ok": True}}}
+
+
+@pytest.mark.parametrize("kind", ["turn", "review"])
+def test_stream_ignores_previous_turn_completed_before_its_response(kind: str) -> None:
+    async def scenario() -> None:
+        transport = ScriptedTransport()
+        transport.responses["thread/start"] = {"thread": _thread_payload()}
+
+        def start(message: JsonObject) -> JsonObject:
+            # The interrupted previous turn finishes just before this turn's response.
+            transport.push(
+                {
+                    "method": "turn/completed",
+                    "params": {
+                        "threadId": "thr-1",
+                        "turn": _turn_payload("old-turn", status="interrupted"),
+                    },
+                }
+            )
+            result: JsonObject = {"turn": _turn_payload("new-turn")}
+            if kind == "review":
+                result["reviewThreadId"] = "thr-1"
+            return {"id": message["id"], "result": result}
+
+        transport.responses["review/start" if kind == "review" else "turn/start"] = start
+        client = AsyncAppServerClient(transport)
+        await client.start()
+        try:
+            thread = await client.start_thread()
+            if kind == "review":
+                stream = await thread.review(
+                    target=protocol.CommitReviewTarget(type="commit", sha="deadbeef", title="t")
+                )
+            else:
+                stream = await thread.run("Continue.")
+            transport.push(
+                {
+                    "method": "turn/completed",
+                    "params": {
+                        "threadId": "thr-1",
+                        "turn": _turn_payload("new-turn", status="completed"),
+                    },
+                }
+            )
+            await asyncio.wait_for(stream.wait(), 1)
+        finally:
+            await client.close()
+
+        assert stream.final_turn is not None
+        assert stream.final_turn.id == "new-turn"
+
+    asyncio.run(scenario())

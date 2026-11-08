@@ -55,7 +55,6 @@ codex-proj/
 
 # Rust build outputs
 target/
-crates/**/target/
 crates/**/Cargo.lock
 
 # Local environment files
@@ -65,6 +64,4 @@ crates/**/Cargo.lock
 /wheelhouse/
 /codex-review-action/
 .beads/
-codex/vendor/**
-!codex/vendor/.gitkeep
 /.desloppify

@@ -5,12 +5,17 @@ from __future__ import annotations
 import json
 from collections.abc import Callable, Collection, Mapping, Sequence
 from dataclasses import dataclass
-from typing import Protocol, TypeVar, cast
+from typing import Literal, Protocol, TypeVar, cast
 
 from pydantic import BaseModel
 
 from codex._turn_options import with_model_output_schema
-from codex.app_server._payloads import TurnInput, normalize_turn_input, serialize_value
+from codex.app_server._payloads import (
+    TurnInput,
+    normalize_turn_input,
+    protocol_params,
+    serialize_value,
+)
 from codex.app_server._protocol_helpers import (
     Notification,
     extract_item,
@@ -114,10 +119,6 @@ class AsyncTurnStream:
 
         return predicate
 
-    @staticmethod
-    def _reject_all_notifications(_: Notification) -> bool:
-        return False
-
     def __init__(
         self,
         thread: AsyncAppServerThread,
@@ -172,7 +173,7 @@ class AsyncTurnStream:
             method="review/start",
             params=params,
             result_model=ReviewResult,
-            initial_predicate=cls._reject_all_notifications,
+            initial_predicate=cls._scope_predicate(thread.id),
             scope_from_result=lambda result: (
                 cast(ReviewResult, result).review_thread_id,
                 result.turn.id,
@@ -263,6 +264,7 @@ class AsyncTurnStream:
         input: TurnInput,
         *,
         responsesapi_client_metadata: Mapping[str, object] | None = None,
+        responsesapi_client_metadata_patch: Mapping[str, object] | None = None,
         skills: Sequence[protocol.SkillUserInput] | None = None,
     ) -> TurnIdResult:
         """Append additional user input to the in-flight turn."""
@@ -273,6 +275,8 @@ class AsyncTurnStream:
         }
         if responsesapi_client_metadata is not None:
             payload["responsesapiClientMetadata"] = dict(responsesapi_client_metadata)
+        if responsesapi_client_metadata_patch is not None:
+            payload["responsesapiClientMetadataPatch"] = dict(responsesapi_client_metadata_patch)
         params = protocol.TurnSteerParams.model_validate(payload)
         return await self._thread._client.rpc.request_typed("turn/steer", params, TurnIdResult)
 
@@ -341,7 +345,12 @@ class AsyncTurnStream:
         item = extract_item(notification)
         if item is None:
             return
-        item_id = getattr(item.root, "id", None)
+        root = (
+            item.root.root
+            if isinstance(item.root, protocol.ImageGenerationThreadItem)
+            else item.root
+        )
+        item_id = getattr(root, "id", None)
         if isinstance(item_id, str) and item_id in self._item_index:
             self.items[self._item_index[item_id]] = item
         elif isinstance(item_id, str):
@@ -431,6 +440,65 @@ class AsyncAppServerThread:
         self._snapshot = result.thread
         return self.snapshot
 
+    async def read_state(self) -> protocol.ThreadReadState | None:
+        """Return the durable read receipt, or None when this thread has none."""
+        result = await self._client.rpc.request_typed(
+            "thread/read",
+            protocol.ThreadReadParams(threadId=self.id, includeTurns=False),
+            protocol.ThreadReadResponse,
+        )
+        return result.readState
+
+    async def update_read_state(
+        self,
+        operation: Literal["read", "unread"],
+        *,
+        expected_revision: str,
+    ) -> protocol.ThreadReadState:
+        """Mark this thread read or unread as of the revision the user actually saw.
+
+        Experimental. A stale revision raises `AppServerRpcError` with
+        `data["reason"] == "readStateConflict"`; do not retry it blindly.
+        """
+        params = protocol.ThreadReadStateUpdateParams.model_validate(
+            {
+                "expectedRevision": expected_revision,
+                "operation": {"type": operation},
+                "threadId": self.id,
+            }
+        )
+        result = await self._client.rpc.request_typed(
+            "thread/readState/update",
+            params,
+            protocol.ThreadReadStateUpdateResponse,
+        )
+        return result.readState
+
+    async def read_memory_summary(self) -> str | None:
+        """Return this loaded thread's memory summary, or None. Experimental."""
+        result = await self._client.rpc.request_typed(
+            "thread/memory/read",
+            protocol.ThreadMemoryReadParams(threadId=self.id),
+            protocol.ThreadMemoryReadResponse,
+        )
+        return result.summary
+
+    async def set_memory_mode(self, mode: Literal["enabled", "disabled"]) -> EmptyResult:
+        """Control whether this thread is used to generate memories. Experimental.
+
+        This does not stop the thread from reading existing memories; use the
+        `memories.use_memories` config for that. Setting a mode also replaces a
+        server-assigned `polluted` state, making the thread eligible again if "enabled".
+        """
+        return await self._client.rpc.request_typed(
+            "thread/memoryMode/set",
+            protocol.ThreadMemoryModeSetParams(
+                mode=protocol.ThreadMemoryMode(mode),
+                threadId=self.id,
+            ),
+            EmptyResult,
+        )
+
     async def list_items(
         self,
         *,
@@ -459,7 +527,8 @@ class AsyncAppServerThread:
         """Return one page of persisted items and their containing turn ids."""
         return await self._client.rpc.request_typed(
             "thread/items/list",
-            protocol.ThreadItemsListParams(
+            protocol_params(
+                protocol.ThreadItemsListParams,
                 cursor=protocol.ThreadItemsListCursor(cursor) if cursor is not None else None,
                 limit=limit,
                 sortDirection=sort_direction,
@@ -468,6 +537,24 @@ class AsyncAppServerThread:
             ),
             protocol.ThreadItemsListResponse,
         )
+
+    async def read_items(
+        self,
+        item_ids: Sequence[str],
+        *,
+        turn_id: str,
+    ) -> list[protocol.ThreadItem]:
+        """Return specific items from one turn. Experimental; accepts 1 to 100 ids."""
+        result = await self._client.rpc.request_typed(
+            "thread/items/read",
+            protocol.ThreadItemsReadParams(
+                itemIds=list(item_ids),
+                threadId=self.id,
+                turnId=turn_id,
+            ),
+            protocol.ThreadItemsReadResponse,
+        )
+        return [entry.item for entry in result.data]
 
     async def list_turns(
         self,
@@ -498,7 +585,8 @@ class AsyncAppServerThread:
         """Return one page of persisted turns with forward and reverse cursors."""
         return await self._client.rpc.request_typed(
             "thread/turns/list",
-            protocol.ThreadTurnsListParams(
+            protocol_params(
+                protocol.ThreadTurnsListParams,
                 cursor=cursor,
                 itemsView=items_view,
                 limit=limit,
@@ -534,7 +622,8 @@ class AsyncAppServerThread:
         """Return one page of message occurrences with navigation cursors."""
         return await self._client.rpc.request_typed(
             "thread/searchOccurrences",
-            protocol.ThreadSearchOccurrencesParams(
+            protocol_params(
+                protocol.ThreadSearchOccurrencesParams,
                 cursor=cursor,
                 limit=limit,
                 searchTerm=search_term,
@@ -677,7 +766,8 @@ class AsyncAppServerThread:
     ) -> EmptyResult:
         return await self._client.rpc.request_typed(
             "thread/section/move",
-            protocol.ThreadSectionMoveParams(
+            protocol_params(
+                protocol.ThreadSectionMoveParams,
                 threadId=self.id,
                 sectionId=section_id,
                 beforeThreadId=before_thread_id,

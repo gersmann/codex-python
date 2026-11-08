@@ -8,7 +8,7 @@ from collections.abc import Mapping
 from pathlib import Path
 from typing import Any, Protocol
 
-from codex._binary import bundled_app_server_path
+from codex._binary import bundled_codex_path, bundled_path_dirs
 from codex._runtime import build_child_env, resolve_codex_path, serialize_config_overrides
 from codex.app_server._types import JsonObject
 from codex.app_server.errors import (
@@ -34,7 +34,7 @@ class AsyncMessageTransport(Protocol):
 def _resolve_codex_path(executable_path: str | None) -> str:
     return resolve_codex_path(
         executable_path,
-        bundled_path=bundled_app_server_path,
+        bundled_path=bundled_codex_path,
         which=shutil.which,
         error_type=AppServerConnectionError,
     )
@@ -46,13 +46,21 @@ def _app_server_command(executable: str) -> list[str]:
     return [executable, "app-server"]
 
 
-def _build_env(options: AppServerProcessOptions) -> dict[str, str]:
+def _build_env(
+    options: AppServerProcessOptions,
+    path_dirs: tuple[Path, ...] = (),
+) -> dict[str, str]:
     env_override = os.environ if options.env is None else options.env
-    return build_child_env(
+    env = build_child_env(
         env_override,
         base_url=options.base_url,
         api_key=options.api_key,
     )
+    if path_dirs:
+        existing = env.get("PATH")
+        entries = [str(path_dir) for path_dir in path_dirs]
+        env["PATH"] = os.pathsep.join(entries if not existing else [*entries, existing])
+    return env
 
 
 class AsyncStdioTransport:
@@ -64,7 +72,9 @@ class AsyncStdioTransport:
     async def start(self) -> None:
         if self._process is not None:
             return
-        executable = _resolve_codex_path(self._options.codex_path_override)
+        override = self._options.codex_path_override
+        executable = _resolve_codex_path(override)
+        path_dirs = bundled_path_dirs() if override is None else ()
         command = _app_server_command(executable)
         if self._options.config is not None:
             for override in serialize_config_overrides(self._options.config):
@@ -77,7 +87,7 @@ class AsyncStdioTransport:
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
                 limit=STDIO_STREAM_LIMIT_BYTES,
-                env=_build_env(self._options),
+                env=_build_env(self._options, path_dirs),
             )
         except OSError as exc:
             raise AppServerConnectionError(f"Failed to start codex app-server: {exc}") from exc
@@ -172,8 +182,9 @@ class AsyncWebSocketTransport:
     async def send(self, message: JsonObject) -> None:
         if self._connection is None:
             raise AppServerClosedError("app-server websocket transport is not connected")
+        payload = json.dumps(message, separators=(",", ":"))
         try:
-            await self._connection.send(json.dumps(message, separators=(",", ":")))
+            await self._connection.send(payload)
         except self._connection_closed_ok_types as exc:
             self._connection = None
             raise AppServerClosedError("app-server websocket connection is closed") from exc

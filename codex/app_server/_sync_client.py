@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import concurrent.futures
+import inspect
 import time
 from collections.abc import Callable, Collection, Coroutine, Mapping
 from contextlib import suppress
@@ -24,6 +25,7 @@ from codex.app_server._sync_services import (
     _FeedbackClient,
     _FsClient,
     _McpServersClient,
+    _MemoryClient,
     _ModelsClient,
     _SkillsClient,
     _ThreadSectionsClient,
@@ -222,7 +224,12 @@ class RpcClient(_SyncRunner):
         *,
         request_model: type[_RequestT] | None = None,
     ) -> None:
-        self._async_rpc.on_request(method, handler, request_model=request_model)
+        async def run_in_worker(request: _RequestT) -> object:
+            # A sync handler on the loop thread would deadlock on any sync client call.
+            result = await asyncio.to_thread(handler, request)
+            return await result if inspect.isawaitable(result) else result
+
+        self._async_rpc.on_request(method, run_in_worker, request_model=request_model)
 
 
 class AppServerClient(_SyncRunner):
@@ -242,6 +249,7 @@ class AppServerClient(_SyncRunner):
         self.config = _ConfigClient(async_client.config, self._run)
         self.mcp_servers = _McpServersClient(async_client.mcp_servers, self._run)
         self.feedback = _FeedbackClient(async_client.feedback, self._run)
+        self.memory = _MemoryClient(async_client.memory, self._run)
         self.command = _CommandClient(async_client.command, self._run)
         self.fs = _FsClient(async_client.fs, self._run)
         self.environment = _EnvironmentClient(async_client.environment, self._run)

@@ -547,3 +547,154 @@ def test_async_session_close_observes_cleanup_failure_and_does_not_replay_it(
         assert unhandled == []
 
     asyncio.run(asyncio.wait_for(scenario(), timeout=1))
+
+
+class _SendFailsForResponses(_FakeTransport):
+    async def send(self, message: JsonObject) -> None:
+        if "method" not in message:
+            raise AppServerClosedError("stdin closed")
+        await super().send(message)
+
+
+def test_handler_can_issue_nested_request_on_same_session() -> None:
+    async def scenario() -> None:
+        transport = _FakeTransport()
+        session = _AsyncSession(transport, AppServerInitializeOptions(strict_protocol=False))
+        await session.start()
+
+        async def handler(_request: object) -> dict[str, object]:
+            return {"nested": await session.request("nested/call")}
+
+        session.on_request("custom/request", handler)
+        transport.push({"id": "req-1", "method": "custom/request", "params": {}})
+
+        async def answer_nested() -> None:
+            while not any(message.get("method") == "nested/call" for message in transport.sent):
+                await asyncio.sleep(0.001)
+            nested = next(m for m in transport.sent if m.get("method") == "nested/call")
+            transport.push({"id": nested["id"], "result": {"ok": True}})
+            while not any(message.get("id") == "req-1" for message in transport.sent):
+                await asyncio.sleep(0.001)
+
+        try:
+            await asyncio.wait_for(answer_nested(), 1)
+        finally:
+            await session.close()
+
+        assert {"id": "req-1", "result": {"nested": {"ok": True}}} in transport.sent
+
+    asyncio.run(scenario())
+
+
+def test_slow_handler_does_not_block_notifications() -> None:
+    async def scenario() -> None:
+        transport = _FakeTransport()
+        session = _AsyncSession(transport, AppServerInitializeOptions(strict_protocol=False))
+        await session.start()
+        release = asyncio.Event()
+
+        async def handler(_request: object) -> dict[str, object]:
+            await release.wait()
+            return {}
+
+        session.on_request("custom/request", handler)
+        subscription = session.subscribe_notifications({"custom/event"})
+        transport.push({"id": "req-1", "method": "custom/request", "params": {}})
+        transport.push({"method": "custom/event", "params": {}})
+
+        try:
+            notification = await asyncio.wait_for(subscription.next(), 1)
+        finally:
+            release.set()
+            await session.close()
+
+        assert notification.method == "custom/event"
+
+    asyncio.run(scenario())
+
+
+def test_close_cancels_in_flight_handler() -> None:
+    async def scenario() -> None:
+        transport = _FakeTransport()
+        session = _AsyncSession(transport, AppServerInitializeOptions(strict_protocol=False))
+        await session.start()
+        entered = asyncio.Event()
+        cancelled = asyncio.Event()
+
+        async def handler(_request: object) -> dict[str, object]:
+            entered.set()
+            try:
+                await asyncio.Event().wait()
+            except asyncio.CancelledError:
+                cancelled.set()
+                raise
+            return {}
+
+        session.on_request("custom/request", handler)
+        transport.push({"id": "req-1", "method": "custom/request", "params": {}})
+        await asyncio.wait_for(entered.wait(), 1)
+
+        await asyncio.wait_for(session.close(), 1)
+
+        assert cancelled.is_set()
+        assert transport.closed is True
+
+    asyncio.run(scenario())
+
+
+def test_failed_handler_reply_fails_the_connection() -> None:
+    async def scenario() -> None:
+        transport = _SendFailsForResponses()
+        session = _AsyncSession(transport, AppServerInitializeOptions(strict_protocol=False))
+        await session.start()
+        session.on_request("custom/request", lambda _request: {})
+        subscription = session.subscribe_notifications()
+        transport.push({"id": "req-1", "method": "custom/request", "params": {}})
+
+        with pytest.raises(AppServerClosedError, match="stdin closed"):
+            await asyncio.wait_for(subscription.next(), 1)
+        with pytest.raises(AppServerClosedError, match="stdin closed"):
+            await session.request("after/failure")
+
+        await session.close()
+        assert transport.closed is True
+
+    asyncio.run(scenario())
+
+
+def test_malformed_server_request_fails_the_connection() -> None:
+    async def scenario() -> None:
+        transport = _FakeTransport()
+        session = _AsyncSession(transport, AppServerInitializeOptions(strict_protocol=True))
+        await session.start()
+        subscription = session.subscribe_notifications()
+        transport.push({"id": "req-1", "method": "not/a/known/request", "params": {}})
+
+        with pytest.raises(AppServerProtocolError):
+            await asyncio.wait_for(subscription.next(), 1)
+        with pytest.raises(AppServerProtocolError):
+            await session.close()
+
+    asyncio.run(scenario())
+
+
+def test_cancelling_start_closes_transport_and_reader() -> None:
+    class _NeverInitializes(_FakeTransport):
+        async def send(self, message: JsonObject) -> None:
+            self.sent.append(message)
+
+    async def scenario() -> None:
+        transport = _NeverInitializes()
+        session = _AsyncSession(transport, AppServerInitializeOptions(strict_protocol=False))
+        start = asyncio.create_task(session.start())
+        while not transport.sent:
+            await asyncio.sleep(0.001)
+
+        start.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await asyncio.wait_for(start, 1)
+
+        assert transport.closed is True
+        assert session._reader_task is None
+
+    asyncio.run(scenario())

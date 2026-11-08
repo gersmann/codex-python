@@ -34,7 +34,7 @@ class CodexConfig(BaseModel):
         default=None,
         description="Default developer instructions applied to new turns.",
     )
-    forced_chatgpt_workspace_id: str | None = Field(
+    forced_chatgpt_workspace_id: str | list[str] | None = Field(
         default=None,
         description="Workspace identifier to force for ChatGPT-managed auth flows.",
     )
@@ -102,7 +102,7 @@ class CodexConfig(BaseModel):
         default=None,
         description="Open-ended tool configuration subtree.",
     )
-    web_search: Literal["disabled", "cached", "live"] | None = Field(
+    web_search: Literal["disabled", "cached", "indexed", "live"] | None = Field(
         default=None,
         description="Default web-search mode.",
     )

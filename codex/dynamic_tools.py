@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import inspect
 import json
 from collections.abc import Awaitable, Callable, Iterable, Mapping, Sequence
@@ -142,7 +143,8 @@ class _DynamicToolRuntime:
             )
 
         validated = tool.input_model.model_validate(request.params.arguments)
-        result = tool.callable(**dict(validated))
+        # A worker thread keeps sync tools from stalling the event loop or deadlocking on the client.
+        result = await asyncio.to_thread(tool.callable, **dict(validated))
         if inspect.isawaitable(result):
             result = await cast(Awaitable[object], result)
         return _normalize_tool_result(result)

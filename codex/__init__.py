@@ -1,4 +1,4 @@
-"""Python SDK for embedding Codex via the bundled app-server binary."""
+"""Python SDK for embedding Codex through its app-server."""
 
 from __future__ import annotations
 
@@ -17,7 +17,7 @@ from codex.options import (
 )
 from codex.thread import CodexTurnStream, Input, Thread
 
-__version__ = "1.159.2"
+__version__ = "1.167.0"
 
 __all__ = [
     "Codex",

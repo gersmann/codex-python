@@ -47,6 +47,10 @@ with AppServerClient.connect_stdio() as client:
 
 These domain clients cover the stable RPC surface that does not naturally belong on a thread object, including `models`, `apps`, `skills`, `account`, `config`, `mcp_servers`, `feedback`, `command`, `external_agent_config`, and `windows_sandbox`.
 
+`client.memory` covers the experimental memory RPCs and requires `experimental_api=True`. `client.memory.status()` reports v2 readiness. `client.memory.reset()` irreversibly deletes all stored memories for the app-server's `CODEX_HOME`, not just the current thread. Per-thread controls live on the thread: `thread.read_memory_summary()` and `thread.set_memory_mode("disabled")`.
+
+`set_memory_mode()` only controls whether a thread is used to generate memories. A `"disabled"` thread still receives existing memories in its prompts; set the `memories.use_memories` config to `false` to stop that. With `memories.disable_on_external_context` on, the server can mark a thread `polluted` after outside content enters it, which also excludes it from generation. That state cannot be requested through the API, but calling `set_memory_mode("enabled")` overwrites it, so only do that if the thread's content is safe to learn from.
+
 The concrete sync wrapper classes behind these attributes are internal implementation details. Rely on `client.models` and the other domain attributes instead of importing wrapper types directly.
 
 ## Raw JSON-RPC
@@ -112,6 +116,14 @@ with AppServerClient.connect_stdio() as client:
 
 The async client exposes the same pattern with async handlers. If you prefer the
 annotation-driven flow, use `@dynamic_tool` plus `tools=` on `start_thread()`.
+
+Handlers run concurrently and do not block other messages, so they can call back into the client
+and a slow handler no longer delays notifications. They may overlap, so protect any shared state.
+`close()` cancels handlers that are still running.
+
+On the sync client, handlers run on a worker thread. Sync `@dynamic_tool` functions run on a worker
+thread on both clients. On the async client, a plain function passed to `on_request()` still runs on
+the event loop and must not block it; use an async handler for slow work.
 
 For a complete decorator-driven dynamic-tool example that activates tools on
 `start_thread()` and handles the resulting `item/tool/call` requests, see

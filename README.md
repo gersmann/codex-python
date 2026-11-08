@@ -1,6 +1,6 @@
 # codex-python
 
-Python SDK for Codex with optional bundled app-server binaries inside platform wheels.
+Python SDK for the Codex app-server.
 
 This package exposes two supported APIs:
 
@@ -18,9 +18,11 @@ Canonical import paths:
 pip install codex-python
 ```
 
-Starting with the next release after `1.159.2`, Windows (x64 and ARM64) and Intel macOS
-wheels no longer bundle Codex. Install Codex separately and ensure `codex` is on `PATH`,
-or set `codex_path_override`. Linux and Apple Silicon macOS wheels retain bundled binaries.
+Codex itself comes from OpenAI's `openai-codex-cli-bin` package, which is installed as a
+dependency and pinned to the Codex version this SDK release targets, usually one with the same
+minor version (SDK `1.X.*` targets Codex `0.X.*`).
+It provides the `codex` CLI with its Code Mode host and sandbox helper on Linux, macOS, and
+Windows, so no separate Codex install is needed.
 
 ## Which API should I use?
 
@@ -220,15 +222,16 @@ Advanced app-server usage, including typed stable RPC domains such as `client.mo
 - [examples/app_server_tool_handler.py](examples/app_server_tool_handler.py): typed app-server request handling
 - [examples/app_server_dynamic_tool.py](examples/app_server_dynamic_tool.py): decorator-driven dynamic tool registration
 
-## Bundled binary behavior
+## Codex runtime
 
-By default, the SDK resolves the bundled binary at:
+By default, the SDK runs `codex app-server` from the installed `openai-codex-cli-bin` package and
+puts that package's helper tools on the server's `PATH`. If the package is missing, it falls back
+to `codex` on `PATH`. Use the Codex version targeted by your SDK release for protocol
+compatibility.
 
-`codex/vendor/<target-triple>/codex-app-server/{codex-app-server|codex-app-server.exe}`
-
-The bundled app-server runs directly. If it is not present, for example in a source checkout or
-a Windows/Intel macOS wheel after `1.159.2`, the SDK falls back to `codex app-server` using
-`codex` on `PATH`. Use the Codex version targeted by your SDK release for protocol compatibility.
+Releases up to `1.159.2` bundled only `codex-app-server`, without its Code Mode host. Since
+Codex 0.147, models that require Code Mode cannot run tools without that host, so upgrade or set
+`codex_path_override` to a full Codex install.
 
 You can override the executable path with:
 
@@ -247,9 +250,3 @@ make test
 
 `make test` emits a terminal coverage report, writes `coverage.xml`, and enforces the repository
 coverage gate.
-
-If you want to test vendored-binary behavior locally, fetch binaries into `codex/vendor`:
-
-```bash
-python scripts/fetch_codex_binary.py --target-triple x86_64-unknown-linux-musl
-```

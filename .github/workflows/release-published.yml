@@ -97,9 +97,6 @@ jobs:
         run: |
           set -euo pipefail
           VER="${{ steps.resolve.outputs.version }}"
-          # Update Cargo.toml version
-          sed -i.bak -E "s/^version = \"[^\"]+\"/version = \"${VER}\"/" crates/codex_native/Cargo.toml
-          rm -f crates/codex_native/Cargo.toml.bak
           # Update Python __version__
           # Use ${1}/${2} style backrefs to avoid `\11` ambiguity when VER starts with digits.
           perl -0777 -pe 's/(\n__version__\s*=\s*\")[^"]*(\")/${1}'"${VER}"'${2}/s' -i codex/__init__.py
@@ -112,7 +109,7 @@ jobs:
           if git diff --quiet; then
             echo "No changes to commit (versions already ${VER})."
           else
-            git add crates/codex_native/Cargo.toml codex/__init__.py
+            git add codex/__init__.py
             git commit -m "chore(release): v${VER} [skip ci]"
             DEFAULT_BRANCH="${{ github.event.repository.default_branch }}"
             git push origin HEAD:"${DEFAULT_BRANCH}"
@@ -163,197 +160,8 @@ jobs:
             });
             core.info(`Updated release ${rel.id} to tag ${realTag}`);
 
-  build-wheels:
-    name: Build native wheels
-    needs: prepare
-    strategy:
-      fail-fast: false
-      matrix:
-        platform:
-          [
-            linux-x86_64,
-            linux-aarch64,
-            linux-musl-x86_64,
-            linux-musl-aarch64,
-            macos-aarch64,
-            macos-x86_64,
-            windows-amd64,
-            windows-arm64,
-          ]
-        include:
-          - platform: linux-x86_64
-            os: ubuntu-latest
-            python-interpreter: "3.12"
-            codex-targets: x86_64-unknown-linux-musl
-          - platform: linux-aarch64
-            os: ubuntu-latest
-            python-interpreter: "3.12"
-            codex-targets: aarch64-unknown-linux-musl
-          - platform: linux-musl-x86_64
-            os: ubuntu-latest
-            python-interpreter: "3.12"
-            codex-targets: x86_64-unknown-linux-musl
-          - platform: linux-musl-aarch64
-            os: ubuntu-latest
-            python-interpreter: "3.12"
-            codex-targets: aarch64-unknown-linux-musl
-          - platform: macos-aarch64
-            os: macos-14
-            python-interpreter: 3.12
-            codex-targets: aarch64-apple-darwin
-            rust-target: aarch64-apple-darwin
-          - platform: macos-x86_64
-            os: macos-15-intel
-            python-interpreter: 3.12
-            rust-target: x86_64-apple-darwin
-          - platform: windows-amd64
-            os: windows-latest
-            python-interpreter: 3.12
-          - platform: windows-arm64
-            os: windows-latest
-            python-interpreter: 3.12
-    runs-on: ${{ matrix.os }}
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-          ref: ${{ needs.prepare.outputs.build_sha }}
-
-      - name: Set up Rust
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Set up Python (host)
-        uses: actions/setup-python@v5
-        with:
-          python-version: ${{ matrix.python-interpreter }}
-
-      - name: Install binary fetch dependencies
-        if: ${{ matrix.codex-targets != '' }}
-        run: |
-          python -m pip install --upgrade pip
-          pip install zstandard
-
-      - name: Install build backend (host)
-        if: ${{ startsWith(matrix.platform, 'macos-') || matrix.platform == 'windows-amd64' || matrix.platform == 'windows-arm64' }}
-        run: |
-          pip install build maturin
-
-      - name: Setup QEMU (for cross aarch64)
-        if: ${{ matrix.platform == 'linux-aarch64' || matrix.platform == 'linux-musl-aarch64' }}
-        uses: docker/setup-qemu-action@v3
-
-      - name: Fetch bundled codex binaries
-        if: ${{ matrix.codex-targets != '' }}
-        shell: bash
-        env:
-          CODEX_BINARY_RELEASE_TAG: ${{ vars.CODEX_BINARY_RELEASE_TAG || 'rust-v0.159.2' }}
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          set -euo pipefail
-          IFS=',' read -r -a targets <<< "${{ matrix.codex-targets }}"
-          args=()
-          for target in "${targets[@]}"; do
-            args+=(--target-triple "$target")
-          done
-          python scripts/fetch_codex_binary.py --release-tag "$CODEX_BINARY_RELEASE_TAG" "${args[@]}"
-
-      - name: Verify bundled binaries
-        if: ${{ matrix.codex-targets != '' }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          IFS=',' read -r -a targets <<< "${{ matrix.codex-targets }}"
-          for target in "${targets[@]}"; do
-            bin="codex/vendor/$target/codex-app-server/codex-app-server"
-            test -f "$bin"
-            echo "Found $bin"
-          done
-
-      - name: Build Linux x86_64 wheel (manylinux2014)
-        if: ${{ matrix.platform == 'linux-x86_64' }}
-        uses: PyO3/maturin-action@v1
-        env:
-          CFLAGS: -D_DEFAULT_SOURCE -D_BSD_SOURCE
-        with:
-          manylinux: "2014"
-          command: build
-          before-script-linux: |
-            yum -y install curl perl-core >/dev/null 2>&1 || true
-            (perl -MText::Template -e1 >/dev/null 2>&1 || (curl -sL https://cpanmin.us | perl - App::cpanminus Text::Template >/dev/null))
-          args: --release -i python3.12 -o dist
-
-      - name: Build Linux aarch64 wheel (manylinux2014)
-        if: ${{ matrix.platform == 'linux-aarch64' }}
-        uses: PyO3/maturin-action@v1
-        env:
-          CFLAGS: -D_DEFAULT_SOURCE -D_BSD_SOURCE
-        with:
-          manylinux: "2014"
-          target: aarch64-unknown-linux-gnu
-          command: build
-          before-script-linux: |
-            yum -y install curl perl-core >/dev/null 2>&1 || true
-            (perl -MText::Template -e1 >/dev/null 2>&1 || (curl -sL https://cpanmin.us | perl - App::cpanminus Text::Template >/dev/null))
-          args: --release -i python3.12 -o dist
-
-      - name: Build Linux x86_64 wheel (musllinux_1_2)
-        if: ${{ matrix.platform == 'linux-musl-x86_64' }}
-        uses: PyO3/maturin-action@v1
-        env:
-          CFLAGS: -D_DEFAULT_SOURCE -D_BSD_SOURCE
-        with:
-          manylinux: "musllinux_1_2"
-          target: x86_64-unknown-linux-musl
-          command: build
-          before-script-linux: |
-            apk add --no-cache curl perl perl-text-template >/dev/null 2>&1 || true
-          args: --release -i python3.12 -o dist
-
-      - name: Build Linux aarch64 wheel (musllinux_1_2)
-        if: ${{ matrix.platform == 'linux-musl-aarch64' }}
-        uses: PyO3/maturin-action@v1
-        env:
-          CFLAGS: -D_DEFAULT_SOURCE -D_BSD_SOURCE
-        with:
-          manylinux: "musllinux_1_2"
-          target: aarch64-unknown-linux-musl
-          command: build
-          before-script-linux: |
-            apk add --no-cache curl perl perl-text-template >/dev/null 2>&1 || true
-          args: --release -i python3.12 -o dist
-
-      - name: Build macOS wheel
-        if: ${{ startsWith(matrix.platform, 'macos-') }}
-        run: |
-          python -m pip install --upgrade pip
-          pip install maturin
-          rustup target add "${{ matrix.rust-target }}"
-          maturin build --release -i python -o dist --target "${{ matrix.rust-target }}"
-
-      - name: Build Windows wheel
-        if: ${{ matrix.platform == 'windows-amd64' }}
-        run: |
-          python -m pip install --upgrade pip
-          pip install maturin
-          maturin build --release -i python -o dist
-
-      - name: Build Windows ARM64 wheel
-        if: ${{ matrix.platform == 'windows-arm64' }}
-        run: |
-          python -m pip install --upgrade pip
-          pip install maturin
-          rustup target add aarch64-pc-windows-msvc
-          maturin build --release -o dist --target aarch64-pc-windows-msvc
-
-      - name: Upload wheels
-        uses: actions/upload-artifact@v4
-        with:
-          name: wheels-${{ matrix.platform }}
-          path: dist/*.whl
-
-  build-sdist:
-    name: Build sdist
+  build:
+    name: Build distributions
     needs: prepare
     runs-on: ubuntu-latest
     steps:
@@ -362,32 +170,44 @@ jobs:
         with:
           ref: ${{ needs.prepare.outputs.build_sha }}
 
-      - name: Set up Rust
-        uses: dtolnay/rust-toolchain@stable
-
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: "3.13"
+          python-version: "3.12"
 
-      - name: Install build tool
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+
+      - name: Verify Codex runtime pin is published
+        shell: bash
         run: |
-          python -m pip install --upgrade pip
-          pip install build maturin
+          set -euo pipefail
+          pin=$(python -c 'import tomllib; deps = tomllib.load(open("pyproject.toml", "rb"))["project"]["dependencies"]; print(next(d.split("==")[1] for d in deps if d.startswith("openai-codex-cli-bin==")))')
+          curl -sfo /dev/null "https://pypi.org/pypi/openai-codex-cli-bin/${pin}/json" \
+            || { echo "openai-codex-cli-bin==${pin} is not published on PyPI" >&2; exit 1; }
 
-      - name: Build sdist (PEP 517)
+      - name: Build sdist and wheel
+        run: uv build
+
+      - name: Verify pure-Python wheel
+        shell: bash
         run: |
-          python -m build --sdist
+          set -euo pipefail
+          shopt -s nullglob
+          wheels=(dist/*.whl)
+          universal=(dist/*-py3-none-any.whl)
+          test ${#wheels[@]} -eq 1 && test ${#universal[@]} -eq 1
+          ls -al dist
 
-      - name: Upload sdist
+      - name: Upload distributions
         uses: actions/upload-artifact@v4
         with:
-          name: sdist
-          path: dist/*.tar.gz
+          name: dist
+          path: dist/*
 
   publish:
     name: Publish to PyPI (Trusted Publishing)
-    needs: [prepare, build-wheels, build-sdist]
+    needs: [prepare, build]
     runs-on: ubuntu-latest
     steps:
       - name: Download all artifacts

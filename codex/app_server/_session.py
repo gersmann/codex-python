@@ -72,6 +72,13 @@ class _AsyncNotificationSubscription:
 
     def update_predicate(self, predicate: _NotificationPredicate | None) -> None:
         self.sink.predicate = predicate
+        if predicate is None:
+            return
+        # Messages queued under the broader filter must also pass the narrower one.
+        queued = [self.queue.get_nowait() for _ in range(self.queue.qsize())]
+        for message in queued:
+            if message is None or isinstance(message, Exception) or predicate(message):
+                self.queue.put_nowait(message)
 
 
 @dataclass(slots=True)
@@ -95,6 +102,7 @@ class _AsyncSession:
         self._request_handlers: dict[str, _RegisteredHandler] = {}
         self._notification_sinks: list[_NotificationSink] = []
         self._reader_task: asyncio.Task[None] | None = None
+        self._request_tasks: set[asyncio.Task[None]] = set()
         self._reader_error: Exception | None = None
         self._reader_error_reported = False
         self._strict_protocol = self._initialize_options.strict_protocol
@@ -116,7 +124,7 @@ class _AsyncSession:
                 InitializeResult,
             )
             await self.notify("initialized", {})
-        except Exception as exc:
+        except (Exception, asyncio.CancelledError) as exc:
             close_error = await self._close_for_start_failure()
             if close_error is not None and close_error is not exc:
                 exc.add_note(f"Cleanup after start failure also failed: {close_error!r}")
@@ -143,6 +151,10 @@ class _AsyncSession:
             reader_error = reader_result[0]
             if isinstance(reader_error, Exception):
                 close_error = reader_error
+        request_tasks = list(self._request_tasks)
+        for task in request_tasks:
+            task.cancel()
+        await asyncio.gather(*request_tasks, return_exceptions=True)
         self._fail_pending(AppServerClosedError("app-server client closed"))
         try:
             await self._transport.close()
@@ -255,7 +267,7 @@ class _AsyncSession:
                     self._handle_response(message)
                     continue
                 if "id" in message and "method" in message:
-                    await self._handle_server_request(message)
+                    self._dispatch_server_request(message)
                     continue
                 if "method" in message:
                     await self._broadcast_notification(message)
@@ -264,10 +276,31 @@ class _AsyncSession:
         except asyncio.CancelledError:
             raise
         except Exception as exc:
-            self._reader_error = exc
-            self._fail_pending(exc)
-            for sink in list(self._notification_sinks):
-                await sink.queue.put(exc)
+            self._fail_connection(exc)
+
+    def _dispatch_server_request(self, message: JsonObject) -> None:
+        # Handlers run outside the reader so they can await responses it must deliver.
+        task = asyncio.create_task(self._handle_server_request(message))
+        self._request_tasks.add(task)
+        task.add_done_callback(self._on_request_task_done)
+
+    def _on_request_task_done(self, task: asyncio.Task[None]) -> None:
+        self._request_tasks.discard(task)
+        if task.cancelled():
+            return
+        exc = task.exception()
+        if isinstance(exc, Exception):
+            self._fail_connection(exc)
+            if self._reader_task is not None:
+                self._reader_task.cancel()
+
+    def _fail_connection(self, exc: Exception) -> None:
+        if self._reader_error is not None:
+            return
+        self._reader_error = exc
+        self._fail_pending(exc)
+        for sink in list(self._notification_sinks):
+            sink.queue.put_nowait(exc)
 
     async def _await_future(self, future: asyncio.Future[object]) -> object:
         while True:

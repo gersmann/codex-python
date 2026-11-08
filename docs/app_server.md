@@ -2,7 +2,7 @@
 
 `AppServerClient` connects to `codex app-server` and exposes a thread and stream API on top of the JSON-RPC protocol.
 
-SDK `1.159.2` targets Codex app-server `0.159.2`; its generated protocol models
+SDK `1.167.0` targets Codex app-server `0.167.0`; its generated protocol models
 include that version's experimental schema. Experimental RPCs still require
 `AppServerInitializeOptions(experimental_api=True)`.
 
@@ -10,6 +10,12 @@ In `1.159.2`, generated `ImageUserInput` is a union wrapper for URL and file-ID 
 Construct `protocol.UrlUserInput(type="image", url=...)` or
 `protocol.FileIdUserInput(type="image", fileId=...)`, or validate a wire payload with
 `protocol.ImageUserInput.model_validate(...)`.
+
+In `1.167.0`, upstream removed detached reviews: `delivery` only accepts `"inline"` and `review()`
+runs on the thread it was called on. To review separately, start or fork a thread first and call
+`review()` there. Generated `AudioUserInput`, `InputAudioContentItem`, and
+`ImageGenerationThreadItem` also became URL/file-ID union wrappers, so read their fields through
+`.root` and build them with `model_validate(...)`.
 
 Use it when you need a deeper integration than `Codex` provides: persistent connections, typed protocol notifications, or server-driven requests.
 
@@ -102,6 +108,17 @@ with AppServerClient.connect_stdio(
 
 A new thread is materialized when its first user message starts; history pagination is unavailable
 before that point.
+
+`thread.read_items(["item_1"], turn_id="turn_1")` fetches specific items from one turn (1 to 100
+ids). It is experimental.
+
+`thread.read_state()` returns the thread's durable read receipt, or `None` for threads without one,
+such as ephemeral or not-yet-persisted threads. Mark the thread with
+`thread.update_read_state("read", expected_revision=state.revision)` or `"unread"`, using the
+revision of what the user actually saw. Updating is experimental. A stale revision raises
+`AppServerRpcError` with `data["reason"] == "readStateConflict"` and the current state in
+`data["readState"]`. Do not retry blindly: the user may not have seen the newer result. To follow
+changes, subscribe to `thread/readState/changed`, which also needs `experimental_api=True`.
 
 Use `thread.revert("turn_123")` to remove that turn and every later turn. The returned
 `ThreadRevertResponse` includes the updated thread and both backwards cursors. Upstream removed
